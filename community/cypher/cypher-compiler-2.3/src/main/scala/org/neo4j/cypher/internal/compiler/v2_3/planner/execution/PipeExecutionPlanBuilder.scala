@@ -87,10 +87,10 @@ class PipeExecutionPlanBuilder(clock: Clock, monitors: Monitors) {
           UndirectedRelationshipByIdSeekPipe(id, relIdExpr.asCommandSeekArgs, toNode, fromNode)()
 
         case NodeIndexSeek(IdName(id), label, propertyKey, valueExpr, _) =>
-          NodeIndexSeekPipe(id, label, propertyKey, valueExpr.map(buildExpression), NonUniqueIndexSeekMode.fromQueryExpression(valueExpr))()
+          NodeIndexSeekPipe(id, label, propertyKey, valueExpr.map(buildExpression), unique = false)()
 
         case NodeIndexUniqueSeek(IdName(id), label, propertyKey, valueExpr, _) =>
-          NodeIndexSeekPipe(id, label, propertyKey, valueExpr.map(buildExpression), UniqueIndexSeekMode.fromQueryExpression(valueExpr))()
+          NodeIndexSeekPipe(id, label, propertyKey, valueExpr.map(buildExpression), unique = true)()
 
         case NodeIndexScan(IdName(id), label, propertyKey, _) =>
           NodeIndexScanPipe(id, label, propertyKey)()

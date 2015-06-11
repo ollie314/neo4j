@@ -64,14 +64,12 @@ case class ParsedLikePattern(ops: List[LikePatternOp]) {
 
 sealed trait LikePatternOp
 
-sealed trait WildcardLikePatternOp extends LikePatternOp
-
 /** Contains a string that needs quoting for use in regular expression */
 case class MatchText(v: String) extends LikePatternOp
 
 /** Matches a % */
-case object MatchMany extends WildcardLikePatternOp
+case object MatchMany extends LikePatternOp
 
 /** Matches a _*/
-case object MatchSingle extends WildcardLikePatternOp
+case object MatchSingle extends LikePatternOp
 

@@ -42,17 +42,9 @@ case class ExpressionSelectivityCalculator(stats: GraphStatistics, combiner: Sel
     case False() =>
       Selectivity(0)
 
-    // SubPredicate(sub, super)
-    case partial: PartialPredicate[_] =>
-      apply(partial.coveredPredicate)
-
     // WHERE x.prop =/IN ...
     case AsPropertySeekable(seekable) =>
-      calculateSelectivityForPropertyEquality(seekable.name, seekable.args.sizeHint, selections, seekable.propertyKey)
-
-    // WHERE x.prop LIKE ...
-    case AsStringRangeSeekable(seekable) =>
-      calculateSelectivityForRangeSeekable(seekable.name, selections, seekable.propertyKey)
+      calculateSelectivityForPropertyEquality(seekable.name, seekable.args, selections, seekable.propertyKey)
 
     // WHERE has(x.prop)
     case AsPropertyScannable(scannable) =>
@@ -99,7 +91,7 @@ case class ExpressionSelectivityCalculator(stats: GraphStatistics, combiner: Sel
   }
 
   private def calculateSelectivityForPropertyEquality(identifier: String,
-                                                      sizeHint: Option[Int],
+                                                      rhs: SeekableArgs,
                                                       selections: Selections,
                                                       propertyKey: PropertyKeyName)
                                                      (implicit semanticTable: SemanticTable): Selectivity = {
@@ -116,19 +108,10 @@ case class ExpressionSelectivityCalculator(stats: GraphStatistics, combiner: Sel
     }
 
     val itemSelectivity = combiner.orTogetherSelectivities(indexSelectivities).getOrElse(DEFAULT_EQUALITY_SELECTIVITY)
-    val size = sizeHint.getOrElse(DEFAULT_NUMBER_OF_INDEX_LOOKUPS.amount.toInt)
+    val size = rhs.sizeHint.getOrElse(DEFAULT_NUMBER_OF_INDEX_LOOKUPS.amount.toInt)
     val selectivity = combiner.orTogetherSelectivities(1.to(size).map(_ => itemSelectivity)).getOrElse(DEFAULT_EQUALITY_SELECTIVITY)
 
     selectivity
-  }
-
-  private def calculateSelectivityForRangeSeekable(identifier: String,
-                                                   selections: Selections,
-                                                   propertyKey: PropertyKeyName)
-                                                  (implicit semanticTable: SemanticTable): Selectivity = {
-    val equality = java.math.BigDecimal.valueOf(calculateSelectivityForPropertyEquality(identifier, None, selections, propertyKey).factor)
-    val slack = BigDecimalCombiner.negate(equality).multiply(java.math.BigDecimal.valueOf(DEFAULT_RANGE_SEEK_FACTOR))
-    Selectivity(equality.add(slack).doubleValue())
   }
 
   private def calculateSelectivityForPropertyExistence(identifier: String,
