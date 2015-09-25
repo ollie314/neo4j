@@ -75,7 +75,7 @@ public class DefaultUnpackerDependencies implements TransactionCommittingRespons
         NeoStores neoStore = resolver.resolveDependency( NeoStoresSupplier.class ).get();
         KernelHealth kernelHealth = resolver.resolveDependency( KernelHealth.class );
         return new OnlineIndexUpdatesValidator( neoStore, kernelHealth, new PropertyLoader( neoStore ),
-                resolver.resolveDependency( IndexingService.class ), IndexUpdateMode.BATCHED );
+                resolver.resolveDependency( IndexingService.class ), IndexUpdateMode.ONLINE );
     }
 
     @Override

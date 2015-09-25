@@ -19,10 +19,8 @@
  */
 package org.neo4j.kernel.impl.api;
 
-import java.io.IOException;
-
+import org.neo4j.helpers.Provider;
 import org.neo4j.kernel.KernelHealth;
-import org.neo4j.kernel.RecoveryLabelScanWriterProvider;
 import org.neo4j.kernel.api.labelscan.LabelScanStore;
 import org.neo4j.kernel.impl.api.index.IndexingService;
 import org.neo4j.kernel.impl.core.CacheAccessBackDoor;
@@ -30,6 +28,7 @@ import org.neo4j.kernel.impl.index.IndexConfigStore;
 import org.neo4j.kernel.impl.locking.LockService;
 import org.neo4j.kernel.impl.store.NeoStores;
 import org.neo4j.kernel.impl.util.IdOrderingQueue;
+import org.neo4j.unsafe.batchinsert.LabelScanWriter;
 
 /**
  * {@link TransactionRepresentationStoreApplier} that builds services made for batching transactions.
@@ -38,41 +37,27 @@ import org.neo4j.kernel.impl.util.IdOrderingQueue;
  */
 public class BatchingTransactionRepresentationStoreApplier extends TransactionRepresentationStoreApplier
 {
-    private final RecoveryLabelScanWriterProvider labelScanWriterProvider;
-    private final RecoveryLegacyIndexApplierLookup legacyIndexApplierLookup;
-
     public BatchingTransactionRepresentationStoreApplier( IndexingService indexingService,
             LabelScanStore labelScanStore, NeoStores neoStore, CacheAccessBackDoor cacheAccess,
-            LockService lockService, LegacyIndexApplierLookup legacyIndexProviderLookup,
-            IndexConfigStore indexConfigStore, KernelHealth kernelHealth, IdOrderingQueue legacyIndexTransactionOrdering )
-    {
-        this( indexingService, new RecoveryLabelScanWriterProvider( labelScanStore, 1000 ),
-                neoStore, cacheAccess, lockService,
-                new RecoveryLegacyIndexApplierLookup( legacyIndexProviderLookup, 1000 ),
-                indexConfigStore, kernelHealth, legacyIndexTransactionOrdering );
-    }
-
-    private BatchingTransactionRepresentationStoreApplier(
-            IndexingService indexingService,
-            RecoveryLabelScanWriterProvider labelScanWriterProvider,
-            NeoStores neoStore,
-            CacheAccessBackDoor cacheAccess,
-            LockService lockService,
-            RecoveryLegacyIndexApplierLookup legacyIndexApplierLookup,
-            IndexConfigStore indexConfigStore,
-            KernelHealth kernelHealth,
+            LockService lockService, LegacyIndexApplierLookup legacyIndexApplierLookup,
+            IndexConfigStore indexConfigStore, KernelHealth kernelHealth,
             IdOrderingQueue legacyIndexTransactionOrdering )
     {
-        super( indexingService, labelScanWriterProvider, neoStore, cacheAccess, lockService, legacyIndexApplierLookup,
+        super( indexingService, alwaysCreateNewWriter( labelScanStore ),
+                neoStore, cacheAccess, lockService,
+                legacyIndexApplierLookup,
                 indexConfigStore, kernelHealth, legacyIndexTransactionOrdering );
-        this.labelScanWriterProvider = labelScanWriterProvider;
-        this.legacyIndexApplierLookup = legacyIndexApplierLookup;
     }
 
-    public void closeBatch() throws IOException
+    private static Provider<LabelScanWriter> alwaysCreateNewWriter( final LabelScanStore labelScanStore )
     {
-        labelScanWriterProvider.close();
-        legacyIndexApplierLookup.close();
-        indexingService.flushAll();
+        return new Provider<LabelScanWriter>()
+        {
+            @Override
+            public LabelScanWriter instance()
+            {
+                return labelScanStore.newWriter();
+            }
+        };
     }
 }

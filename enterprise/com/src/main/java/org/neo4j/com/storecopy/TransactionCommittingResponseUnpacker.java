@@ -110,16 +110,7 @@ public class TransactionCommittingResponseUnpacker implements ResponseUnpacker, 
                 storeApplier.apply( representation, indexUpdates, locks, transactionId, EXTERNAL );
                 handler.accept( transaction );
             }
-        }
-    };
-    private final TransactionVisitor batchCloser = new TransactionVisitor()
-    {
-        @Override
-        public void visit( CommittedTransactionRepresentation transaction, TxHandler handler,
-                Access<Commitment> commitmentAccess ) throws IOException
-        {
-            Commitment commitment = commitmentAccess.get();
-            if ( commitment.markedAsCommitted() )
+            finally
             {
                 commitment.publishAsApplied();
             }
@@ -206,25 +197,7 @@ public class TransactionCommittingResponseUnpacker implements ResponseUnpacker, 
                     // changed before that change would have ended up in the log, it would be fine sine as a slave
                     // you would pull that transaction again anyhow before making changes to (after reading) any record.
                     appender.force();
-                    try
-                    {
-                        // Apply all transactions to the store. Only apply, i.e. mark as committed, not closed.
-                        // We mark as closed below.
-                        transactionQueue.accept( batchApplier );
-                        // Ensure that all changes are flushed to the store, we're doing some batching of transactions
-                        // here so some shortcuts are taken in places. Although now comes the time where we must
-                        // ensure that all pending changes are applied and flushed properly.
-                        storeApplier.closeBatch();
-                    }
-                    finally
-                    {
-                        // Mark the applied transactions as closed. We must do this as a separate step after
-                        // applying them, with a closeBatch() call in between, otherwise there might be
-                        // threads waiting for transaction obligations to be fulfilled and since they are looking
-                        // at last closed transaction id they might get notified to continue before all data
-                        // has actually been flushed properly.
-                        transactionQueue.accept( batchCloser );
-                    }
+                    transactionQueue.accept( batchApplier );
                 }
             }
             catch ( Throwable panic )
