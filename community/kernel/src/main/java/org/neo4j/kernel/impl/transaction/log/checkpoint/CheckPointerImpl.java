@@ -49,8 +49,6 @@ public class CheckPointerImpl extends LifecycleAdapter implements CheckPointer
     private final CheckPointTracer tracer;
     private final Lock lock;
 
-    private long lastCheckPointedTx;
-
     public CheckPointerImpl( TransactionIdStore transactionIdStore, CheckPointThreshold threshold,
             StoreFlusher storeFlusher, LogPruning logPruning, TransactionAppender appender, KernelHealth kernelHealth,
             LogProvider logProvider, CheckPointTracer tracer )
@@ -83,64 +81,20 @@ public class CheckPointerImpl extends LifecycleAdapter implements CheckPointer
     @Override
     public long forceCheckPoint() throws IOException
     {
-        lock.lock();
-        try
-        {
-            return doCheckPoint( LogCheckPointEvent.NULL );
-        }
-        finally
-        {
-            lock.unlock();
-        }
-    }
-
-    @Override
-    public long tryCheckPoint() throws IOException
-    {
-        if ( lock.tryLock() )
-        {
-            try
-            {
-                return doCheckPoint( LogCheckPointEvent.NULL );
-            }
-            finally
-            {
-                lock.unlock();
-            }
-        }
-        else
-        {
-            lock.lock();
-            try
-            {
-                return lastCheckPointedTx;
-            }
-            finally
-            {
-                lock.unlock();
-            }
-        }
+        return doCheckPoint( LogCheckPointEvent.NULL );
     }
 
     @Override
     public long checkPointIfNeeded() throws IOException
     {
-        lock.lock();
-        try
+        if ( threshold.isCheckPointingNeeded( transactionIdStore.getLastClosedTransactionId() ) )
         {
-            if ( threshold.isCheckPointingNeeded( transactionIdStore.getLastClosedTransactionId() ) )
+            try ( LogCheckPointEvent event = tracer.beginCheckPoint() )
             {
-                try ( LogCheckPointEvent event = tracer.beginCheckPoint() )
-                {
-                    return doCheckPoint( event );
-                }
+                return doCheckPoint( event );
             }
-            return -1;
         }
-        finally
-        {
-            lock.unlock();
-        }
+        return -1;
     }
 
     private long doCheckPoint( LogCheckPointEvent logCheckPointEvent ) throws IOException
@@ -180,7 +134,6 @@ public class CheckPointerImpl extends LifecycleAdapter implements CheckPointer
          */
         logPruning.pruneLogs( logPosition.getLogVersion() );
 
-        lastCheckPointedTx = lastClosedTransactionId;
         return lastClosedTransactionId;
     }
 }
