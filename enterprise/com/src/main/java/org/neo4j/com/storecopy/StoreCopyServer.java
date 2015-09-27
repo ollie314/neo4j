@@ -27,11 +27,11 @@ import org.neo4j.com.RequestContext;
 import org.neo4j.com.Response;
 import org.neo4j.com.ServerFailureException;
 import org.neo4j.graphdb.ResourceIterator;
-import org.neo4j.helpers.Format;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.fs.StoreChannel;
 import org.neo4j.kernel.NeoStoreDataSource;
-import org.neo4j.kernel.impl.transaction.log.checkpoint.CheckPointer;
+import org.neo4j.kernel.impl.transaction.log.rotation.StoreFlusher;
+import org.neo4j.kernel.impl.transaction.log.TransactionIdStore;
 
 import static org.neo4j.com.RequestContext.anonymous;
 import static org.neo4j.io.fs.FileUtils.getMostCanonicalFile;
@@ -47,9 +47,9 @@ public class StoreCopyServer
 {
     public interface Monitor
     {
-        void startTryCheckPoint();
+        void startFlushingEverything();
 
-        void finishTryCheckPoint();
+        void finishFlushingEverything();
 
         void startStreamingStoreFile( File file );
 
@@ -66,12 +66,12 @@ public class StoreCopyServer
         class Adapter implements Monitor
         {
             @Override
-            public void startTryCheckPoint()
+            public void startFlushingEverything()
             {   // empty
             }
 
             @Override
-            public void finishTryCheckPoint()
+            public void finishFlushingEverything()
             {   // empty
             }
 
@@ -107,17 +107,20 @@ public class StoreCopyServer
         }
     }
 
+    private final TransactionIdStore transactionIdStore;
     private final NeoStoreDataSource dataSource;
-    private final CheckPointer checkPointer;
+    private final StoreFlusher storeFlusher;
     private final FileSystemAbstraction fileSystem;
     private final File storeDirectory;
     private final Monitor monitor;
 
-    public StoreCopyServer( NeoStoreDataSource dataSource, CheckPointer checkPointer, FileSystemAbstraction fileSystem,
+    public StoreCopyServer( TransactionIdStore transactionIdStore,
+            NeoStoreDataSource dataSource, StoreFlusher storeFlusher, FileSystemAbstraction fileSystem,
             File storeDirectory, Monitor monitor )
     {
+        this.transactionIdStore = transactionIdStore;
         this.dataSource = dataSource;
-        this.checkPointer = checkPointer;
+        this.storeFlusher = storeFlusher;
         this.fileSystem = fileSystem;
         this.storeDirectory = getMostCanonicalFile( storeDirectory );
         this.monitor = monitor;
@@ -135,10 +138,11 @@ public class StoreCopyServer
     {
         try
         {
-            monitor.startTryCheckPoint();
-            long lastAppliedTransaction = checkPointer.tryCheckPoint();
-            monitor.finishTryCheckPoint();
-            ByteBuffer temporaryBuffer = ByteBuffer.allocateDirect( Format.MB );
+            long lastAppliedTransaction = transactionIdStore.getLastClosedTransactionId();
+            monitor.startFlushingEverything();
+            storeFlusher.forceEverything();
+            monitor.finishFlushingEverything();
+            ByteBuffer temporaryBuffer = ByteBuffer.allocateDirect( 1024 * 1024 );
 
             // Copy the store files
             monitor.startStreamingStoreFiles();

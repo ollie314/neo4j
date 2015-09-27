@@ -48,7 +48,7 @@ import org.neo4j.kernel.impl.store.id.IdGenerator;
 import org.neo4j.kernel.impl.transaction.TransactionRepresentation;
 import org.neo4j.kernel.impl.transaction.log.LogicalTransactionStore;
 import org.neo4j.kernel.impl.transaction.log.TransactionIdStore;
-import org.neo4j.kernel.impl.transaction.log.checkpoint.CheckPointer;
+import org.neo4j.kernel.impl.transaction.log.rotation.StoreFlusher;
 import org.neo4j.kernel.impl.transaction.tracing.CommitEvent;
 import org.neo4j.kernel.monitoring.Monitors;
 
@@ -68,7 +68,9 @@ public class DefaultMasterImplSPI implements MasterImpl.SPI
     private final Monitors monitors;
 
     private final TransactionCommitProcess transactionCommitProcess;
-    private final CheckPointer checkPointer;
+    private final StoreFlusher storeFlusher;
+    private final LogicalTransactionStore txStore;
+    private final TransactionIdStore transactionIdStore;
 
     public DefaultMasterImplSPI( final GraphDatabaseAPI graphDb,
                                  FileSystemAbstraction fileSystemAbstraction,
@@ -77,7 +79,7 @@ public class DefaultMasterImplSPI implements MasterImpl.SPI
                                  RelationshipTypeTokenHolder relationshipTypeTokenHolder,
                                  IdGeneratorFactory idGeneratorFactory,
                                  TransactionCommitProcess transactionCommitProcess,
-                                 CheckPointer checkPointer,
+                                 StoreFlusher storeFlusher,
                                  TransactionIdStore transactionIdStore,
                                  LogicalTransactionStore logicalTransactionStore,
                                  NeoStoreDataSource neoStoreDataSource)
@@ -86,17 +88,19 @@ public class DefaultMasterImplSPI implements MasterImpl.SPI
 
         // Hmm, fetching the dependencies here instead of handing them in the constructor directly feels bad,
         // but it seems like there's some intricate usage and need for the db's dependency resolver.
+        this.transactionIdStore = transactionIdStore;
         this.fileSystem = fileSystemAbstraction;
         this.labels = labels;
         this.propertyKeyTokenHolder = propertyKeyTokenHolder;
         this.relationshipTypeTokenHolder = relationshipTypeTokenHolder;
         this.idGeneratorFactory = idGeneratorFactory;
         this.transactionCommitProcess = transactionCommitProcess;
-        this.checkPointer = checkPointer;
+        this.storeFlusher = storeFlusher;
         this.neoStoreDataSource = neoStoreDataSource;
         this.storeDir = new File( graphDb.getStoreDir() );
-        this.txChecksumLookup = new TransactionChecksumLookup( transactionIdStore, logicalTransactionStore );
-        this.responsePacker = new ResponsePacker( logicalTransactionStore, transactionIdStore, new Supplier<StoreId>()
+        this.txStore = logicalTransactionStore;
+        this.txChecksumLookup = new TransactionChecksumLookup( transactionIdStore, txStore );
+        this.responsePacker = new ResponsePacker( txStore, transactionIdStore, new Supplier<StoreId>()
         {
             @Override
             public StoreId get()
@@ -166,8 +170,8 @@ public class DefaultMasterImplSPI implements MasterImpl.SPI
     @Override
     public RequestContext flushStoresAndStreamStoreFiles( StoreWriter writer )
     {
-        StoreCopyServer streamer = new StoreCopyServer( neoStoreDataSource,
-                checkPointer, fileSystem, storeDir, monitors.newMonitor( StoreCopyServer.Monitor.class ) );
+        StoreCopyServer streamer = new StoreCopyServer( transactionIdStore, neoStoreDataSource,
+                storeFlusher, fileSystem, storeDir, monitors.newMonitor( StoreCopyServer.Monitor.class ) );
         return streamer.flushStoresAndStreamStoreFiles( writer, false );
     }
 
