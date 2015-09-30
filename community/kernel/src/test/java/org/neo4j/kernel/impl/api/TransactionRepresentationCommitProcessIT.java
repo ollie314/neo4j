@@ -61,8 +61,8 @@ import org.neo4j.kernel.impl.index.IndexConfigStore;
 import org.neo4j.kernel.impl.index.IndexDefineCommand;
 import org.neo4j.kernel.impl.locking.LockGroup;
 import org.neo4j.kernel.impl.locking.LockService;
-import org.neo4j.kernel.impl.store.MetaDataStore;
 import org.neo4j.kernel.impl.store.NeoStores;
+import org.neo4j.kernel.impl.store.MetaDataStore;
 import org.neo4j.kernel.impl.store.StoreFactory;
 import org.neo4j.kernel.impl.store.record.NodeRecord;
 import org.neo4j.kernel.impl.transaction.TransactionRepresentation;
@@ -97,7 +97,6 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-
 import static org.neo4j.helpers.collection.MapUtil.stringMap;
 
 public class TransactionRepresentationCommitProcessIT
@@ -275,7 +274,7 @@ public class TransactionRepresentationCommitProcessIT
 
         private volatile boolean completed = false;
         private final CheckPointer checkPointer;
-        private final CountDownLatch completedLatch;
+        private CountDownLatch completedLatch;
 
         public InsaneCheckPointer( CheckPointer checkPointer, CountDownLatch completedLatch )
         {
@@ -316,10 +315,10 @@ public class TransactionRepresentationCommitProcessIT
     private static class TransactionalWorker implements Callable<Long>
     {
 
-        private final NeoStores neoStores;
+        private NeoStores neoStores;
         private final TransactionAppender appender;
         private final TransactionRepresentationStoreApplier storeApplier;
-        private final CountDownLatch completedLatch;
+        private CountDownLatch completedLatch;
         private volatile boolean completed = false;
 
         public TransactionalWorker( NeoStores neoStores, TransactionAppender appender,
@@ -376,8 +375,8 @@ public class TransactionRepresentationCommitProcessIT
         private TransactionRepresentationCommitProcess createTransactionCommitProcess() throws IOException
         {
             IndexUpdatesValidator updatesValidator = mock( IndexUpdatesValidator.class );
-            when( updatesValidator.validate( any( TransactionRepresentation.class ) ) )
-                    .thenReturn( mock( ValidatedIndexUpdates.class ) );
+            when( updatesValidator.validate( any( TransactionRepresentation.class ), any
+                    ( TransactionApplicationMode.class ) ) ).thenReturn( mock( ValidatedIndexUpdates.class ) );
 
             return new TransactionRepresentationCommitProcess( appender, storeApplier, updatesValidator );
         }

@@ -41,10 +41,8 @@ import org.neo4j.kernel.api.direct.DirectStoreAccess;
 import org.neo4j.kernel.api.index.SchemaIndexProvider;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.impl.api.TransactionRepresentationStoreApplier;
-import org.neo4j.kernel.impl.api.index.IndexUpdateMode;
 import org.neo4j.kernel.impl.api.index.IndexUpdatesValidator;
 import org.neo4j.kernel.impl.api.index.IndexingService;
-import org.neo4j.kernel.impl.api.index.OnlineIndexUpdatesValidator;
 import org.neo4j.kernel.impl.api.index.ValidatedIndexUpdates;
 import org.neo4j.kernel.impl.locking.LockGroup;
 import org.neo4j.kernel.impl.pagecache.StandalonePageCacheFactory;
@@ -86,7 +84,6 @@ class RebuildFromLogs
     private final NeoStoreDataSource dataSource;
     private final TransactionRepresentationStoreApplier storeApplier;
     private final IndexUpdatesValidator indexUpdatesValidator;
-    private final IndexingService indexingService;
 
     RebuildFromLogs( GraphDatabaseAPI graphdb )
     {
@@ -97,9 +94,8 @@ class RebuildFromLogs
                                     .withLegacyIndexTransactionOrdering( IdOrderingQueue.BYPASS );
         KernelHealth kernelHealth = resolver.resolveDependency( KernelHealth.class );
         PropertyLoader propertyLoader = new PropertyLoader( stores.getRawNeoStores() );
-        this.indexingService = resolver.resolveDependency( IndexingService.class );
-        this.indexUpdatesValidator = new OnlineIndexUpdatesValidator( stores.getRawNeoStores(), kernelHealth,
-                propertyLoader, indexingService, IndexUpdateMode.BATCHED );
+        this.indexUpdatesValidator = new IndexUpdatesValidator( stores.getRawNeoStores(), kernelHealth, propertyLoader,
+                resolver.resolveDependency( IndexingService.class ) );
     }
 
     void applyTransactionsFrom( File sourceDir, long upToTxId ) throws IOException
@@ -118,7 +114,7 @@ class RebuildFromLogs
                 long txId = cursor.get().getCommitEntry().getTxId();
                 TransactionRepresentation transaction = cursor.get().getTransactionRepresentation();
                 try ( LockGroup locks = new LockGroup();
-                      ValidatedIndexUpdates indexUpdates = indexUpdatesValidator.validate( transaction ) )
+                      ValidatedIndexUpdates indexUpdates = indexUpdatesValidator.validate( transaction, EXTERNAL ) )
                 {
                     storeApplier.apply( transaction, indexUpdates, locks, txId, EXTERNAL );
                 }
@@ -128,7 +124,6 @@ class RebuildFromLogs
                 }
             }
         }
-        indexingService.flushAll();
     }
 
     public static void main( String[] args ) throws Exception
