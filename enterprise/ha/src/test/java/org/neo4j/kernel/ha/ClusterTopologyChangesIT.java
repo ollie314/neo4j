@@ -19,7 +19,6 @@
  */
 package org.neo4j.kernel.ha;
 
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -42,11 +41,9 @@ import org.neo4j.cluster.protocol.heartbeat.HeartbeatListener;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
-import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.helpers.collection.MapUtil;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.ha.cluster.HighAvailabilityMemberState;
-import org.neo4j.kernel.ha.com.master.InvalidEpochException;
 import org.neo4j.kernel.impl.factory.GraphDatabaseFacadeFactory;
 import org.neo4j.kernel.impl.ha.ClusterManager;
 import org.neo4j.kernel.impl.ha.ClusterManager.RepairKit;
@@ -57,14 +54,13 @@ import org.neo4j.kernel.monitoring.Monitors;
 import org.neo4j.logging.FormattedLogProvider;
 import org.neo4j.test.CleanupRule;
 import org.neo4j.test.RepeatRule;
+import org.neo4j.test.SuppressOutput;
 import org.neo4j.test.ha.ClusterRule;
-import org.neo4j.tooling.GlobalGraphOperations;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
-
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 import static org.neo4j.cluster.protocol.cluster.ClusterConfiguration.COORDINATOR;
 import static org.neo4j.function.Predicates.not;
 import static org.neo4j.kernel.impl.ha.ClusterManager.allSeesAllAsAvailable;
@@ -78,11 +74,12 @@ public class ClusterTopologyChangesIT
 
     @Rule
     public final CleanupRule cleanup = new CleanupRule();
-
     @Rule
     public final RepeatRule repeat = new RepeatRule();
+    @Rule
+    public final SuppressOutput suppressOutput = SuppressOutput.suppressAll();
 
-    protected ClusterManager.ManagedCluster cluster;
+    private ClusterManager.ManagedCluster cluster;
 
     @Before
     public void setup() throws Exception
@@ -92,13 +89,6 @@ public class ClusterTopologyChangesIT
                 .config(HaSettings.state_switch_timeout, "2s")
                 .config(HaSettings.com_chunk_size, "1024")
                 .startCluster();
-    }
-
-    @After
-    public void cleanup()
-    {
-        cluster = null;
-        System.gc();
     }
 
     @Test
@@ -155,11 +145,11 @@ public class ClusterTopologyChangesIT
 
         // fail slave1 and await master to spot the failure
         RepairKit slave1RepairKit = cluster.fail( slave1 );
-        slave1Left.await(60, SECONDS);
+        assertTrue( slave1Left.await( 60, SECONDS ) );
 
         // fail slave2 and await master to spot the failure
         RepairKit slave2RepairKit = cluster.fail( slave2 );
-        slave2Left.await(60, SECONDS);
+        assertTrue( slave2Left.await( 60, SECONDS ) );
 
         // master loses quorum and goes to PENDING, cluster is unavailable
         cluster.await( not( masterAvailable() ) );
@@ -199,8 +189,9 @@ public class ClusterTopologyChangesIT
 
         // attempt to perform transactions on both slaves throws, election is triggered
         attemptTransactions( newSlave1, newSlave2 );
-        slave1Unavailable.await( 60, TimeUnit.SECONDS ); // set a timeout in case the instance does not have stale epoch
-        slave2Unavailable.await( 60, TimeUnit.SECONDS );
+        // set a timeout in case the instance does not have stale epoch
+        assertTrue( slave1Unavailable.await( 60, TimeUnit.SECONDS ) );
+        assertTrue( slave2Unavailable.await( 60, TimeUnit.SECONDS ) );
 
         // THEN: done with election, cluster feels good and able to serve transactions
         cluster.info( "Waiting for cluster to stabilize" );
@@ -245,16 +236,8 @@ public class ClusterTopologyChangesIT
         clusterClient.life.start();
 
         // Then
-        latch.await( 20, SECONDS );
+        assertTrue( latch.await( 20, SECONDS ) );
         assertEquals( new InstanceId( 2 ), coordinatorIdWhenReJoined.get() );
-    }
-
-    private static long nodeCountOn( HighlyAvailableGraphDatabase db )
-    {
-        try ( Transaction ignored = db.beginTx() )
-        {
-            return Iterables.count( GlobalGraphOperations.at( db ).getAllNodes() );
-        }
     }
 
     private static ClusterClient clusterClientOf( HighlyAvailableGraphDatabase db )
@@ -291,9 +274,8 @@ public class ClusterTopologyChangesIT
         LifeSupport life = new LifeSupport();
         SimpleLogService logService = new SimpleLogService( FormattedLogProvider.toOutputStream( System.out ), FormattedLogProvider.toOutputStream( System.out ) );
 
-        ClusterClientModule clusterClientModule = new ClusterClientModule(life, new Dependencies(  ), new Monitors(), config, logService, new NotElectableElectionCredentialsProvider());
-
-        return clusterClientModule;
+        return new ClusterClientModule(life, new Dependencies(  ), new Monitors(), config,
+                logService, new NotElectableElectionCredentialsProvider());
     }
 
     private static void attemptTransactions( HighlyAvailableGraphDatabase... dbs )
@@ -308,19 +290,5 @@ public class ClusterTopologyChangesIT
             {
             }
         }
-    }
-
-    private static void assertHasInvalidEpoch( HighlyAvailableGraphDatabase db )
-    {
-        InvalidEpochException invalidEpochException = null;
-        try
-        {
-            createNodeOn( db );
-        }
-        catch ( InvalidEpochException e )
-        {
-            invalidEpochException = e;
-        }
-        assertNotNull( "Expected InvalidEpochException was not thrown", invalidEpochException );
     }
 }
