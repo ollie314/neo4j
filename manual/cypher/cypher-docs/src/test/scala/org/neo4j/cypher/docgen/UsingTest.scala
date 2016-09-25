@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -74,31 +74,6 @@ class UsingTest extends DocumentingTestBase {
       text = "If the best performance is to be had by scanning all nodes in a label and then filtering on that set, use +USING+ +SCAN+.",
       queryText = "match (m:German) using scan m:German where m.surname = 'Plantikow' return m",
       assertions = (p) => assert(p.toList === List(Map("m" -> node("Stefan"))))
-    )
-  }
-
-  @Test def query_forcing_join() {
-    profileQuery(
-      title = "Hinting a join on a single node",
-      text = "To force the query planner to produce plans with joins in them, use +USING+ +JOIN+.",
-      queryText = "match (andres {name:'Andres'})-->(x)<--(emil {name: 'Emil'}) using join on x return x",
-      assertions = (p) => assert(p.toList === List(Map("x" -> node("Peter"))))
-    )
-  }
-
-  @Test def query_forcing_join_using_multiple_nodes() {
-    profileQuery(
-      title = "Hinting a join on multiple nodes",
-      text = "To force the query planner to produce plans with joins in them, use +USING+ +JOIN+.",
-      queryText = "match (andy {name:'Andres'})-[r1]->(x)<-[r2]-(y)-[r3]-(andy) using join on x, y return x, y",
-      assertions = (p) => {
-        assertThat(p.executionPlanDescription().toString, containsString("NodeHashJoin"))
-        assert(p.toSet === Set(
-          Map("x" -> node("Peter"), "y" -> node("Emil")),
-          Map("x" -> node("Peter"), "y" -> node("Jim")),
-          Map("x" -> node("Peter"), "y" -> node("Stefan"))
-        ))
-      }
     )
   }
 }

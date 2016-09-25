@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,11 +20,6 @@
 package org.neo4j.kernel.ha.lock;
 
 
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -32,6 +27,11 @@ import org.junit.Test;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
+
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.neo4j.com.RequestContext;
 import org.neo4j.com.Response;
@@ -43,6 +43,7 @@ import org.neo4j.kernel.impl.enterprise.lock.forseti.ForsetiLockManager;
 import org.neo4j.kernel.impl.locking.Locks;
 import org.neo4j.kernel.impl.locking.ResourceTypes;
 import org.neo4j.logging.Log;
+import org.neo4j.logging.NullLogProvider;
 
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
@@ -52,10 +53,7 @@ import static org.mockito.Mockito.when;
 
 public class SlaveLocksClientConcurrentTest
 {
-
     private static ExecutorService executor;
-    private SlaveLocksClient reader;
-    private SlaveLocksClient writer;
 
     private Master master;
     private ForsetiLockManager lockManager;
@@ -89,8 +87,8 @@ public class SlaveLocksClientConcurrentTest
     @Test( timeout = 1000 )
     public void readersCanAcquireLockAsSoonAsItReleasedOnMaster() throws InterruptedException
     {
-        reader = createClient();
-        writer = createClient();
+        SlaveLocksClient reader = createClient();
+        SlaveLocksClient writer = createClient();
 
         CountDownLatch readerCompletedLatch = new CountDownLatch( 1 );
         CountDownLatch resourceLatch = new CountDownLatch( 1 );
@@ -113,12 +111,12 @@ public class SlaveLocksClientConcurrentTest
     private SlaveLocksClient createClient()
     {
         return new SlaveLocksClient( master, lockManager.newClient(), lockManager,
-                requestContextFactory, availabilityGuard, new TestConfiguration() );
+                requestContextFactory, availabilityGuard, NullLogProvider.getInstance(), false );
     }
 
     private static class LockedOnMasterAnswer implements Answer
     {
-        private Response lockResult;
+        private final Response lockResult;
 
         public LockedOnMasterAnswer()
         {
@@ -213,15 +211,6 @@ public class SlaveLocksClientConcurrentTest
             this.locksClient = locksClient;
             this.resourceType = resourceType;
             this.id = id;
-        }
-    }
-
-    private static class TestConfiguration implements SlaveLockManager.Configuration
-    {
-        @Override
-        public long getAvailabilityTimeout()
-        {
-            return 100;
         }
     }
 }

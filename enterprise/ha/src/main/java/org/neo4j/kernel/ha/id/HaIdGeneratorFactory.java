@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,15 +24,20 @@ import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.Map;
 
+import org.neo4j.com.ComException;
 import org.neo4j.com.Response;
+import org.neo4j.graphdb.TransientTransactionFailureException;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.kernel.DefaultIdGeneratorFactory;
 import org.neo4j.kernel.IdGeneratorFactory;
 import org.neo4j.kernel.IdType;
+import org.neo4j.kernel.IdTypeConfiguration;
+import org.neo4j.kernel.IdTypeConfigurationProvider;
 import org.neo4j.kernel.ha.DelegateInvocationHandler;
 import org.neo4j.kernel.ha.com.RequestContextFactory;
 import org.neo4j.kernel.ha.com.master.Master;
 import org.neo4j.kernel.impl.store.id.IdGenerator;
+import org.neo4j.kernel.impl.store.id.IdGeneratorImpl;
 import org.neo4j.kernel.impl.store.id.IdRange;
 import org.neo4j.logging.Log;
 import org.neo4j.logging.LogProvider;
@@ -41,8 +46,9 @@ import static org.neo4j.collection.primitive.PrimitiveLongCollections.EMPTY_LONG
 
 public class HaIdGeneratorFactory implements IdGeneratorFactory
 {
-    private final Map<IdType, HaIdGenerator> generators = new EnumMap<>( IdType.class );
+    private final Map<IdType,HaIdGenerator> generators = new EnumMap<>( IdType.class );
     private final FileSystemAbstraction fs;
+    private IdTypeConfigurationProvider idTypeConfigurationProvider;
     private final IdGeneratorFactory localFactory;
     private final DelegateInvocationHandler<Master> master;
     private final Log log;
@@ -50,13 +56,21 @@ public class HaIdGeneratorFactory implements IdGeneratorFactory
     private IdGeneratorState globalState = IdGeneratorState.PENDING;
 
     public HaIdGeneratorFactory( DelegateInvocationHandler<Master> master, LogProvider logProvider,
-            RequestContextFactory requestContextFactory, FileSystemAbstraction fs )
+            RequestContextFactory requestContextFactory, FileSystemAbstraction fs, IdTypeConfigurationProvider idTypeConfigurationProvider )
     {
         this.fs = fs;
-        this.localFactory = new DefaultIdGeneratorFactory( fs );
+        this.idTypeConfigurationProvider = idTypeConfigurationProvider;
+        this.localFactory = new DefaultIdGeneratorFactory( fs, idTypeConfigurationProvider );
         this.master = master;
         this.log = logProvider.getLog( getClass() );
         this.requestContextFactory = requestContextFactory;
+    }
+
+    @Override
+    public IdGenerator open( File filename, IdType idType, long highId )
+    {
+        IdTypeConfiguration idTypeConfiguration = idTypeConfigurationProvider.getIdTypeConfiguration( idType );
+        return open( filename, idTypeConfiguration.getGrabSize(), idType, highId );
     }
 
     @Override
@@ -131,7 +145,7 @@ public class HaIdGeneratorFactory implements IdGeneratorFactory
         }
     }
 
-    private static final long VALUE_REPRESENTING_NULL = -1;
+    static final long VALUE_REPRESENTING_NULL = -1;
 
     private enum IdGeneratorState
     {
@@ -341,6 +355,12 @@ public class HaIdGeneratorFactory implements IdGeneratorFactory
                     log.info( "Received id allocation " + allocation + " from master " + master + " for " + idType );
                     nextId = storeLocally( allocation );
                 }
+                catch ( ComException e )
+                {
+                    throw new TransientTransactionFailureException(
+                            "Cannot allocate new entity ids from the cluster master. " +
+                            "The master instance is either down, or we have network connectivity problems", e );
+                }
             }
             return nextId;
         }
@@ -388,7 +408,7 @@ public class HaIdGeneratorFactory implements IdGeneratorFactory
         }
     }
 
-    private static class IdRangeIterator
+    static class IdRangeIterator
     {
         private int position = 0;
         private final long[] defrag;
@@ -410,16 +430,25 @@ public class HaIdGeneratorFactory implements IdGeneratorFactory
                 {
                     return defrag[position];
                 }
-                else
+
+                long candidate = nextRangeCandidate();
+                if ( candidate == IdGeneratorImpl.INTEGER_MINUS_ONE )
                 {
-                    int offset = position - defrag.length;
-                    return (offset < length) ? (start + offset) : VALUE_REPRESENTING_NULL;
+                    position++;
+                    candidate = nextRangeCandidate();
                 }
+                return candidate;
             }
             finally
             {
                 ++position;
             }
+        }
+
+        private long nextRangeCandidate()
+        {
+            int offset = position - defrag.length;
+            return (offset < length) ? (start + offset) : VALUE_REPRESENTING_NULL;
         }
 
         @Override

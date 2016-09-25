@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -40,6 +40,7 @@ public class BatchingTransactionRepresentationStoreApplier extends TransactionRe
 {
     private final RecoveryLabelScanWriterProvider labelScanWriterProvider;
     private final RecoveryLegacyIndexApplierLookup legacyIndexApplierLookup;
+    private KernelHealth health;
 
     public BatchingTransactionRepresentationStoreApplier( IndexingService indexingService,
             LabelScanStore labelScanStore, NeoStores neoStore, CacheAccessBackDoor cacheAccess,
@@ -50,6 +51,7 @@ public class BatchingTransactionRepresentationStoreApplier extends TransactionRe
                 neoStore, cacheAccess, lockService,
                 new RecoveryLegacyIndexApplierLookup( legacyIndexProviderLookup, 1000 ),
                 indexConfigStore, kernelHealth, legacyIndexTransactionOrdering );
+        this.health = kernelHealth;
     }
 
     private BatchingTransactionRepresentationStoreApplier(
@@ -71,8 +73,16 @@ public class BatchingTransactionRepresentationStoreApplier extends TransactionRe
 
     public void closeBatch() throws IOException
     {
-        labelScanWriterProvider.close();
-        legacyIndexApplierLookup.close();
-        indexingService.flushAll();
+        try
+        {
+            labelScanWriterProvider.close();
+            legacyIndexApplierLookup.close();
+            indexingService.flushAll();
+        }
+        catch ( Throwable ex )
+        {
+            health.panic( ex );
+            throw ex;
+        }
     }
 }

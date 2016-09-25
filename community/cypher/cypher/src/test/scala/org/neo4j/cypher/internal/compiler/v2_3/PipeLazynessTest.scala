@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -120,7 +120,7 @@ class PipeLazynessTest extends GraphDatabaseFunSuite with QueryStateTestSupport 
     val rel = x.relateTo("r", y, Seq.empty, SemanticDirection.OUTGOING)
 
     val patternNodes = Map("x" -> x, "y" -> y)
-    val patternRels = Map("r" -> rel)
+    val patternRels = Map("r" -> Seq(rel))
     val graph = new PatternGraph(patternNodes, patternRels, Seq("x"), Seq.empty)
     val pipe = new MatchPipe(src, Seq(), graph, Set("x", "r", "y"))
     (pipe, iter)

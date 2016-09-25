@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -66,6 +66,29 @@ public class TransactionQueue
     public void clear()
     {
         queueIndex = 0;
+    }
+
+    public CommittedTransactionRepresentation last()
+    {
+        if ( isEmpty() )
+        {
+            throw new IllegalStateException( "Nothing in queue" );
+        }
+        return queue[queueIndex - 1].transaction;
+    }
+
+    public boolean isEmpty()
+    {
+        return queueIndex == 0;
+    }
+
+    public CommittedTransactionRepresentation first()
+    {
+        if ( isEmpty() )
+        {
+            throw new IllegalStateException( "Nothing in queue" );
+        }
+        return queue[0].transaction;
     }
 
     private static class Transaction implements Access<Commitment>

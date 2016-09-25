@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,6 +23,7 @@ import org.neo4j.cypher.{SyntaxException, NewPlannerTestSupport, ExecutionEngine
 import org.neo4j.graphdb.Node
 
 class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerTestSupport {
+
   test("should handle aggregates inside non aggregate expressions") {
     executeWithAllPlanners(
       "MATCH (a { name: 'Andres' })<-[:FATHER]-(child) RETURN {foo:a.name='Andres',kids:collect(child.name)}"
@@ -42,7 +43,6 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
 
     result.toList should equal(List(Map("a" -> a, "count(*)" -> 2)))
   }
-
   test("should sort on aggregated function and normal property") {
     createNode(Map("name" -> "andres", "division" -> "Sweden"))
     createNode(Map("name" -> "michael", "division" -> "Germany"))
@@ -114,6 +114,18 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
 
     val result = executeWithAllPlanners("match a return count(distinct a.foo)")
     result.toList should equal (List(Map("count(distinct a.foo)" -> 0)))
+  }
+
+  test("should be able to collect distinct nulls") {
+    val query = "unwind [NULL, NULL] AS x RETURN collect(distinct x) as c"
+    val result = executeWithAllPlanners(query)
+    result.toSeq.head shouldBe Map("c" -> List.empty)
+  }
+
+  test("should be able to collect distinct values mixed with nulls") {
+    val query = "unwind [NULL, 1, NULL] AS x RETURN collect(distinct x) as c"
+    val result = executeWithAllPlanners(query)
+    result.toSeq.head shouldBe Map("c" -> List(1))
   }
 
   test("should aggregate on array values") {
@@ -242,5 +254,31 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
     val result = executeWithCostPlannerOnly(query)
 
     result.toList should equal(List(Map("foo" -> 42, "bar" -> 42, "baz" -> Map("y" -> 1))))
+  }
+
+  test("should not overflow when doing summation") {
+    executeWithAllPlanners("unwind range(1000000,2000000) as i with i limit 3000 return sum(i)").toList should equal(
+      List(Map("sum(i)" -> 3004498500L)))
+  }
+
+  test("should aggregate using as grouping key expressions using variables in scope and nothing else") {
+    val userId = createLabeledNode(Map("userId" -> 11), "User")
+    relate(userId, createNode(), "FRIEND", Map("propFive" -> 1))
+    relate(userId, createNode(), "FRIEND", Map("propFive" -> 3))
+    relate(createNode(), userId, "FRIEND", Map("propFive" -> 2))
+    relate(createNode(), userId, "FRIEND", Map("propFive" -> 4))
+
+    val query1 = """MATCH (user:User {userId: 11})-[friendship:FRIEND]-()
+                   |WITH user, collect(friendship)[toInt(rand() * count(friendship))] AS selectedFriendship
+                   |RETURN id(selectedFriendship) AS friendshipId, selectedFriendship.propFive AS propertyValue""".stripMargin
+    val query2 = """MATCH (user:User {userId: 11})-[friendship:FRIEND]-()
+                   |WITH user, collect(friendship) AS friendships
+                   |WITH user, friendships[toInt(rand() * size(friendships))] AS selectedFriendship
+                   |RETURN id(selectedFriendship) AS friendshipId, selectedFriendship.propFive AS propertyValue""".stripMargin
+
+    val result1 = executeWithCostPlannerOnly(query1).toList
+    val result2 = executeWithCostPlannerOnly(query2).toList
+
+    result1.size should equal(result2.size)
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -100,7 +100,7 @@ case class In(lhs: Expression, rhs: Expression)(val position: InputPosition) ext
     lhs.semanticCheck(ctx) chain
     lhs.expectType(CTAny.covariant) chain
     rhs.semanticCheck(ctx) chain
-    rhs.expectType(lhs.types(_).wrapInCollection) chain
+    rhs.expectType(CTCollection(CTAny).covariant) chain
     specifyType(CTBoolean)
 }
 

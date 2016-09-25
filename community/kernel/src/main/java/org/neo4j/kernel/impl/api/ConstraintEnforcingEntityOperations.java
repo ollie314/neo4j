@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -47,8 +47,8 @@ import org.neo4j.kernel.api.exceptions.schema.CreateConstraintFailureException;
 import org.neo4j.kernel.api.exceptions.schema.DropConstraintFailureException;
 import org.neo4j.kernel.api.exceptions.schema.DropIndexFailureException;
 import org.neo4j.kernel.api.exceptions.schema.IndexBrokenKernelException;
-import org.neo4j.kernel.api.exceptions.schema.UnableToValidateConstraintKernelException;
 import org.neo4j.kernel.api.exceptions.schema.ProcedureConstraintViolation;
+import org.neo4j.kernel.api.exceptions.schema.UnableToValidateConstraintKernelException;
 import org.neo4j.kernel.api.exceptions.schema.UniquePropertyConstraintViolationKernelException;
 import org.neo4j.kernel.api.index.IndexDescriptor;
 import org.neo4j.kernel.api.procedures.ProcedureSignature;
@@ -156,7 +156,7 @@ public class ConstraintEnforcingEntityOperations implements EntityOperations, Sc
         {
             IndexDescriptor indexDescriptor = new IndexDescriptor( labelId, propertyKeyId );
             assertIndexOnline( state, indexDescriptor );
-            state.locks().acquireExclusive( INDEX_ENTRY,
+            state.locks().optimistic().acquireExclusive( INDEX_ENTRY,
                     indexEntryResourceId( labelId, propertyKeyId, ObjectUtil.toString( value ) ) );
 
             long existing = entityReadOperations.nodeGetFromUniqueIndexSeek( state, indexDescriptor, value );
@@ -194,6 +194,12 @@ public class ConstraintEnforcingEntityOperations implements EntityOperations, Sc
     public void nodeDelete( KernelStatement state, long nodeId ) throws EntityNotFoundException
     {
         entityWriteOperations.nodeDelete( state, nodeId );
+    }
+
+    @Override
+    public int nodeDetachDelete( KernelStatement state, long nodeId ) throws EntityNotFoundException
+    {
+        return entityWriteOperations.nodeDetachDelete( state, nodeId );
     }
 
     @Override
@@ -322,7 +328,7 @@ public class ConstraintEnforcingEntityOperations implements EntityOperations, Sc
         }
 
         // If we find the node - hold a shared lock. If we don't find a node - hold an exclusive lock.
-        Locks.Client locks = state.locks();
+        Locks.Client locks = state.locks().optimistic();
         long indexEntryId = indexEntryResourceId( labelId, propertyKeyId, stringVal );
 
         locks.acquireShared( INDEX_ENTRY, indexEntryId );

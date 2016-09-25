@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -51,7 +51,7 @@ public class MeasureUpdatePullingRecordAndIndexGap
 
     @Rule
     public final ClusterRule clusterRule = new ClusterRule( getClass() )
-            .config( HaSettings.tx_push_factor, "0" );
+            .withSharedSetting( HaSettings.tx_push_factor, "0" );
 
     @Test
     public void shouldMeasureThatGap() throws Exception

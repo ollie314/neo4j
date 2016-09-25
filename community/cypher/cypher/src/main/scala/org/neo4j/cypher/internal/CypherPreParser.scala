@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -54,7 +54,8 @@ case object CypherPreParser extends Parser with Base {
 
   def RuntimeOption = rule("runtime option")(
     option("runtime", "interpreted") ~ push(InterpretedRuntimeOption)
-      | option("runtime", "compiled") ~ push(CompiledRuntimeOption)
+        //Only here for the parser to be backwards compatible
+      | option("runtime", "compiled") ~ push(InterpretedRuntimeOption)
   )
 
   @deprecated

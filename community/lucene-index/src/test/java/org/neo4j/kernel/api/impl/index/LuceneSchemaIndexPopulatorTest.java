@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -47,14 +47,14 @@ import org.neo4j.kernel.api.index.PropertyAccessor;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.impl.api.index.IndexStoreView;
 import org.neo4j.kernel.impl.api.index.sampling.IndexSamplingConfig;
+import org.neo4j.logging.NullLogProvider;
 import org.neo4j.test.EphemeralFileSystemRule;
-
-import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.mock;
+import org.neo4j.udc.UsageDataKeys.OperationalMode;
 
 import static java.lang.Long.parseLong;
 import static java.util.Arrays.asList;
-
+import static org.junit.Assert.assertEquals;
+import static org.mockito.Mockito.mock;
 import static org.neo4j.helpers.collection.IteratorUtil.asSet;
 
 public class LuceneSchemaIndexPopulatorTest
@@ -244,7 +244,8 @@ public class LuceneSchemaIndexPopulatorTest
         directory = new RAMDirectory();
         DirectoryFactory directoryFactory = new DirectoryFactory.Single(
                 new DirectoryFactory.UncloseableDirectory( directory ) );
-        provider = new LuceneSchemaIndexProvider( fs.get(), directoryFactory, new File( "target/whatever" ) );
+        provider = new LuceneSchemaIndexProvider( fs.get(), directoryFactory, new File( "target/whatever" ),
+                NullLogProvider.getInstance(), new Config(), OperationalMode.single  );
         indexDescriptor = new IndexDescriptor( 42, propertyKeyId );
         indexStoreView = mock( IndexStoreView.class );
         IndexConfiguration indexConfig = new IndexConfiguration( false );

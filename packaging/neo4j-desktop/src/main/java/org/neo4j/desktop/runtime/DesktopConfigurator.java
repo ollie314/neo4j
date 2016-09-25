@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,7 +25,7 @@ import org.neo4j.desktop.config.Installation;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.logging.FormattedLog;
 import org.neo4j.server.configuration.Configurator;
-import org.neo4j.server.configuration.ServerConfigFactory;
+import org.neo4j.server.configuration.BaseServerConfigLoader;
 import org.neo4j.server.configuration.ServerSettings;
 import org.neo4j.server.web.ServerInternalSettings;
 
@@ -50,7 +50,7 @@ public class DesktopConfigurator
 
     public void refresh()
     {
-        config = ServerConfigFactory.loadConfig(
+        config = new BaseServerConfigLoader().loadConfig(
                 /** Future single file, neo4j.conf or similar */
                 null,
 

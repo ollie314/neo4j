@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,10 +21,7 @@ package org.neo4j.kernel.impl.transaction.state;
 
 import org.junit.Test;
 
-import org.neo4j.kernel.impl.locking.Locks;
-
 import static org.junit.Assert.assertNotSame;
-import static org.mockito.Mockito.mock;
 import static org.neo4j.kernel.impl.store.NeoStoresMocking.mockNeoStores;
 
 public class NeoStoreTransactionContextFactoryTest
@@ -36,8 +33,8 @@ public class NeoStoreTransactionContextFactoryTest
         NeoStoreTransactionContextFactory supplier = new NeoStoreTransactionContextFactory( mockNeoStores() );
 
         // When
-        NeoStoreTransactionContext context1 = supplier.newInstance( mock( Locks.Client.class ) );
-        NeoStoreTransactionContext context2 = supplier.newInstance( mock( Locks.Client.class ) );
+        NeoStoreTransactionContext context1 = supplier.newInstance();
+        NeoStoreTransactionContext context2 = supplier.newInstance();
 
         // Then
         assertNotSame( context1, context2 );

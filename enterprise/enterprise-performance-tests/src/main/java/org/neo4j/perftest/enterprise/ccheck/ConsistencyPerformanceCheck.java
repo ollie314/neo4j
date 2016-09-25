@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -36,6 +36,7 @@ import org.neo4j.kernel.api.direct.DirectStoreAccess;
 import org.neo4j.kernel.api.impl.index.DirectoryFactory;
 import org.neo4j.kernel.api.impl.index.LuceneSchemaIndexProvider;
 import org.neo4j.kernel.api.index.SchemaIndexProvider;
+import org.neo4j.kernel.api.labelscan.LabelScanStore;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.impl.pagecache.ConfiguringPageCacheFactory;
 import org.neo4j.kernel.impl.store.NeoStores;
@@ -47,9 +48,9 @@ import org.neo4j.perftest.enterprise.generator.DataGenerator;
 import org.neo4j.perftest.enterprise.util.Configuration;
 import org.neo4j.perftest.enterprise.util.Parameters;
 import org.neo4j.perftest.enterprise.util.Setting;
+import org.neo4j.udc.UsageDataKeys.OperationalMode;
 
 import static org.neo4j.consistency.ConsistencyCheckService.defaultConsistencyCheckThreadsNumber;
-import static org.neo4j.kernel.impl.store.StoreFactory.SF_CREATE;
 import static org.neo4j.perftest.enterprise.util.Configuration.SYSTEM_PROPERTIES;
 import static org.neo4j.perftest.enterprise.util.Configuration.settingsOf;
 import static org.neo4j.perftest.enterprise.util.DirectlyCorrelatedParameter.param;
@@ -142,13 +143,16 @@ public class ConsistencyPerformanceCheck
     {
         StoreFactory factory = new StoreFactory( storeDir, tuningConfiguration,
                 new DefaultIdGeneratorFactory( fileSystem ), pageCache, fileSystem, NullLogProvider.getInstance() );
-        NeoStores neoStores = factory.openNeoStores( SF_CREATE );
+        NeoStores neoStores = factory.openAllNeoStores( true );
+        OperationalMode operationalMode = OperationalMode.single;
         SchemaIndexProvider indexes = new LuceneSchemaIndexProvider(
                 fileSystem,
                 DirectoryFactory.PERSISTENT,
-                storeDir );
-        return new DirectStoreAccess( new StoreAccess( neoStores ).initialize(),
-                new LuceneLabelScanStoreBuilder( storeDir, neoStores, fileSystem, NullLogProvider.getInstance() ).build(), indexes );
+                storeDir, NullLogProvider.getInstance(), tuningConfiguration, operationalMode );
+        LuceneLabelScanStoreBuilder labelScanStoreBuilder = new LuceneLabelScanStoreBuilder( storeDir, neoStores,
+                fileSystem, tuningConfiguration, operationalMode, NullLogProvider.getInstance() );
+        LabelScanStore labelScanStore = labelScanStoreBuilder.build();
+        return new DirectStoreAccess( new StoreAccess( neoStores ).initialize(), labelScanStore, indexes );
     }
 
     private static Config buildTuningConfiguration( Configuration configuration )

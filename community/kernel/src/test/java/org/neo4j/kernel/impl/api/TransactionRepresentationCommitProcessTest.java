@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -54,6 +54,7 @@ import static org.mockito.Mockito.when;
 
 import static org.neo4j.helpers.Exceptions.contains;
 import static org.neo4j.kernel.impl.api.TransactionApplicationMode.INTERNAL;
+import static org.neo4j.kernel.impl.transaction.log.TransactionIdStore.*;
 
 public class TransactionRepresentationCommitProcessTest
 {
@@ -85,7 +86,7 @@ public class TransactionRepresentationCommitProcessTest
             assertTrue( contains( e, rootCause.getMessage(), rootCause.getClass() ) );
         }
 
-        verify( transactionIdStore, times( 0 ) ).transactionCommitted( txId, 0 );
+        verify( transactionIdStore, times( 0 ) ).transactionCommitted( txId, 0, BASE_TX_COMMIT_TIMESTAMP );
     }
 
     @Test

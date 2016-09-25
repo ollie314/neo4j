@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -41,7 +41,7 @@ class MatchingContext(boundIdentifiers: SymbolTable,
   val builder: MatcherBuilder = decideWhichMatcherToUse()
 
   private def identifiers: immutable.Map[String, CypherType] =
-    patternGraph.patternRels.values.flatMap(p => p.identifiers2).toMap
+    patternGraph.patternRels.values.flatMap(p => p.flatMap(_.identifiers2)).toMap
 
   lazy val symbols = {
     val ids = identifiers

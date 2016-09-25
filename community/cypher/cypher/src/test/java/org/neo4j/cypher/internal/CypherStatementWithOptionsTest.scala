@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,10 +28,6 @@ class CypherStatementWithOptionsTest extends CypherFunSuite {
     intercept[InvalidArgumentException](CypherStatementWithOptions("CYPHER planner=cost PLANNER RULE RETURN 42"))
     intercept[InvalidArgumentException](CypherStatementWithOptions("CYPHER planner=cost planner=rule RETURN 42"))
     intercept[InvalidArgumentException](CypherStatementWithOptions("CYPHER PLANNER COST PLANNER RULE RETURN 42"))
-  }
-
-  test("should not allow inconsistent runtime options") {
-    intercept[InvalidArgumentException](CypherStatementWithOptions("CYPHER runtime=compiled runtime=interpreted RETURN 42"))
   }
 
   test("should not allow multiple versions") {

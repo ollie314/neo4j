@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -136,9 +136,6 @@ public class PropertyBlock implements Cloneable
 
     public void setValueBlocks( long[] blocks )
     {
-        int expectedPayloadSize = PropertyType.getPayloadSizeLongs();
-        assert ( blocks == null || blocks.length <= expectedPayloadSize) : (
-                "I was given an array of size " + blocks.length +", but I wanted it to be " + expectedPayloadSize );
         this.valueBlocks = blocks;
         if ( valueRecords != null )
         {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,6 +28,7 @@ import org.neo4j.kernel.impl.factory.CommunityFacadeFactory;
 import org.neo4j.kernel.impl.factory.GraphDatabaseFacade;
 import org.neo4j.kernel.impl.factory.GraphDatabaseFacadeFactory;
 import org.neo4j.kernel.impl.factory.PlatformModule;
+import org.neo4j.udc.UsageDataKeys.OperationalMode;
 
 public class LimitedFileSystemGraphDatabase extends ImpermanentGraphDatabase
 {
@@ -44,7 +45,9 @@ public class LimitedFileSystemGraphDatabase extends ImpermanentGraphDatabase
         new CommunityFacadeFactory()
         {
             @Override
-            protected PlatformModule createPlatform( File storeDir, Map<String, String> params, Dependencies dependencies, GraphDatabaseFacade graphDatabaseFacade )
+            protected PlatformModule createPlatform( File storeDir, Map<String, String> params,
+                    Dependencies dependencies, GraphDatabaseFacade graphDatabaseFacade,
+                    OperationalMode operationalMode )
             {
                 return new ImpermanentPlatformModule( storeDir, params, dependencies, graphDatabaseFacade )
                 {

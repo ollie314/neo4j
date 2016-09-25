@@ -278,7 +278,7 @@ SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------
-BSD - seedrandom.js
+BSD - seedrandom.js License
   seedrandom.js
 ------------------------------------------------------------------------------
 
@@ -352,6 +352,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ------------------------------------------------------------------------------
 Bouncy Castle License
+  Bouncy Castle PKIX, CMS, EAC, TSP, PKCS, OCSP, CMP, and CRMF APIs
   Bouncy Castle Provider
 ------------------------------------------------------------------------------
 

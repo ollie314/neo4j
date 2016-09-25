@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -66,10 +66,12 @@ public final class LockClientStateHolder
 
     /**
      * Increment active number of clients that use current state instance.
-     * @return false if already stopped and not possible to increment active clients counter, true in case if counter
-     * was successfully incremented.
+     *
+     * @param client the locks client associated with this state; used only to create pretty exception
+     * with {@link LockClientStoppedException#LockClientStoppedException(Locks.Client)}.
+     * @throws LockClientStoppedException when stopped.
      */
-    public boolean incrementActiveClients()
+    public void incrementActiveClients( Locks.Client client )
     {
         int currentState;
         do
@@ -77,11 +79,10 @@ public final class LockClientStateHolder
             currentState = clientState.get();
             if ( isStopped( currentState ) )
             {
-                return false;
+                throw new LockClientStoppedException( client );
             }
         }
         while ( !clientState.compareAndSet( currentState, statusWithUpdatedClients( currentState, 1 ) ) );
-        return true;
     }
 
     /**

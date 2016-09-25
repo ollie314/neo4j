@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -44,7 +44,7 @@ import static org.mockito.Matchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
-import static org.neo4j.kernel.impl.store.StoreFactory.SF_CREATE;
+
 import static org.neo4j.unsafe.impl.batchimport.Configuration.DEFAULT;
 
 public class PropertyEncoderStepTest
@@ -61,7 +61,7 @@ public class PropertyEncoderStepTest
         pageCache = pageCacheRule.getPageCache( fsRule.get() );
         StoreFactory storeFactory =
                 new StoreFactory( fsRule.get(), storeDir, pageCache, NullLogProvider.getInstance() );
-        neoStores = storeFactory.openNeoStores( SF_CREATE );
+        neoStores = storeFactory.openAllNeoStores( true );
     }
 
     @After

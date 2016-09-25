@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -265,38 +265,33 @@ public class PropertyStore extends AbstractRecordStore<PropertyRecord>
     {
         if ( block.getType() == PropertyType.STRING )
         {
-            if ( block.isLight() )
-            {
-                try ( GenericCursor<DynamicRecord> stringRecords = stringPropertyStore.getRecordsCursor(
-                        block.getSingleValueLong(), false ) )
-                {
-                    while ( stringRecords.next() )
-                    {
-                        stringRecords.get().setType( PropertyType.STRING.intValue() );
-                        block.addValueRecord( stringRecords.get().clone() );
-                    }
-                }
-            }
-            for ( DynamicRecord stringRecord : block.getValueRecords() )
-            {
-                stringPropertyStore.ensureHeavy( stringRecord );
-            }
+            loadPropertyBlock( block, stringPropertyStore );
         }
         else if ( block.getType() == PropertyType.ARRAY )
         {
-            if ( block.isLight() )
+            loadPropertyBlock( block, arrayPropertyStore );
+        }
+    }
+
+    private static void loadPropertyBlock( PropertyBlock block, AbstractDynamicStore dynamicStore )
+    {
+        if ( block.isLight() )
+        {
+            long startBlockId = block.getSingleValueLong();
+            try ( GenericCursor<DynamicRecord> cursor = dynamicStore.getRecordsCursor( startBlockId ) )
             {
-                Collection<DynamicRecord> arrayRecords = arrayPropertyStore.getLightRecords(
-                        block.getSingleValueLong() );
-                for ( DynamicRecord arrayRecord : arrayRecords )
+                while ( cursor.next() )
                 {
-                    arrayRecord.setType( PropertyType.ARRAY.intValue() );
-                    block.addValueRecord( arrayRecord );
+                    cursor.get().setType( block.getType().intValue() );
+                    block.addValueRecord( cursor.get().clone() );
                 }
             }
-            for ( DynamicRecord arrayRecord : block.getValueRecords() )
+        }
+        else
+        {
+            for ( DynamicRecord dynamicRecord : block.getValueRecords() )
             {
-                arrayPropertyStore.ensureHeavy( arrayRecord );
+                dynamicStore.ensureHeavy( dynamicRecord );
             }
         }
     }
@@ -369,6 +364,7 @@ public class PropertyStore extends AbstractRecordStore<PropertyRecord>
             {
                 throw new InvalidRecordException( "PropertyRecord[" + record.getId() + "] not in use" );
             }
+            record.verifyRecordIsWellFormed();
 
             return record;
         }
@@ -423,7 +419,7 @@ public class PropertyStore extends AbstractRecordStore<PropertyRecord>
 
         while ( cursor.getOffset() - offsetAtBeginning < RECORD_SIZE )
         {
-            PropertyBlock newBlock = getPropertyBlock( cursor );
+            PropertyBlock newBlock = getPropertyBlock( cursor, record );
             if ( newBlock != null )
             {
                 record.addPropertyBlock( newBlock );
@@ -450,7 +446,7 @@ public class PropertyStore extends AbstractRecordStore<PropertyRecord>
      * result is returned, that has inUse() return false. Also, the argument is not
      * touched.
      */
-    private PropertyBlock getPropertyBlock( PageCursor cursor )
+    private PropertyBlock getPropertyBlock( PageCursor cursor, PropertyRecord record )
     {
         long header = cursor.getLong();
         PropertyType type = PropertyType.getPropertyType( header, true );
@@ -461,6 +457,19 @@ public class PropertyStore extends AbstractRecordStore<PropertyRecord>
         PropertyBlock toReturn = new PropertyBlock();
         // toReturn.setInUse( true );
         int numBlocks = type.calculateNumberOfBlocksUsed( header );
+        if ( numBlocks == PropertyType.BLOCKS_USED_FOR_BAD_TYPE_OR_ENCODING )
+        {
+            record.setMalformedMessage( "Invalid type or encoding of property block" );
+            return null;
+        }
+        if ( numBlocks > PropertyType.getPayloadSizeLongs() )
+        {
+            // We most likely got an inconsistent read, so return null to signal failure for now
+            record.setMalformedMessage(
+                    "I was given an array of size " + numBlocks +", but I wanted it to be " +
+                    PropertyType.getPayloadSizeLongs() );
+            return null;
+        }
         long[] blockData = new long[numBlocks];
         blockData[0] = header; // we already have that
         for ( int i = 1; i < numBlocks; i++ )

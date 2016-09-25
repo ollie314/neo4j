@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,4 +30,15 @@ class NiceHasherTest extends CypherFunSuite {
     hasher1 should equal(hasher2)
   }
 
+  test("should work when nice hasher wraps null") {
+    new NiceHasher(null) should equal(new NiceHasher(null))
+    new NiceHasher(Seq.empty) should not equal new NiceHasher(null)
+    new NiceHasher(null) should not equal new NiceHasher(Seq.empty)
+  }
+
+  test("should work when nice hasher wraps seq of nulls") {
+    val hasher1 = new NiceHasher(Seq(null, null, null))
+    val hasher2 = new NiceHasher(Seq(null, null, null))
+    hasher1 should equal(hasher2)
+  }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -39,9 +39,9 @@ import org.neo4j.legacy.consistency.checking.CheckerEngine;
 import org.neo4j.legacy.consistency.checking.ComparativeRecordChecker;
 import org.neo4j.legacy.consistency.checking.OwningRecordCheck;
 import org.neo4j.legacy.consistency.report.ConsistencyReport;
-import org.neo4j.legacy.consistency.report.ConsistencyReporter;
 import org.neo4j.legacy.consistency.report.ConsistencyReport.NodeConsistencyReport;
 import org.neo4j.legacy.consistency.report.ConsistencyReport.RelationshipConsistencyReport;
+import org.neo4j.legacy.consistency.report.ConsistencyReporter;
 import org.neo4j.legacy.consistency.store.DiffRecordAccess;
 import org.neo4j.legacy.consistency.store.RecordAccess;
 import org.neo4j.legacy.consistency.store.synthetic.CountsEntry;
@@ -302,34 +302,6 @@ class CountsBuilderDecorator extends CheckDecorator.Adapter
                                  DiffRecordAccess records )
         {
             inner.checkChange( oldRecord, newRecord, engine, records );
-        }
-    }
-
-    private static class MultiPassAvoidanceCondition<T extends AbstractBaseRecord> implements Predicate<T>
-    {
-        private boolean started = false, done = false;
-
-        @Override
-        public boolean test( T record )
-        {
-            if ( done )
-            {
-                return false;
-            }
-
-            if ( record.getLongId() == 0 )
-            {
-                if ( started )
-                {
-                    done = true;
-                    return false;
-                }
-                else
-                {
-                    started = true;
-                }
-            }
-            return true;
         }
     }
 

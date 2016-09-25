@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,16 +25,9 @@ import org.neo4j.cypher.internal.frontend.v2_3.notification._
 class NotificationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerTestSupport {
 
   test("Warn for cartesian product") {
-    val result = executeWithAllPlannersAndRuntimes("explain match (a)-->(b), (c)-->(d) return *")
+    val result = executeWithAllPlanners("explain match (a)-->(b), (c)-->(d) return *")
 
     result.notifications.toList should equal(List(CartesianProductNotification(InputPosition(0, 1, 1), Set("c", "d"))))
-  }
-
-  test("Warn for cartesian product with runtime=compiled") {
-    val result = innerExecute("explain cypher runtime=compiled match (a)-->(b), (c)-->(d) return count(*)")
-
-    result.notifications.toList should equal(List(CartesianProductNotification(InputPosition(0, 1, 1), Set("c", "d")),
-                                                  RuntimeUnsupportedNotification))
   }
 
   test("Warn for cartesian product with runtime=interpreted") {
@@ -44,7 +37,7 @@ class NotificationAcceptanceTest extends ExecutionEngineFunSuite with NewPlanner
   }
 
   test("Don't warn for cartesian product when not using explain") {
-    val result = executeWithAllPlannersAndRuntimes("match (a)-->(b), (c)-->(d) return *")
+    val result = executeWithAllPlanners("match (a)-->(b), (c)-->(d) return *")
 
     result.notifications shouldBe empty
   }
@@ -98,11 +91,6 @@ class NotificationAcceptanceTest extends ExecutionEngineFunSuite with NewPlanner
     result.notifications shouldBe empty
   }
 
-  test("warn when requesting runtime=compiled on an unsupported query") {
-    val result = innerExecute("EXPLAIN CYPHER runtime=compiled MATCH (a)-->(b), (c)-->(d) RETURN count(*)")
-    result.notifications should contain(RuntimeUnsupportedNotification)
-  }
-
   test("warn once when a single index hint cannot be fulfilled") {
     val result = innerExecute("EXPLAIN MATCH (n:Person) USING INDEX n:Person(name) WHERE n.name = 'John' RETURN n")
     result.notifications.toSet should contain(IndexHintUnfulfillableNotification("Person", "name"))
@@ -133,6 +121,18 @@ class NotificationAcceptanceTest extends ExecutionEngineFunSuite with NewPlanner
     result.notifications should equal(Set(JoinHintUnsupportedNotification(Seq("b"))))
   }
 
+  test("should warn when join hint is unfulfilled") {
+    val result = innerExecute( """CYPHER planner=cost EXPLAIN MATCH (a)-->(b) USING JOIN ON b RETURN a, b""")
+
+    result.notifications should equal(Set(JoinHintUnfulfillableNotification(Seq("b"))))
+  }
+
+  test("should not warn when join hint is used with COST planner with EXPLAIN") {
+    val result = innerExecute( """CYPHER planner=cost EXPLAIN MATCH (a)-->(x)<--(b) USING JOIN ON x RETURN a, b""")
+
+    result.notifications should not contain(JoinHintUnsupportedNotification(Seq("x")))
+  }
+
   test("should not warn when join hint is used with RULE planner without EXPLAIN") {
     val result = innerExecute( """CYPHER planner=rule MATCH (a)-->(b) USING JOIN ON b RETURN a, b""")
 
@@ -140,8 +140,8 @@ class NotificationAcceptanceTest extends ExecutionEngineFunSuite with NewPlanner
   }
 
   test("Warnings should work on potentially cached queries") {
-    val resultWithoutExplain = executeWithAllPlannersAndRuntimes("match (a)-->(b), (c)-->(d) return *")
-    val resultWithExplain = executeWithAllPlannersAndRuntimes("explain match (a)-->(b), (c)-->(d) return *")
+    val resultWithoutExplain = executeWithAllPlanners("match (a)-->(b), (c)-->(d) return *")
+    val resultWithExplain = executeWithAllPlanners("explain match (a)-->(b), (c)-->(d) return *")
 
     resultWithoutExplain shouldBe empty
     resultWithExplain.notifications.toList should equal(List(CartesianProductNotification(InputPosition(0, 1, 1), Set("c", "d"))))

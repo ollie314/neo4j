@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -298,13 +298,15 @@ sealed trait NonEmptyList[+T] {
 }
 
 final case class Fby[+T](head: T, tail: NonEmptyList[T]) extends NonEmptyList[T] {
-  def tailOption: Option[NonEmptyList[T]] = Some(tail)
-  def hasTail: Boolean = true
-  def isLast: Boolean = false
+  override def tailOption: Option[NonEmptyList[T]] = Some(tail)
+  override def hasTail: Boolean = true
+  override def isLast: Boolean = false
+  override def toString = s"${head.toString}, ${tail.toString}"
 }
 
 final case class Last[+T](head: T) extends NonEmptyList[T] {
-  def tailOption: Option[NonEmptyList[T]] = None
-  def hasTail: Boolean = false
-  def isLast: Boolean = true
+  override def tailOption: Option[NonEmptyList[T]] = None
+  override def hasTail: Boolean = false
+  override def isLast: Boolean = true
+  override def toString = s"${head.toString}"
 }

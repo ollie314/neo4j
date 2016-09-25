@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -104,16 +104,24 @@ case class ExpandIntoPipe(source: Pipe,
         return Iterator.empty
       }
 
-      relIterator(query, fromNode, toNode, fromDegree < toDegree, relTypes, relCache)
+      relIterator(query, fromNode, toNode, preserveDirection = fromDegree < toDegree, relTypes, relCache)
     }
     // iterate from a non-dense node
     else if (toNodeIsDense)
       relIterator(query, fromNode, toNode, preserveDirection = true, relTypes, relCache)
     else if (fromNodeIsDense)
       relIterator(query, fromNode, toNode, preserveDirection = false, relTypes, relCache)
-    //both nodes are non-dense, choose a random starting point
+    //both nodes are non-dense, choose a starting point by alternating from and to nodes
     else
-      relIterator(query, fromNode, toNode, ThreadLocalRandom.current().nextBoolean(), relTypes, relCache)
+      relIterator(query, fromNode, toNode, preserveDirection = alternate(), relTypes, relCache)
+  }
+
+  private var alternateState = false
+
+  private def alternate(): Boolean = {
+    val result = !alternateState
+    alternateState = result
+    result
   }
 
   private def relIterator(query: QueryContext, fromNode: Node,  toNode: Node, preserveDirection: Boolean,

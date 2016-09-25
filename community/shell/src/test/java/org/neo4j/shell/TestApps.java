@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -1135,6 +1135,12 @@ public class TestApps extends AbstractShellTest
     }
 
     @Test
+    public void allowsCypherToContainExclamationMarks() throws Exception
+    {
+        executeCommand( "RETURN \"a\"+\"!b\";", "a!b" );
+    }
+
+    @Test
     public void shouldAllowQueriesToStartWithOptionalMatch() throws Exception
     {
         executeCommand( "OPTIONAL MATCH (n) RETURN n;" );
@@ -1176,13 +1182,6 @@ public class TestApps extends AbstractShellTest
     public void shouldAllowCombiningProfileAndPlanner() throws Exception
     {
         executeCommand( "PROFILE CYPHER planner=rule MATCH (n) RETURN n;", "Planner RULE");
-    }
-
-    @Test
-    public void shouldBeAbleToSwitchBetweenRuntimes() throws Exception
-    {
-        executeCommand( "CYPHER runtime=compiled MATCH (n)-[:T]-(n) RETURN n;" );
-        executeCommand( "CYPHER runtime=interpreted MATCH (n)-[:T]-(n) RETURN n;" );
     }
 
     @Test

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,11 +22,11 @@ package org.neo4j.server.enterprise;
 import org.neo4j.graphdb.config.Setting;
 import org.neo4j.graphdb.factory.Description;
 
-import static org.neo4j.helpers.Settings.BOOLEAN;
-import static org.neo4j.helpers.Settings.DURATION;
-import static org.neo4j.helpers.Settings.STRING;
-import static org.neo4j.helpers.Settings.TRUE;
-import static org.neo4j.helpers.Settings.setting;
+import static org.neo4j.kernel.configuration.Settings.BOOLEAN;
+import static org.neo4j.kernel.configuration.Settings.DURATION;
+import static org.neo4j.kernel.configuration.Settings.STRING;
+import static org.neo4j.kernel.configuration.Settings.TRUE;
+import static org.neo4j.kernel.configuration.Settings.setting;
 
 @Description("Settings available in the Enterprise server")
 public interface EnterpriseServerSettings
@@ -38,7 +38,7 @@ public interface EnterpriseServerSettings
     @Description( "Configure the Neo4j Browser to store or not store user credentials." )
     Setting<Boolean> browser_storeCredentials = setting( "dbms.browser.store_credentials", BOOLEAN, TRUE );
 
-    @Description( "Configure the operating mode of the database - 'SINGLE' for stand-alone operation or 'HA'" +
+    @Description( "Configure the operating mode of the database -- 'SINGLE' for stand-alone operation or 'HA' " +
                   "for operating as a member in a cluster." )
     Setting<String> mode = setting( "org.neo4j.server.database.mode", STRING, "SINGLE" );
 

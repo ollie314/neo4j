@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -34,6 +34,7 @@ import java.util.Collection;
 import java.util.List;
 
 import org.neo4j.consistency.checking.full.ConsistencyCheckIncompleteException;
+import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.io.fs.DefaultFileSystemAbstraction;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.pagecache.PageCache;
@@ -64,7 +65,9 @@ import org.neo4j.logging.NullLogProvider;
 import org.neo4j.test.PageCacheRule;
 import org.neo4j.test.TargetDirectory;
 import org.neo4j.test.TargetDirectory.TestDirectory;
+import org.neo4j.test.TestGraphDatabaseFactory;
 
+import static java.util.concurrent.TimeUnit.MINUTES;
 import static org.hamcrest.Matchers.emptyCollectionOf;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
@@ -80,9 +83,6 @@ import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
-
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import static org.neo4j.consistency.store.StoreAssertions.assertConsistentStore;
 import static org.neo4j.kernel.impl.storemigration.MigrationTestUtils.allLegacyStoreFilesHaveVersion;
 import static org.neo4j.kernel.impl.storemigration.MigrationTestUtils.allStoreFilesHaveNoTrailer;
@@ -145,6 +145,8 @@ public class StoreUpgraderTest
         // We leave logical logs in place since the new version can read the old
 
         assertFalse( containsAnyStoreFiles( fileSystem, isolatedMigrationDirectoryOf( dbDirectory ) ) );
+        // Since consistency checker is in read only mode we need to start/stop db to generate label scan store.
+        startStopDatabase();
         assertConsistentStore( dbDirectory );
     }
 
@@ -322,10 +324,10 @@ public class StoreUpgraderTest
         // Then
         StoreFactory storeFactory =
                 new StoreFactory( fileSystem, dbDirectory, pageCache, NullLogProvider.getInstance() );
-        NeoStores neoStores = storeFactory.openNeoStoresEagerly();
+        NeoStores neoStores = storeFactory.openAllNeoStores();
 
         assertThat( neoStores.getMetaDataStore().getUpgradeTransaction(),
-                equalTo( neoStores.getMetaDataStore() .getLastCommittedTransaction() ) );
+                equalTo( neoStores.getMetaDataStore().getLastCommittedTransaction() ) );
         assertThat( neoStores.getMetaDataStore().getUpgradeTime(), not( equalTo( MetaDataStore.FIELD_NOT_INITIALIZED ) ) );
 
         long minuteAgo = System.currentTimeMillis() - MINUTES.toMillis( 1 );
@@ -452,5 +454,11 @@ public class StoreUpgraderTest
         } );
         assertNotNull( "Some IO errors occurred", tmpDirs );
         return Arrays.asList( tmpDirs );
+    }
+
+    private void startStopDatabase()
+    {
+        GraphDatabaseService databaseService = new TestGraphDatabaseFactory().newEmbeddedDatabase( dbDirectory );
+        databaseService.shutdown();
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,22 +27,28 @@ public class FakeClock implements Clock
 
     public FakeClock()
     {
-        this( 0 );
+        this( 0, TimeUnit.MILLISECONDS );
     }
 
-    public FakeClock( long currentTime )
+    public FakeClock( long currentTime, TimeUnit timeUnit )
     {
-        this.time = currentTime;
+        this.time = timeUnit.toNanos( currentTime );
     }
 
     @Override
     public long currentTimeMillis()
     {
+        return TimeUnit.NANOSECONDS.toMillis( time );
+    }
+
+    @Override
+    public long nanoTime()
+    {
         return time;
     }
 
-    public void forward( long amount, TimeUnit timeUnit)
+    public void forward( long amount, TimeUnit timeUnit )
     {
-        time = time + timeUnit.toMillis( amount );
+        time = time + timeUnit.toNanos( amount );
     }
 }

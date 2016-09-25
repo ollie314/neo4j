@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -42,10 +42,10 @@ public class DefaultSlaveFactory implements SlaveFactory
     }
 
     @Override
-    public Slave newSlave( LifeSupport life, ClusterMember clusterMember )
+    public Slave newSlave( LifeSupport life, ClusterMember clusterMember, String originHostNameOrIp, int originPort )
     {
         return life.add( new SlaveClient( clusterMember.getInstanceId(), clusterMember.getHAUri().getHost(),
-                clusterMember.getHAUri().getPort(), logProvider, storeId,
+                clusterMember.getHAUri().getPort(), originHostNameOrIp, logProvider, storeId,
                 2, // and that's 1 too many, because we push from the master from one thread only anyway
                 chunkSize, monitors.newMonitor( ByteCounterMonitor.class, SlaveClient.class ),
                 monitors.newMonitor( RequestMonitor.class, SlaveClient.class ) ) );

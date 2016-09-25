@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -42,8 +42,6 @@ import org.neo4j.kernel.impl.store.record.PropertyRecord;
 import org.neo4j.kernel.impl.store.record.Record;
 import org.neo4j.logging.NullLogProvider;
 
-import static org.neo4j.kernel.impl.store.StoreFactory.SF_LAZY;
-
 public class PropertyDeduplicator
 {
     private final FileSystemAbstraction fileSystem;
@@ -69,7 +67,8 @@ public class PropertyDeduplicator
     {
         final StoreFactory storeFactory =
                 new StoreFactory( fileSystem, workingDir, pageCache, NullLogProvider.getInstance() );
-        try ( NeoStores neoStores = storeFactory.openNeoStores( SF_LAZY ) )
+        try ( NeoStores neoStores = storeFactory.openNeoStores( NeoStores.StoreType.PROPERTY, NeoStores.StoreType
+                .NODE, NeoStores.StoreType.SCHEMA) )
         {
             PropertyStore propertyStore = neoStores.getPropertyStore();
             NodeStore nodeStore = neoStores.getNodeStore();

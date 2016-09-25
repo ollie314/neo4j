@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -188,8 +188,10 @@ public class StandaloneClusterClientIT
             config.put( server_id.name(), "" + i );
             config.put( initial_hosts.name(), ":5001" );
 
-            ClusterClientModule clusterClientModule = new ClusterClientModule(null, new Dependencies(), new Monitors(),
-                    new Config(config),  NullLogService.getInstance(), new ServerIdElectionCredentialsProvider());
+            LifeSupport moduleLife = new LifeSupport();
+            ClusterClientModule clusterClientModule = new ClusterClientModule( moduleLife, new Dependencies(),
+                    new Monitors(), new Config(config),  NullLogService.getInstance(),
+                    new ServerIdElectionCredentialsProvider() );
 
             final ClusterClient client = clusterClientModule.clusterClient;
             final CountDownLatch latch = new CountDownLatch( 1 );
@@ -202,7 +204,7 @@ public class StandaloneClusterClientIT
                     client.removeClusterListener( this );
                 }
             } );
-            life.add(clusterClientModule.life);
+            life.add( moduleLife );
             clients[i - 1] = client;
             assertTrue( "Didn't join the cluster", latch.await( 20, SECONDS ) );
         }

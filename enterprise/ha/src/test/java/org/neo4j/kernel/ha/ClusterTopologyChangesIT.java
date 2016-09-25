@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,14 +19,16 @@
  */
 package org.neo4j.kernel.ha;
 
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-
+import java.net.UnknownHostException;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+
+import org.junit.Before;
+import org.junit.Ignore;
+import org.junit.Rule;
+import org.junit.Test;
 
 import org.neo4j.cluster.ClusterSettings;
 import org.neo4j.cluster.InstanceId;
@@ -57,10 +59,12 @@ import org.neo4j.test.RepeatRule;
 import org.neo4j.test.SuppressOutput;
 import org.neo4j.test.ha.ClusterRule;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
+
 import static org.neo4j.cluster.protocol.cluster.ClusterConfiguration.COORDINATOR;
 import static org.neo4j.function.Predicates.not;
 import static org.neo4j.kernel.impl.ha.ClusterManager.allSeesAllAsAvailable;
@@ -85,9 +89,9 @@ public class ClusterTopologyChangesIT
     public void setup() throws Exception
     {
         cluster = clusterRule
-                .config(HaSettings.read_timeout, "1s")
-                .config(HaSettings.state_switch_timeout, "2s")
-                .config(HaSettings.com_chunk_size, "1024")
+                .withSharedSetting( HaSettings.read_timeout, "1s" )
+                .withSharedSetting( HaSettings.state_switch_timeout, "2s" )
+                .withSharedSetting( HaSettings.com_chunk_size, "1024" )
                 .startCluster();
     }
 
@@ -116,6 +120,7 @@ public class ClusterTopologyChangesIT
     }
 
     @Test
+    @Ignore
     public void slaveShouldServeTxsAfterMasterLostQuorumWentToPendingAndThenQuorumWasRestored() throws Throwable
     {
         // GIVEN: cluster with 3 members
@@ -218,8 +223,9 @@ public class ClusterTopologyChangesIT
         createNodeOn( cluster.getMaster() );
         cluster.sync();
 
-        ClusterClientModule clusterClient = newClusterClient( new InstanceId( 1 ) );
-        cleanup.add(clusterClient.life);
+        LifeSupport life = new LifeSupport();
+        ClusterClientModule clusterClient = newClusterClient( life, new InstanceId( 1 ) );
+        cleanup.add( life );
 
         final AtomicReference<InstanceId> coordinatorIdWhenReJoined = new AtomicReference<>();
         final CountDownLatch latch = new CountDownLatch( 1 );
@@ -233,7 +239,7 @@ public class ClusterTopologyChangesIT
             }
         } );
 
-        clusterClient.life.start();
+        life.start();
 
         // Then
         assertTrue( latch.await( 20, SECONDS ) );
@@ -261,7 +267,7 @@ public class ClusterTopologyChangesIT
         }
     }
 
-    private ClusterClientModule newClusterClient( InstanceId id )
+    private ClusterClientModule newClusterClient( LifeSupport life, InstanceId id )
     {
         Map<String,String> configMap = MapUtil.stringMap(
                 ClusterSettings.initial_hosts.name(), cluster.getInitialHostsConfigString(),
@@ -271,11 +277,11 @@ public class ClusterTopologyChangesIT
         Config config = new Config( configMap, GraphDatabaseFacadeFactory.Configuration.class,
                 GraphDatabaseSettings.class );
 
-        LifeSupport life = new LifeSupport();
-        SimpleLogService logService = new SimpleLogService( FormattedLogProvider.toOutputStream( System.out ), FormattedLogProvider.toOutputStream( System.out ) );
+        SimpleLogService logService = new SimpleLogService( FormattedLogProvider.toOutputStream( System.out ),
+                FormattedLogProvider.toOutputStream( System.out ) );
 
-        return new ClusterClientModule(life, new Dependencies(  ), new Monitors(), config,
-                logService, new NotElectableElectionCredentialsProvider());
+        return new ClusterClientModule( life, new Dependencies(), new Monitors(),
+                config, logService, new NotElectableElectionCredentialsProvider() );
     }
 
     private static void attemptTransactions( HighlyAvailableGraphDatabase... dbs )

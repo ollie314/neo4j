@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -108,7 +108,7 @@ public abstract class CommonAbstractStore implements IdSequence, AutoCloseable
             {
                 try
                 {
-                    storeFile.close();
+                    closeStoreFile();
                 }
                 catch ( IOException failureToClose )
                 {
@@ -416,6 +416,10 @@ public abstract class CommonAbstractStore implements IdSequence, AutoCloseable
     @Override
     public long nextId()
     {
+        if ( idGenerator == null )
+        {
+            throw new IllegalStateException( "IdGenerator is not initialized" );
+        }
         return idGenerator.nextId();
     }
 
@@ -507,22 +511,10 @@ public abstract class CommonAbstractStore implements IdSequence, AutoCloseable
      * map their own temporary PagedFile for the store file, and do their file IO through that,
      * if they need to access the data in the store file.
      */
+
     protected void openIdGenerator()
     {
-        idGenerator = openIdGenerator( getIdFileName(), idType.getGrabSize() );
-    }
-
-    /**
-     * Opens the {@link IdGenerator} given by the fileName.
-     * <p>
-     * Note: This method may be called both while the store has the store file mapped in the
-     * page cache, and while the store file is not mapped. Implementers must therefore
-     * map their own temporary PagedFile for the store file, and do their file IO through that,
-     * if they need to access the data in the store file.
-     */
-    protected IdGenerator openIdGenerator( File fileName, int grabSize )
-    {
-        return idGeneratorFactory.open( fileName, grabSize, getIdType(), scanForHighId() );
+        idGenerator = idGeneratorFactory.open( getIdFileName(), getIdType(), scanForHighId() );
     }
 
     /**
@@ -540,11 +532,14 @@ public abstract class CommonAbstractStore implements IdSequence, AutoCloseable
             long nextPageId = storeFile.getLastPageId();
             int recordsPerPage = getRecordsPerPage();
             int recordSize = getRecordSize();
+            long highestId = getNumberOfReservedLowIds();
             while ( nextPageId >= 0 && cursor.next( nextPageId ) )
             {
                 nextPageId--;
+                boolean found;
                 do
                 {
+                    found = false;
                     int currentRecord = recordsPerPage;
                     while ( currentRecord-- > 0 )
                     {
@@ -553,11 +548,17 @@ public abstract class CommonAbstractStore implements IdSequence, AutoCloseable
                         if ( isRecordInUse( cursor ) )
                         {
                             // We've found the highest id in use
-                            return recordId + 1 /*+1 since we return the high id*/;
+                            found = true;
+                            highestId = recordId + 1; /*+1 since we return the high id*/;
+                            break;
                         }
                     }
                 }
                 while ( cursor.shouldRetry() );
+                if ( found )
+                {
+                    return highestId;
+                }
             }
 
             return getNumberOfReservedLowIds();
@@ -608,6 +609,19 @@ public abstract class CommonAbstractStore implements IdSequence, AutoCloseable
     }
 
     /**
+     * Checks if this store is closed and throws exception if it is.
+     *
+     * @throws IllegalStateException if the store is closed
+     */
+    protected void assertNotClosed()
+    {
+        if ( storeFile == null )
+        {
+            throw new IllegalStateException( this + " for file '" + storageFileName + "' is closed" );
+        }
+    }
+
+    /**
      * Closes this store. This will cause all buffers and channels to be closed.
      * Requesting an operation from after this method has been invoked is
      * illegal and an exception will be thrown.
@@ -619,7 +633,7 @@ public abstract class CommonAbstractStore implements IdSequence, AutoCloseable
         {
             try
             {
-                storeFile.close();
+                closeStoreFile();
             }
             catch ( IOException e )
             {
@@ -629,17 +643,32 @@ public abstract class CommonAbstractStore implements IdSequence, AutoCloseable
         }
         try
         {
+            closeStoreFile();
+        }
+        catch ( IOException | IllegalStateException e )
+        {
+            throw new UnderlyingStorageException( "Failed to close store file: " + getStorageFileName(), e );
+        }
+    }
+
+    private void closeStoreFile() throws IOException
+    {
+        try
+        {
             /*
              * Note: the closing ordering here is important!
              * It is the case since we wand to mark the id generator as closed cleanly ONLY IF
              * also the store file is cleanly shutdown.
              */
             storeFile.close();
-            idGenerator.close();
+            if ( idGenerator != null )
+            {
+                idGenerator.close();
+            }
         }
-        catch ( IOException | IllegalStateException e )
+        finally
         {
-            throw new UnderlyingStorageException( "Failed to close store file: " + getStorageFileName(), e );
+            storeFile = null;
         }
     }
 
@@ -670,6 +699,10 @@ public abstract class CommonAbstractStore implements IdSequence, AutoCloseable
     /** @return The total number of ids in use. */
     public long getNumberOfIdsInUse()
     {
+        if ( idGenerator == null )
+        {
+            throw new IllegalStateException( "IdGenerator is not initialized" );
+        }
         return idGenerator.getNumberOfIdsInUse();
     }
 
@@ -703,7 +736,7 @@ public abstract class CommonAbstractStore implements IdSequence, AutoCloseable
      * TODO this could, and probably should, replace all override-and-do-the-same-thing-to-all-my-managed-stores
      * methods like:
      * {@link #makeStoreOk()},
-     * {@link #closeStorage()} (where that method could be deleted all together and do a visit in {@link #close()}),
+     * {@link #close()} (where that method could be deleted all together and do a visit in {@link #close()}),
      * {@link #logIdUsage(Logger)},
      * {@link #logVersions(Logger)}
      * For a good samaritan to pick up later.
@@ -714,13 +747,15 @@ public abstract class CommonAbstractStore implements IdSequence, AutoCloseable
     }
 
     /**
-     * Called from the part of the code that starts the {@link NeoStore} and friends, together with any
+     * Called from the part of the code that starts the {@link MetaDataStore} and friends, together with any
      * existing transaction log, seeing that there are transactions to recover. Now, this shouldn't be
      * needed because the state of the id generator _should_ reflect this fact, but turns out that,
      * given HA and the nature of the .id files being like orphans to the rest of the store, we just
      * can't trust that to be true. If we happen to have id generators open during recovery we delegate
      * {@link #freeId(long)} calls to {@link IdGenerator#freeId(long)} and since the id generator is most likely
      * out of date w/ regards to high id, it may very well blow up.
+     *
+     * This also marks the store as not OK. A call to {@link #makeStoreOk()} is needed once recovery is complete.
      */
     final void deleteIdGenerator()
     {
@@ -728,6 +763,7 @@ public abstract class CommonAbstractStore implements IdSequence, AutoCloseable
         {
             idGenerator.delete();
             idGenerator = null;
+            setStoreNotOk( new IllegalStateException( "IdGenerator is not initialized" ) );
         }
     }
 

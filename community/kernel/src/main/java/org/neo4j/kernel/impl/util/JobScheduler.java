@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -145,6 +145,11 @@ public interface JobScheduler extends Lifecycle
          * Network IO threads for the Bolt protocol.
          */
         public static final Group boltNetworkIO = new Group( "BoltNetworkIO", NEW_THREAD );
+
+        /**
+         * Storage maintenance.
+         */
+        public static Group storageMaintenance = new Group( "StorageMaintenance", POOLED );
     }
 
     interface JobHandle

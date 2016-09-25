@@ -5,13 +5,13 @@
   <parent>
     <groupId>org.neo4j</groupId>
     <artifactId>parent</artifactId>
-    <version>2.3.1-SNAPSHOT</version>
+    <version>2.3.8-SNAPSHOT</version>
     <relativePath>../..</relativePath>
   </parent>
 
   <groupId>org.neo4j.app</groupId>
   <artifactId>neo4j-browser</artifactId>
-  <version>2.3.1-SNAPSHOT</version>
+  <version>2.3.8-SNAPSHOT</version>
   <name>Neo4j - Browser</name>
   <description>Graph database client.</description>
 
@@ -54,13 +54,6 @@
       <groupId>org.neo4j</groupId>
       <artifactId>neo4j-kernel</artifactId>
       <version>${project.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>org.apache.commons</groupId>
-      <artifactId>commons-collections4</artifactId>
-      <version>4.0</version>
-      <scope>test</scope>
     </dependency>
 
     <dependency>
@@ -135,6 +128,10 @@
             <phase>generate-sources</phase>
             <configuration>
               <target name="hipster build">
+
+                <exec executable="npm" dir="${project.basedir}" osfamily="unix" failonerror="true">
+                  <arg line="--color=false config set registry http://registry.npmjs.org/" />
+                </exec>
 
                 <exec executable="npm" dir="${project.basedir}" osfamily="unix" failonerror="true">
                   <arg line="--color=false install" />

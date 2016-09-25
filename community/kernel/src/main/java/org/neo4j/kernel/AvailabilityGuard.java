@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -232,6 +232,17 @@ public class AvailabilityGuard
     public boolean isAvailable( long millis )
     {
         return availability( millis ) == Availability.AVAILABLE;
+    }
+
+    /**
+     * Checks if available. If not then an {@link UnavailableException} is thrown describing why.
+     * This methods doesn't wait like {@link #await(long)} does.
+     *
+     * @throws UnavailableException if not available.
+     */
+    public void checkAvailable() throws UnavailableException
+    {
+        await( 0 );
     }
 
     /**

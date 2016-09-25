@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -35,7 +35,7 @@ import org.neo4j.kernel.impl.store.record.PropertyRecord;
 /**
  * Processor of node records with the context of how they're indexed.
  */
-public class PropertyAndNode2LabelIndexProcessor implements RecordProcessor<NodeRecord>
+public class PropertyAndNode2LabelIndexProcessor extends RecordProcessor.Adapter<NodeRecord>
 {
     private final ConsistencyReporter reporter;
     private final RecordCheck<NodeRecord, ConsistencyReport.NodeConsistencyReport> nodeIndexCheck;
@@ -70,10 +70,5 @@ public class PropertyAndNode2LabelIndexProcessor implements RecordProcessor<Node
                 mandatoryCheck.receive( ChainCheck.keys( property ) );
             }
         }
-    }
-
-    @Override
-    public void close()
-    {
     }
 }

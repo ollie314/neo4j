@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -155,15 +155,14 @@ case class QueryGraph(patternRelationships: Set[PatternRelationship] = Set.empty
       case patternNode if !visited(patternNode) =>
         val qg = connectedComponentFor(patternNode, visited)
         val coveredIds = qg.coveredIds
-        val predicates = selections.predicates.filter(_.dependencies.subsetOf(coveredIds))
-        val arguments = argumentIds
+        val predicates = selections.predicates.filter(_.dependencies.subsetOf(coveredIds ++ argumentIds))
         val filteredHints = hints.filter(h => h.identifiers.forall(identifier => coveredIds.contains(IdName(identifier.name))))
         val shortestPaths = shortestPathPatterns.filter {
           p => coveredIds.contains(p.rel.nodes._1) && coveredIds.contains(p.rel.nodes._2)
         }
         qg.
           withSelections(Selections(predicates)).
-          withArgumentIds(arguments).
+          withArgumentIds(argumentIds).
           addHints(filteredHints).
           addShortestPaths(shortestPaths.toSeq: _*)
     }
@@ -177,29 +176,47 @@ case class QueryGraph(patternRelationships: Set[PatternRelationship] = Set.empty
 
   private def connectedComponentFor(startNode: IdName, visited: mutable.Set[IdName]): QueryGraph = {
     val queue = mutable.Queue(startNode)
-    val nodesSolvedByArguments = patternNodes intersect argumentIds
-    queue.enqueue(nodesSolvedByArguments.toSeq:_*)
-    var qg = QueryGraph.empty.withArgumentIds(argumentIds)
+    var qg = QueryGraph.empty
     while (queue.nonEmpty) {
       val node = queue.dequeue()
-      qg = if (visited(node)) {
-        qg
-      } else {
+      if (!visited(node)) {
         visited += node
 
         val filteredPatterns = patternRelationships.filter { rel =>
           rel.coveredIds.contains(node) && !qg.patternRelationships.contains(rel)
         }
 
-        queue.enqueue(filteredPatterns.toSeq.map(_.otherSide(node)): _*)
+        val patternsWithSameName =
+          patternRelationships.filterNot(filteredPatterns).filter { r => filteredPatterns.exists(_.name == r.name) }
 
-        qg
+        queue.enqueue(filteredPatterns.toSeq.map(_.otherSide(node)): _*)
+        queue.enqueue(patternsWithSameName.toSeq.flatMap(r => Seq(r.left, r.right)): _*)
+
+        val patternsInConnectedComponent = filteredPatterns ++ patternsWithSameName
+        qg = qg
           .addPatternNodes(node)
-          .addPatternRelationships(filteredPatterns.toSeq)
+          .addPatternRelationships(patternsInConnectedComponent.toSeq)
+
+        val alreadyHaveArguments = qg.argumentIds.nonEmpty
+
+        if (!alreadyHaveArguments && (relationshipPullsInArguments(qg.coveredIds) || predicatePullsInArguments(node))) {
+          qg = qg.withArgumentIds(argumentIds)
+          val nodesSolvedByArguments = patternNodes intersect qg.argumentIds
+          queue.enqueue(nodesSolvedByArguments.toSeq: _*)
+        }
       }
     }
     qg
   }
+
+  private def relationshipPullsInArguments(coveredIds: Set[IdName]) = (argumentIds intersect coveredIds).nonEmpty
+
+  private def predicatePullsInArguments(node: IdName) = selections.flatPredicates.exists {
+    case p =>
+      val deps = p.dependencies.map(IdName.fromIdentifier)
+      deps(node) && (deps intersect argumentIds).nonEmpty
+  }
+
 
   // This is here to stop usage of copy from the outside
   private def copy(patternRelationships: Set[PatternRelationship] = patternRelationships,

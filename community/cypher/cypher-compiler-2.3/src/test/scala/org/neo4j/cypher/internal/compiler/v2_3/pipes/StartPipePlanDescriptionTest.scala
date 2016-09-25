@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -111,7 +111,7 @@ class StartPipePlanDescriptionTest extends CypherFunSuite {
   }
 
   private def createPlanDescription(startItem: StartItem): InternalPlanDescription = {
-    val producer = factory.nodeStartItems((planContext, startItem))
+    val producer = factory.readNodeStartItems((planContext, startItem))
     val pipe = new NodeStartPipe(SingleRowPipe(), "n", producer)()
     pipe.planDescription
   }

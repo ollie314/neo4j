@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -42,7 +42,6 @@ import org.neo4j.kernel.impl.api.CountsVisitor;
 import org.neo4j.kernel.impl.store.NodeLabelsField;
 import org.neo4j.kernel.impl.store.NodeStore;
 import org.neo4j.kernel.impl.store.RecordStore;
-import org.neo4j.kernel.impl.store.RelationshipStore;
 import org.neo4j.kernel.impl.store.StoreAccess;
 import org.neo4j.kernel.impl.store.counts.keys.CountsKey;
 import org.neo4j.kernel.impl.store.record.AbstractBaseRecord;
@@ -61,10 +60,9 @@ class CountsBuilderDecorator extends CheckDecorator.Adapter
     private static final int WILDCARD = -1;
     private final MultiSet<CountsKey> nodeCounts = new MultiSet<>();
     private final MultiSet<CountsKey> relationshipCounts = new MultiSet<>();
-    private final Predicate<NodeRecord> nodeCountBuildCondition;
-    private final Predicate<RelationshipRecord> relationshipCountBuildCondition;
+    private final MultiPassAvoidanceCondition<NodeRecord> nodeCountBuildCondition;
+    private final MultiPassAvoidanceCondition<RelationshipRecord> relationshipCountBuildCondition;
     private final NodeStore nodeStore;
-    private final RelationshipStore relationshipStore;
     private final StoreAccess storeAccess;
     private final CountsEntry.CheckAdapter CHECK_NODE_COUNT = new CountsEntry.CheckAdapter()
     {
@@ -127,9 +125,15 @@ class CountsBuilderDecorator extends CheckDecorator.Adapter
     {
         this.storeAccess = storeAccess;
         this.nodeStore = storeAccess.getRawNeoStores().getNodeStore();
-        this.relationshipStore = storeAccess.getRawNeoStores().getRelationshipStore();
-        this.nodeCountBuildCondition = new MultiPassAvoidanceCondition<>( nodeStore.getHighestPossibleIdInUse() );
-        this.relationshipCountBuildCondition = new MultiPassAvoidanceCondition<>( relationshipStore.getHighestPossibleIdInUse() );
+        this.nodeCountBuildCondition = new MultiPassAvoidanceCondition<>( 0 );
+        this.relationshipCountBuildCondition = new MultiPassAvoidanceCondition<>( 1 );
+    }
+
+    @Override
+    public void prepare()
+    {
+        this.nodeCountBuildCondition.prepare();
+        this.relationshipCountBuildCondition.prepare();
     }
 
     @Override
@@ -326,39 +330,25 @@ class CountsBuilderDecorator extends CheckDecorator.Adapter
 
     private static class MultiPassAvoidanceCondition<T extends AbstractBaseRecord> implements Predicate<T>
     {
-        private boolean started = false, done = false;
-        private final long terminationId;
+        // Stage which this condition is active, starting from 0, mimicing the CheckStage ordinal
+        private final int activeStage;
+        // The same thread updates this every time, the TaskExecutor. Other threads read it
+        private volatile int stage = -1;
 
-        public MultiPassAvoidanceCondition( long terminationId )
+        public MultiPassAvoidanceCondition( int activeStage )
         {
-            this.terminationId = terminationId;
+            this.activeStage = activeStage;
+        }
+
+        public void prepare()
+        {
+            stage++;
         }
 
         @Override
         public boolean test( T record )
         {
-            if ( done )
-            {
-                return false;
-            }
-            if ( record.getLongId() == terminationId )
-            {
-                done = true;
-                return true;
-            }
-            if ( record.getLongId() == 0 )
-            {
-                if ( started )
-                {
-                    done = true;
-                    return false;
-                }
-                else
-                {
-                    started = true;
-                }
-            }
-            return true;
+            return stage == activeStage;
         }
     }
 

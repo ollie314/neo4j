@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -113,7 +113,7 @@ public class PropertyConstraintsStressIT
     @Before
     public void setup() throws Exception
     {
-        cluster = clusterRule.config( HaSettings.pull_interval, "0" ).startCluster();
+        cluster = clusterRule.withSharedSetting( HaSettings.pull_interval, "0" ).startCluster();
     }
 
     /* The different orders and delays in the below variations try to stress all known scenarios, as well as

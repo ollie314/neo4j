@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,8 +27,7 @@ object addEagernessIfNecessary extends (Pipe => Pipe) {
     val relsInterfere = from.contains(ReadsRelationships) && to.contains(WritesRelationships)
 
     val readWriteInterfereNodes = nodesWriteInterference(from, to)
-    val readWriteInterfereRelationships = from.contains(WritesRelationships) && to.contains(WritesRelationships) &&
-      to.contains(ReadsRelationships)
+    val readWriteInterfereRelationships = relsWriteInterference(from, to)
 
     nodesInterfere || relsInterfere || readWriteInterfereNodes || readWriteInterfereRelationships ||
       nodePropertiesInterfere(from, to) || relationshipPropertiesInterfere(from, to)
@@ -47,6 +46,11 @@ object addEagernessIfNecessary extends (Pipe => Pipe) {
     toPipe.dup(sources.toList)
   }
 
+  private def relsWriteInterference(from: Effects, to: Effects) = {
+    from.contains(WritesRelationships) && to.contains(WritesRelationships) && to.contains(ReadsRelationships) ||
+    from.contains(DeletesRelationship) && to.contains(ReadsRelationships)
+  }
+
   private def nodesWriteInterference(from: Effects, to: Effects) = {
     val fromWrites = from.effectsSet.collect {
       case writes: WritesNodes => writes
@@ -58,7 +62,11 @@ object addEagernessIfNecessary extends (Pipe => Pipe) {
     val toWrites = to.effectsSet.collect {
       case writes: WritesNodes => writes
     }
+    val fromDeletes = from.effectsSet.collect {
+      case deletes@DeletesNode => deletes
+    }
     (fromWrites.contains(WritesAnyNode) && toWrites.nonEmpty && toReads.nonEmpty) ||
+    (fromDeletes.nonEmpty && toReads.nonEmpty) ||
     (fromWrites.nonEmpty && toWrites.nonEmpty && toReads.contains(ReadsAllNodes)) ||
       (nodeLabelOverlap(toReads, fromWrites) && toWrites.nonEmpty)
   }

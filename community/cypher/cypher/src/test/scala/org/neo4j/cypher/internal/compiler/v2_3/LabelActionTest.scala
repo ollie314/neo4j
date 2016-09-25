@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,13 +22,13 @@ package org.neo4j.cypher.internal.compiler.v2_3
 import java.net.URL
 
 import org.neo4j.cypher.GraphDatabaseFunSuite
-import org.neo4j.cypher.internal.compiler.v2_3.commands.expressions.Literal
+import org.neo4j.cypher.internal.compiler.v2_3.commands.expressions.{KernelPredicate, Expander, Literal}
 import org.neo4j.cypher.internal.compiler.v2_3.commands.values.{KeyToken, TokenType}
 import org.neo4j.cypher.internal.compiler.v2_3.commands.{LabelAction, LabelSetOp}
 import org.neo4j.cypher.internal.compiler.v2_3.pipes.matching.PatternNode
 import org.neo4j.cypher.internal.compiler.v2_3.spi.{IdempotentResult, LockingQueryContext, QueryContext}
 import org.neo4j.cypher.internal.frontend.v2_3.SemanticDirection
-import org.neo4j.graphdb.{Path, Node, Relationship}
+import org.neo4j.graphdb.{PropertyContainer, Path, Node, Relationship}
 import org.neo4j.kernel.api.constraints.{NodePropertyExistenceConstraint, UniquenessConstraint}
 import org.neo4j.kernel.api.index.IndexDescriptor
 
@@ -159,7 +159,7 @@ class SnitchingQueryContext extends QueryContext {
 
   def withAnyOpenQueryContext[T](work: (QueryContext) => T): T = ???
 
-  def uniqueIndexSeek(index: IndexDescriptor, value: Any): Option[Node] = ???
+  def lockingExactUniqueIndexSearch(index: IndexDescriptor, value: Any): Option[Node] = ???
 
   def commitAndRestartTx() { ??? }
 
@@ -188,4 +188,10 @@ class SnitchingQueryContext extends QueryContext {
   override def createRelationship(start: Long, end: Long, relType: Int) = ???
 
   override def isLabelSetOnNode(label: Int, node: Long): Boolean = ???
+
+  override def singleShortestPath(left: Node, right: Node, depth: Int, expander: Expander, pathPredicate: KernelPredicate[Path], filters: Seq[KernelPredicate[PropertyContainer]]): Option[Path] = ???
+
+  override def allShortestPath(left: Node, right: Node, depth: Int, expander: Expander, pathPredicate: KernelPredicate[Path], filters: Seq[KernelPredicate[PropertyContainer]]): Iterator[Path] = ???
+
+  override def detachDeleteNode(node: Node): Int = ???
 }

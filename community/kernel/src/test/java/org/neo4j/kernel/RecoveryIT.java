@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -68,6 +68,8 @@ public class RecoveryIT
         NeoStores neoStore =
                 ((GraphDatabaseAPI) recoveredDatabase).getDependencyResolver().resolveDependency( NeoStores.class );
         assertEquals( numberOfNodes, neoStore.getNodeStore().getHighId() );
+        // Make sure id generator has been rebuilt so this doesn't throw null pointer exception
+        assertTrue( neoStore.getNodeStore().nextId() > 0 );
 
         database.shutdown();
         recoveredDatabase.shutdown();

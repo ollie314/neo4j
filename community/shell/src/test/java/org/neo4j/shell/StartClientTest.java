@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -34,7 +34,7 @@ import java.rmi.RemoteException;
 
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.factory.GraphDatabaseBuilder;
-import org.neo4j.helpers.Settings;
+import org.neo4j.kernel.configuration.Settings;
 import org.neo4j.shell.impl.AbstractClient;
 import org.neo4j.shell.kernel.GraphDatabaseShellServer;
 import org.neo4j.test.ImpermanentDatabaseRule;
@@ -42,7 +42,9 @@ import org.neo4j.test.SuppressOutput;
 
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.startsWith;
 import static org.hamcrest.Matchers.not;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyMap;
@@ -170,6 +172,44 @@ public class StartClientTest
 
         // verify
         verify( databaseShellServer ).shutdown();
+    }
+
+    @Test
+    public void shouldReportEditionThroughDbInfoApp() throws Exception
+    {
+        // given
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        CtrlCHandler ctrlCHandler = mock( CtrlCHandler.class );
+        StartClient client = new StartClient(
+                new PrintStream( out ), new PrintStream( err ) );
+
+        // when
+        client.start( new String[]{"-path", db.getGraphDatabaseAPI().getStoreDir(),
+                "-c", "dbinfo -g Configuration edition"}, ctrlCHandler );
+
+        // then
+        assertEquals( 0, err.size() );
+        assertThat( out.toString(), containsString( "\"edition\": \"Community\"" ) );
+    }
+
+    @Test
+    public void shouldPrintVersionAndExit() throws Exception
+    {
+        // given
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        CtrlCHandler ctrlCHandler = mock( CtrlCHandler.class );
+        StartClient client = new StartClient(
+                new PrintStream( out ), new PrintStream( err ) );
+
+        // when
+        client.start( new String[]{"-version"}, ctrlCHandler );
+
+        // then
+        assertEquals( 0, err.size() );
+        String version = out.toString();
+        assertThat( version, startsWith( "Neo4j Community, version " ) );
     }
 
     private String runAndCaptureOutput( String[] arguments )

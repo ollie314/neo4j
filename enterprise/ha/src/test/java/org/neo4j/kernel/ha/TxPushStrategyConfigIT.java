@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -39,12 +39,14 @@ import org.neo4j.kernel.impl.transaction.log.TransactionIdStore;
 import org.neo4j.test.SuppressOutput;
 import org.neo4j.test.ha.ClusterRule;
 
-import static java.lang.Math.max;
-import static java.lang.Math.min;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+
+import static java.lang.Math.max;
+import static java.lang.Math.min;
+
 import static org.neo4j.kernel.impl.ha.ClusterManager.allSeesAllAsAvailable;
 import static org.neo4j.kernel.impl.ha.ClusterManager.clusterOfSize;
 import static org.neo4j.kernel.impl.ha.ClusterManager.masterAvailable;
@@ -71,7 +73,7 @@ public class TxPushStrategyConfigIT
     @Test
     public void shouldPushToSlavesInDescendingOrder() throws Exception
     {
-        ManagedCluster cluster = startCluster( 4, 2, HaSettings.TxPushStrategy.fixed );
+        ManagedCluster cluster = startCluster( 4, 2, HaSettings.TxPushStrategy.fixed_descending );
 
         for ( int i = 0; i < 5; i++ )
         {
@@ -79,6 +81,21 @@ public class TxPushStrategyConfigIT
             assertLastTransactions( cluster, lastTx( THIRD_SLAVE, BASE_TX_ID + 1 + i ) );
             assertLastTransactions( cluster, lastTx( SECOND_SLAVE, BASE_TX_ID + 1 + i ) );
             assertLastTransactions( cluster, lastTx( FIRST_SLAVE, BASE_TX_ID ) );
+        }
+    }
+
+
+    @Test
+    public void shouldPushToSlavesInAscendingOrder() throws Exception
+    {
+        ManagedCluster cluster = startCluster( 4, 2, HaSettings.TxPushStrategy.fixed_ascending );
+
+        for ( int i = 0; i < 5; i++ )
+        {
+            createTransactionOnMaster( cluster );
+            assertLastTransactions( cluster, lastTx( FIRST_SLAVE, BASE_TX_ID + 1 + i ) );
+            assertLastTransactions( cluster, lastTx( SECOND_SLAVE, BASE_TX_ID + 1 + i ) );
+            assertLastTransactions( cluster, lastTx( THIRD_SLAVE, BASE_TX_ID ) );
         }
     }
 
@@ -113,7 +130,7 @@ public class TxPushStrategyConfigIT
     @Test
     public void shouldPushToOneLessSlaveOnSlaveCommit() throws Exception
     {
-        ManagedCluster cluster = startCluster( 4, 2, HaSettings.TxPushStrategy.fixed );
+        ManagedCluster cluster = startCluster( 4, 2, HaSettings.TxPushStrategy.fixed_descending );
 
         createTransactionOn( cluster, new InstanceId( FIRST_SLAVE ) );
         assertLastTransactions( cluster,
@@ -140,7 +157,7 @@ public class TxPushStrategyConfigIT
     @Test
     public void slavesListGetsUpdatedWhenSlaveLeavesNicely() throws Exception
     {
-        ManagedCluster cluster = startCluster( 3, 1, HaSettings.TxPushStrategy.fixed );
+        ManagedCluster cluster = startCluster( 3, 1, HaSettings.TxPushStrategy.fixed_ascending );
 
         cluster.shutdown( cluster.getAnySlave() );
         cluster.await( masterSeesSlavesAsAvailable( 1 ) );
@@ -149,7 +166,7 @@ public class TxPushStrategyConfigIT
     @Test
     public void slaveListIsCorrectAfterMasterSwitch() throws Exception
     {
-        ManagedCluster cluster = startCluster( 3, 1, HaSettings.TxPushStrategy.fixed );
+        ManagedCluster cluster = startCluster( 3, 1, HaSettings.TxPushStrategy.fixed_ascending );
         cluster.shutdown( cluster.getMaster() );
         cluster.await( masterAvailable() );
         HighlyAvailableGraphDatabase newMaster = cluster.getMaster();
@@ -163,7 +180,7 @@ public class TxPushStrategyConfigIT
     @Test
     public void slavesListGetsUpdatedWhenSlaveRageQuits() throws Throwable
     {
-        ManagedCluster cluster = startCluster( 3, 1, HaSettings.TxPushStrategy.fixed );
+        ManagedCluster cluster = startCluster( 3, 1, HaSettings.TxPushStrategy.fixed_ascending );
         cluster.fail( cluster.getAnySlave() );
 
         cluster.await( masterSeesSlavesAsAvailable( 1 ) );
@@ -172,9 +189,9 @@ public class TxPushStrategyConfigIT
     private ManagedCluster startCluster( int memberCount, final int pushFactor, final HaSettings.TxPushStrategy pushStrategy )
             throws Exception
     {
-        ManagedCluster cluster = clusterRule.provider( clusterOfSize( memberCount ) )
-                .config( HaSettings.tx_push_factor, "" + pushFactor )
-                .config( HaSettings.tx_push_strategy, pushStrategy.name() )
+        ManagedCluster cluster = clusterRule.withProvider( clusterOfSize( memberCount ) )
+                .withSharedSetting( HaSettings.tx_push_factor, "" + pushFactor )
+                .withSharedSetting( HaSettings.tx_push_strategy, pushStrategy.name() )
                 .startCluster();
 
         mapMachineIds( cluster );

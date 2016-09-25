@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,6 +26,7 @@ import org.neo4j.kernel.impl.factory.EditionModule;
 import org.neo4j.kernel.impl.factory.GraphDatabaseFacade;
 import org.neo4j.kernel.impl.factory.GraphDatabaseFacadeFactory;
 import org.neo4j.kernel.impl.factory.PlatformModule;
+import org.neo4j.udc.UsageDataKeys.OperationalMode;
 
 /**
  * This facade creates instances of the Enterprise edition of Neo4j.
@@ -37,7 +38,7 @@ public class EnterpriseFacadeFactory extends GraphDatabaseFacadeFactory
             GraphDatabaseFacade graphDatabaseFacade )
     {
         params.put( Configuration.editionName.name(), "Enterprise" );
-        return super.newFacade( storeDir, params, dependencies, graphDatabaseFacade );
+        return super.newFacade( storeDir, params, dependencies, graphDatabaseFacade, OperationalMode.single );
     }
 
     @Override

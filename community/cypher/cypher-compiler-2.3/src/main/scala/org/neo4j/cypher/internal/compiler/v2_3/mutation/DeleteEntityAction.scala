@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -46,13 +46,9 @@ case class DeleteEntityAction(elementToDelete: Expression, forced: Boolean)
 
   private def delete(x: graphdb.PropertyContainer, state: QueryState, forced: Boolean) {
     x match {
-      case n: graphdb.Node if !state.query.nodeOps.isDeleted(n) && forced =>
-        val rels = state.query.getRelationshipsForIds(n, SemanticDirection.BOTH, None)
-        rels.foreach(r => delete(r, state, forced))
-        state.query.nodeOps.delete(n)
-
       case n: graphdb.Node if !state.query.nodeOps.isDeleted(n) =>
-        state.query.nodeOps.delete(n)
+        if (forced) state.query.detachDeleteNode(n)
+        else state.query.nodeOps.delete(n)
 
       case r: graphdb.Relationship if !state.query.relationshipOps.isDeleted(r) =>
         state.query.relationshipOps.delete(r)
@@ -73,10 +69,11 @@ case class DeleteEntityAction(elementToDelete: Expression, forced: Boolean)
 
   def localEffects(symbols: SymbolTable) = elementToDelete match {
     case i: Identifier => symbols.identifiers(i.entityName) match {
-      case _: NodeType         => Effects(WritesAnyNode, WritesAnyNode, WritesAnyNodeProperty)
-      case _: RelationshipType => Effects(WritesRelationships, WritesAnyRelationshipProperty)
-      case _                   => Effects()
+      case _: NodeType         => Effects(DeletesNode, WritesAnyNode, WritesAnyNodeProperty)
+      case _: RelationshipType => Effects(DeletesRelationship, WritesRelationships, WritesAnyRelationshipProperty)
+      case _: PathType         => Effects(DeletesNode, DeletesRelationship, WritesRelationships, WritesAnyRelationshipProperty, WritesAnyNode, WritesAnyNodeProperty)
+      case _                   => Effects((AllWriteEffects | Effects(DeletesNode, DeletesRelationship)).effectsSet)
     }
-    case _ => AllWriteEffects
+    case _ => Effects((AllWriteEffects | Effects(DeletesNode, DeletesRelationship)).effectsSet)
   }
 }

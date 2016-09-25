@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -36,6 +36,12 @@ import static org.neo4j.metrics.MetricsSettings.gangliaEnabled;
 import static org.neo4j.metrics.MetricsSettings.gangliaInterval;
 import static org.neo4j.metrics.MetricsSettings.gangliaServer;
 
+/**
+ *  @deprecated  Ganglia support is experimental, and not guaranteed to work.
+ *  This built in support has been deprecated and will be removed from a subsequent version.
+ *  Please use {@link GraphiteOutput} instead
+ */
+@Deprecated
 public class GangliaOutput extends LifecycleAdapter
 {
     private final Config config;

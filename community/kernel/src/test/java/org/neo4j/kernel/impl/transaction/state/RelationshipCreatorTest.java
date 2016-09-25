@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -115,11 +115,14 @@ public class RelationshipCreatorTest
         }
 
         @Override
-        public void acquireExclusive( Locks.ResourceType resourceType, long resourceId )
+        public void acquireExclusive( Locks.ResourceType resourceType, long... resourceIds )
                 throws AcquireLockTimeoutException
         {
             assertEquals( ResourceTypes.RELATIONSHIP, resourceType );
-            relationshipLocksAcquired.add( resourceId );
+            for ( long resourceId : resourceIds )
+            {
+                relationshipLocksAcquired.add( resourceId );
+            }
         }
 
         protected void changingRelationship( long relId )

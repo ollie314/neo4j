@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -79,6 +79,13 @@ public class GuardingStatementOperations implements
     {
         guard.check();
         entityWriteDelegate.nodeDelete( state, nodeId );
+    }
+
+    @Override
+    public int nodeDetachDelete( KernelStatement state, long nodeId ) throws EntityNotFoundException
+    {
+        guard.check();
+        return entityWriteDelegate.nodeDetachDelete( state, nodeId );
     }
 
     @Override

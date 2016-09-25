@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -60,7 +60,7 @@ public class CommonAbstractStoreTest
         when( pageCache.map( eq( storeFile ), anyInt() ) ).thenReturn( storePagedFile );
         IdGenerator idGenerator = mock(
                 IdGenerator.class );
-        when( idGeneratorFactory.open( any( File.class ), anyInt(), eq( idType ), anyInt() ) )
+        when( idGeneratorFactory.open( any( File.class ), eq( idType ), anyInt() ) )
                 .thenReturn( idGenerator );
         CommonAbstractStore store = new TheStore( storeFile, config, idType, idGeneratorFactory, pageCache, LOG );
         store.initialise( false );

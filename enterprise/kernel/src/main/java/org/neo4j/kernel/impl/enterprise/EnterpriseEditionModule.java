@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,10 +19,17 @@
  */
 package org.neo4j.kernel.impl.enterprise;
 
+import org.neo4j.kernel.IdTypeConfigurationProvider;
+import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.impl.constraints.ConstraintSemantics;
+import org.neo4j.kernel.impl.enterprise.id.EnterpriseIdTypeConfigurationProvider;
 import org.neo4j.kernel.impl.factory.CommunityEditionModule;
 import org.neo4j.kernel.impl.factory.EditionModule;
 import org.neo4j.kernel.impl.factory.PlatformModule;
+import org.neo4j.kernel.impl.factory.StatementLocksFactorySelector;
+import org.neo4j.kernel.impl.locking.Locks;
+import org.neo4j.kernel.impl.locking.StatementLocksFactory;
+import org.neo4j.kernel.impl.logging.LogService;
 
 /**
  * This implementation of {@link EditionModule} creates the implementations of services
@@ -36,8 +43,20 @@ public class EnterpriseEditionModule extends CommunityEditionModule
     }
 
     @Override
+    protected IdTypeConfigurationProvider createIdTypeConfigurationProvider( Config config )
+    {
+        return new EnterpriseIdTypeConfigurationProvider( config );
+    }
+
+    @Override
     protected ConstraintSemantics createSchemaRuleVerifier()
     {
         return new EnterpriseConstraintSemantics();
+    }
+
+    @Override
+    protected StatementLocksFactory createStatementLocksFactory( Locks locks, Config config, LogService logService )
+    {
+        return new StatementLocksFactorySelector( locks, config, logService ).select();
     }
 }

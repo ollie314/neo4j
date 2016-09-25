@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -72,7 +72,7 @@ public class StoreProcessorTest
             public NodeRecord answer( InvocationOnMock invocation ) throws Throwable
             {
                 processor.stop();
-                return new NodeRecord( 0, false, 0, 0 );
+                return new NodeRecord( 2, true, false, 0, 0, 0 );
             }
         } );
 

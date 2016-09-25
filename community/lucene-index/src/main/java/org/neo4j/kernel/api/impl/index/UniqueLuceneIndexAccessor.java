@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -42,10 +42,10 @@ import org.neo4j.kernel.impl.api.index.UniquePropertyIndexUpdater;
 class UniqueLuceneIndexAccessor extends LuceneIndexAccessor
 {
     public UniqueLuceneIndexAccessor( LuceneDocumentStructure documentStructure,
-                                      IndexWriterFactory<ReservingLuceneIndexWriter> indexWriterFactory,
-                                      DirectoryFactory dirFactory, File dirFile ) throws IOException
+            boolean readOnly, IndexWriterFactory<ReservingLuceneIndexWriter> indexWriterFactory,
+            DirectoryFactory dirFactory, File indexFolder ) throws IOException
     {
-        super( documentStructure, indexWriterFactory, dirFactory, dirFile, -1 /* unused */ );
+        super( documentStructure, readOnly, indexWriterFactory, dirFactory, indexFolder, -1 /* unused */ );
     }
 
     @Override

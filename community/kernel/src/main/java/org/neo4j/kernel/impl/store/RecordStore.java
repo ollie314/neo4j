@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -70,15 +70,6 @@ public interface RecordStore<R extends AbstractBaseRecord> extends IdSequence
     void flush();
 
     int getNumberOfReservedLowIds();
-
-    Predicate<AbstractBaseRecord> IN_USE = new Predicate<AbstractBaseRecord>()
-    {
-        @Override
-        public boolean test( AbstractBaseRecord item )
-        {
-            return item.inUse();
-        }
-    };
 
     class Delegator<R extends AbstractBaseRecord> implements RecordStore<R>
     {
@@ -287,14 +278,17 @@ public interface RecordStore<R extends AbstractBaseRecord> extends IdSequence
                             while ( ids.hasNext() )
                             {
                                 R record = store.forceGetRecord( ids.next() );
-                                for ( Predicate<? super R> filter : filters )
+                                if ( record.inUse() )
                                 {
-                                    if ( !filter.test( record ) )
+                                    for ( Predicate<? super R> filter : filters )
                                     {
-                                        continue scan;
+                                        if ( !filter.test( record ) )
+                                        {
+                                            continue scan;
+                                        }
                                     }
+                                    return record;
                                 }
-                                return record;
                             }
                             return null;
                         }

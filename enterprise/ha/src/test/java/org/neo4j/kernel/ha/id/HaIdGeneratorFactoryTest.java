@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,19 +24,25 @@ import org.junit.Test;
 
 import java.io.File;
 
+import org.neo4j.com.ComException;
 import org.neo4j.com.RequestContext;
 import org.neo4j.com.Response;
+import org.neo4j.graphdb.TransientTransactionFailureException;
 import org.neo4j.graphdb.mockfs.EphemeralFileSystemAbstraction;
+import org.neo4j.kernel.CommunityIdTypeConfigurationProvider;
 import org.neo4j.kernel.IdType;
 import org.neo4j.kernel.ha.DelegateInvocationHandler;
 import org.neo4j.kernel.ha.com.RequestContextFactory;
 import org.neo4j.kernel.ha.com.master.Master;
+import org.neo4j.kernel.ha.id.HaIdGeneratorFactory.IdRangeIterator;
 import org.neo4j.kernel.impl.store.id.IdGenerator;
+import org.neo4j.kernel.impl.store.id.IdGeneratorImpl;
 import org.neo4j.kernel.impl.store.id.IdRange;
 import org.neo4j.logging.NullLogProvider;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
@@ -44,6 +50,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.neo4j.kernel.ha.id.HaIdGeneratorFactory.VALUE_REPRESENTING_NULL;
 
 public class HaIdGeneratorFactoryTest
 {
@@ -190,6 +197,47 @@ public class HaIdGeneratorFactoryTest
         assertFalse( "Id file should've been deleted by now", fs.fileExists( idFile ) );
     }
 
+    @Test( expected = TransientTransactionFailureException.class )
+    public void shouldTranslateComExceptionsIntoTransientTransactionFailures() throws Exception
+    {
+        when( master.allocateIds( any( RequestContext.class ), any( IdType.class ) ) ).thenThrow( new ComException() );
+        IdGenerator generator = switchToSlave();
+        generator.nextId();
+    }
+
+    @Test
+    public void shouldNotUseForbiddenMinusOneIdFromIdBatches() throws Exception
+    {
+        // GIVEN
+        long[] defragIds = {3, 5};
+        int size = 10;
+        long low = IdGeneratorImpl.INTEGER_MINUS_ONE - size/2;
+        IdRange idRange = new IdRange( defragIds, low, size );
+
+        // WHEN
+        IdRangeIterator iterartor = new IdRangeIterator( idRange );
+
+        // THEN
+        for ( long id : defragIds )
+        {
+            assertEquals( id, iterartor.next() );
+        }
+
+        int expectedRangeSize = size - 1; // due to the forbidden id
+        for ( long i = 0, expectedId = low; i < expectedRangeSize; i++, expectedId++ )
+        {
+            if ( expectedId == IdGeneratorImpl.INTEGER_MINUS_ONE )
+            {
+                expectedId++;
+            }
+
+            long id = iterartor.next();
+            assertNotEquals( IdGeneratorImpl.INTEGER_MINUS_ONE, id );
+            assertEquals( expectedId, id );
+        }
+        assertEquals( VALUE_REPRESENTING_NULL, iterartor.next() );
+    }
+
     private Master master;
     private DelegateInvocationHandler<Master> masterDelegate;
     private EphemeralFileSystemAbstraction fs;
@@ -202,7 +250,7 @@ public class HaIdGeneratorFactoryTest
         masterDelegate = new DelegateInvocationHandler<>( Master.class );
         fs = new EphemeralFileSystemAbstraction();
         fac  = new HaIdGeneratorFactory( masterDelegate, NullLogProvider.getInstance(),
-                mock( RequestContextFactory.class ), fs );
+                mock( RequestContextFactory.class ), fs, new CommunityIdTypeConfigurationProvider() );
     }
 
     @SuppressWarnings( "unchecked" )

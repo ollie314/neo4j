@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -38,27 +38,27 @@ import org.neo4j.kernel.configuration.Title;
 import org.neo4j.kernel.impl.cache.MonitorGc;
 import org.neo4j.logging.Level;
 
-import static org.neo4j.helpers.Settings.ANY;
-import static org.neo4j.helpers.Settings.BOOLEAN;
-import static org.neo4j.helpers.Settings.BYTES;
-import static org.neo4j.helpers.Settings.DEFAULT;
-import static org.neo4j.helpers.Settings.DOUBLE;
-import static org.neo4j.helpers.Settings.DURATION;
-import static org.neo4j.helpers.Settings.FALSE;
-import static org.neo4j.helpers.Settings.INTEGER;
-import static org.neo4j.helpers.Settings.LONG;
-import static org.neo4j.helpers.Settings.NO_DEFAULT;
-import static org.neo4j.helpers.Settings.PATH;
-import static org.neo4j.helpers.Settings.STRING;
-import static org.neo4j.helpers.Settings.TRUE;
-import static org.neo4j.helpers.Settings.basePath;
-import static org.neo4j.helpers.Settings.illegalValueMessage;
-import static org.neo4j.helpers.Settings.list;
-import static org.neo4j.helpers.Settings.matches;
-import static org.neo4j.helpers.Settings.max;
-import static org.neo4j.helpers.Settings.min;
-import static org.neo4j.helpers.Settings.options;
-import static org.neo4j.helpers.Settings.setting;
+import static org.neo4j.kernel.configuration.Settings.ANY;
+import static org.neo4j.kernel.configuration.Settings.BOOLEAN;
+import static org.neo4j.kernel.configuration.Settings.BYTES;
+import static org.neo4j.kernel.configuration.Settings.DEFAULT;
+import static org.neo4j.kernel.configuration.Settings.DOUBLE;
+import static org.neo4j.kernel.configuration.Settings.DURATION;
+import static org.neo4j.kernel.configuration.Settings.FALSE;
+import static org.neo4j.kernel.configuration.Settings.INTEGER;
+import static org.neo4j.kernel.configuration.Settings.LONG;
+import static org.neo4j.kernel.configuration.Settings.NO_DEFAULT;
+import static org.neo4j.kernel.configuration.Settings.PATH;
+import static org.neo4j.kernel.configuration.Settings.STRING;
+import static org.neo4j.kernel.configuration.Settings.TRUE;
+import static org.neo4j.kernel.configuration.Settings.basePath;
+import static org.neo4j.kernel.configuration.Settings.illegalValueMessage;
+import static org.neo4j.kernel.configuration.Settings.list;
+import static org.neo4j.kernel.configuration.Settings.matches;
+import static org.neo4j.kernel.configuration.Settings.max;
+import static org.neo4j.kernel.configuration.Settings.min;
+import static org.neo4j.kernel.configuration.Settings.options;
+import static org.neo4j.kernel.configuration.Settings.setting;
 
 /**
  * Settings for Neo4j. Use this with {@link GraphDatabaseBuilder}.
@@ -115,7 +115,7 @@ public abstract class GraphDatabaseSettings
     @Internal
     public static final Setting<String> cypher_runtime = setting(
             "dbms.cypher.runtime",
-            options( "INTERPRETED", "COMPILED", DEFAULT ), DEFAULT );
+            options( "INTERPRETED", DEFAULT ), DEFAULT );
 
     @Description( "Enable tracing of compilation in cypher." )
     @Internal
@@ -129,7 +129,7 @@ public abstract class GraphDatabaseSettings
                   "the plan is considered stale and will be replanned. " +
                   "A value of 0 means always replan, and 1 means never replan." )
     public static Setting<Double> query_statistics_divergence_threshold = setting(
-            "dbms.cypher.statistics_divergence_threshold", DOUBLE, "0.5", min( 0.0 ), max(
+            "dbms.cypher.statistics_divergence_threshold", DOUBLE, "0.75", min( 0.0 ), max(
                     1.0 ) );
 
     @Description( "The threshold when a warning is generated if a label scan is done after a load csv " +
@@ -138,8 +138,23 @@ public abstract class GraphDatabaseSettings
     public static Setting<Long> query_non_indexed_label_warning_threshold = setting(
             "dbms.cypher.non_indexed_label_warning_threshold", LONG, "10000" );
 
+    @Description( "To improve IDP query planning time, we can restrict the internal planning table size, " +
+                  "triggering compaction of candidate plans. The smaller the threshold the faster the planning, " +
+                  "but the higher the risk of sub-optimal plans." )
+    @Internal
+    public static Setting<Integer> cypher_idp_solver_table_threshold = setting(
+            "dbms.cypher.idp_solver_table_threshold", INTEGER, "128", min( 16 ) );
+
+    @Description( "To improve IDP query planning time, we can restrict the internal planning loop duration, " +
+                  "triggering more frequent compaction of candidate plans. The smaller the threshold the " +
+                  "faster the planning, but the higher the risk of sub-optimal plans." )
+    @Internal
+    public static Setting<Long> cypher_idp_solver_duration_threshold = setting(
+            "dbms.cypher.idp_solver_duration_threshold", LONG, "1000", min( 10L ) );
+
     @Description("The minimum lifetime of a query plan before a query is considered for replanning")
-    public static Setting<Long> cypher_min_replan_interval = setting( "dbms.cypher.min_replan_interval", DURATION, "1s" );
+    public static Setting<Long> cypher_min_replan_interval =
+            setting( "dbms.cypher.min_replan_interval", DURATION, "10s" );
 
     @Description( "Determines if Cypher will allow using file URLs when loading data using `LOAD CSV`. Setting this "
                   + "value to `false` will cause Neo4j to fail `LOAD CSV` clauses that load data from the file system." )
@@ -181,8 +196,9 @@ public abstract class GraphDatabaseSettings
     public static final Setting<Long> store_interval_log_rotation_wait_time =
             setting( "store.interval.log.rotation", DURATION, "10m" );
 
-    @Description( "Minimum time (in seconds) after last rotation of the internal log before it may be rotated again." )
-    public static final Setting<Integer> store_internal_log_rotation_delay = setting("store.internal_log.rotation_threshold", INTEGER, "300", min(0), max( Integer.MAX_VALUE ) );
+    @Description( "Minimum time interval after last rotation of the internal log before it may be rotated again." )
+    public static final Setting<Long> store_internal_log_rotation_delay =
+            setting("store.internal_log.rotation_delay", DURATION, "300s" );
 
     @Description( "Maximum number of history files for the internal log." )
     public static final Setting<Integer> store_internal_log_max_archives = setting("store.internal_log.max_archives", INTEGER, "7", min(1) );
@@ -477,6 +493,9 @@ public abstract class GraphDatabaseSettings
     @Description( "Log executed queries that take longer than the configured threshold" )
     public static final Setting<File> log_queries_filename = setting("dbms.querylog.filename", PATH, NO_DEFAULT );
 
+    @Description( "Log parameters for executed queries that took longer than the configured threshold." )
+    public static final Setting<Boolean> log_queries_parameter_logging_enabled = setting( "dbms.querylog.parameter_logging_enabled", BOOLEAN, TRUE );
+
     @Description("If the execution of query takes more time than this threshold, the query is logged - " +
                  "provided query logging is enabled. Defaults to 0 seconds, that is all queries are logged.")
     public static final Setting<Long> log_queries_threshold = setting("dbms.querylog.threshold", DURATION, "0s");
@@ -495,4 +514,9 @@ public abstract class GraphDatabaseSettings
     @Internal
     public static final Setting<Integer> batch_inserter_batch_size = setting( "batch_inserter_batch_size", INTEGER,
             "10000" );
+
+    @Description( "Create an archive of an index before re-creating it if failing to load on startup." )
+    @Internal
+    public static final Setting<Boolean> archive_failed_index = setting(
+            "unsupported.dbms.index.archive_failed", BOOLEAN, "false" );
 }

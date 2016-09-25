@@ -11,13 +11,15 @@
 
   <groupId>org.neo4j</groupId>
   <artifactId>parent</artifactId>
-  <version>2.3.1-SNAPSHOT</version>
+  <version>2.3.8-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>Neo4j</name>
   <description>Neo4j Graph Database</description>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.source>1.7</maven.compiler.source>
+    <maven.compiler.target>1.7</maven.compiler.target>
     <jta.groupId>org.apache.geronimo.specs</jta.groupId>
     <jta.artifactId>geronimo-jta_1.1_spec</jta.artifactId>
     <jta.version>1.1.1</jta.version>
@@ -27,10 +29,12 @@
     <lucene.version>3.6.2</lucene.version>
     <powermock.version>1.5.5</powermock.version>
     <logback-classic.version>1.1.2</logback-classic.version>
+    <bouncycastle.version>1.52</bouncycastle.version>
     <generate-config-docs-phase>prepare-package</generate-config-docs-phase>
     <hsqldb.version>2.3.2</hsqldb.version>
-    <test.runner.jvm.settings>-Xmx1G -XX:MaxPermSize=128M -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=target/test-data -Dorg.neo4j.unsafe.impl.internal.dragons.UnsafeUtil.DIRTY_MEMORY=true</test.runner.jvm.settings>
+    <test.runner.jvm.settings>-Xmx2G -XX:MaxPermSize=128M -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=target/test-data -Dorg.neo4j.unsafe.impl.internal.dragons.UnsafeUtil.DIRTY_MEMORY=true -XX:-OmitStackTraceInFastThrow</test.runner.jvm.settings>
     <doclint-groups>reference</doclint-groups>
+    <git.commit>unknown-commit</git.commit>
   </properties>
 
   <modules>
@@ -126,28 +130,6 @@
           <version>1.2.0.0</version>
         </plugin>
         <plugin>
-          <groupId>pl.project13.maven</groupId>
-          <artifactId>git-commit-id-plugin</artifactId>
-          <version>2.1.13</version>
-          <executions>
-            <execution>
-              <id>generate-git-hash</id>
-              <goals>
-                <goal>revision</goal>
-              </goals>
-            </execution>
-          </executions>
-          <configuration>
-            <skipPoms>false</skipPoms>
-            <dotGitDirectory>${project.basedir}/.git</dotGitDirectory>
-            <gitDescribe>
-              <dirty>-dirty</dirty>
-              <abbrev>7</abbrev>
-              <forceLongFormat>true</forceLongFormat>
-            </gitDescribe>
-          </configuration>
-        </plugin>
-        <plugin>
           <groupId>org.neo4j.build.plugins</groupId>
           <artifactId>licensing-maven-plugin</artifactId>
           <version>1.7.5</version>
@@ -218,11 +200,60 @@
             </dependency>
           </dependencies>
         </plugin>
+        <plugin>
+          <groupId>org.eclipse.m2e</groupId>
+          <artifactId>lifecycle-mapping</artifactId>
+          <version>1.0.0</version>
+          <configuration>
+            <lifecycleMappingMetadata>
+              <pluginExecutions>
+                <pluginExecution>
+                  <pluginExecutionFilter>
+                    <groupId>net.alchim31.maven</groupId>
+                    <artifactId>scala-maven-plugin</artifactId>
+                    <versionRange>[3.1.0,)</versionRange>
+                    <goals>
+                      <goal>add-source</goal>
+                      <goal>compile</goal>
+                      <goal>testCompile</goal>
+                      <goal>doc</goal>
+                      <goal>doc-jar</goal>
+                    </goals>
+                  </pluginExecutionFilter>
+                  <action>
+                    <ignore />
+                  </action>
+                </pluginExecution>
+              </pluginExecutions>
+            </lifecycleMappingMetadata>
+          </configuration>
+        </plugin>
       </plugins>
     </pluginManagement>
   </build>
 
   <profiles>
+    <!--
+     Git information extraction profiles.
+     Activate by adding the required Git information to the environment, e.g. on *nix:
+
+     export GIT_COMMIT
+     GIT_COMMIT=$(git rev-parse HEAD)
+    -->
+    <profile>
+      <id>attach-git-info-commit</id>
+      <activation>
+        <activeByDefault>false</activeByDefault>
+        <property>
+          <name>env.GIT_COMMIT</name>
+        </property>
+      </activation>
+      <properties>
+        <git.commit>${env.GIT_COMMIT}</git.commit>
+      </properties>
+    </profile>
+
+    <!-- Build configuration profiles -->
     <profile>
       <id>neo-full-build</id>
       <activation>
@@ -361,42 +392,6 @@
         </plugins>
       </build>
     </profile>
-    <profile><!-- used for testing -->
-      <id>unix-dependency-tools.jar</id>
-      <activation>
-        <file>
-          <exists>${java.home}/../lib/tools.jar</exists>
-        </file>
-      </activation>
-      <dependencies>
-        <dependency>
-          <groupId>com.sun.tools</groupId>
-          <artifactId>tools</artifactId>
-          <version>${sun.tools.version}</version>
-          <scope>system</scope>
-          <systemPath>${java.home}/../lib/tools.jar</systemPath>
-          <optional>true</optional>
-        </dependency>
-      </dependencies>
-    </profile>
-    <profile><!-- used for testing -->
-      <id>Windows-dependency-tools.jar</id>
-      <activation>
-        <os>
-          <family>Windows</family>
-        </os>
-      </activation>
-      <dependencies>
-        <dependency>
-          <groupId>com.sun.tools</groupId>
-          <artifactId>tools</artifactId>
-          <version>${sun.tools.version}</version>
-          <scope>system</scope>
-          <systemPath>${java.home}\\..\\lib\\tools.jar</systemPath>
-          <optional>true</optional>
-        </dependency>
-      </dependencies>
-    </profile>
     <profile>
       <id>java8-set-javadoc-doclint</id>
       <activation>
@@ -513,14 +508,6 @@
           </exclusion>
         </exclusions>
       </dependency>
-<!--
-      <dependency>
-        <groupId>org.ow2.jotm</groupId>
-        <artifactId>jotm-core</artifactId>
-        <version>2.2.3</version>
-        <scope>test</scope>
-      </dependency>
--->
       <dependency>
         <groupId>geronimo-spec</groupId>
         <artifactId>geronimo-spec-j2ee</artifactId>
@@ -587,7 +574,7 @@
       <dependency>
         <groupId>io.netty</groupId>
         <artifactId>netty</artifactId>
-        <version>3.6.3.Final</version>
+        <version>3.9.9.Final</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
@@ -701,7 +688,12 @@
       <dependency>
         <groupId>org.bouncycastle</groupId>
         <artifactId>bcprov-jdk15on</artifactId>
-        <version>1.52</version>
+        <version>${bouncycastle.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.bouncycastle</groupId>
+        <artifactId>bcpkix-jdk15on</artifactId>
+        <version>${bouncycastle.version}</version>
       </dependency>
       <dependency>
         <groupId>org.neo4j.3rdparty.javax.ws.rs</groupId>

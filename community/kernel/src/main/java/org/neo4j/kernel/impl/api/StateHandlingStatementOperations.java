@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -336,6 +336,13 @@ public class StateHandlingStatementOperations implements
     }
 
     @Override
+    public int nodeDetachDelete( KernelStatement state, long nodeId ) throws EntityNotFoundException
+    {
+        nodeDelete( state, nodeId );
+        return 0;
+    }
+
+    @Override
     public long relationshipCreate( KernelStatement state,
             int relationshipTypeId,
             long startNodeId,
@@ -381,14 +388,16 @@ public class StateHandlingStatementOperations implements
     @Override
     public PrimitiveLongIterator nodesGetAll( KernelStatement state )
     {
-        return state.txState().augmentNodesGetAll( storeLayer.nodesGetAll() );
+        PrimitiveLongIterator iterator = storeLayer.nodesGetAll();
+        return state.hasTxStateWithChanges() ? state.txState().augmentNodesGetAll( iterator ) : iterator;
     }
 
     @Override
 
     public RelationshipIterator relationshipsGetAll( KernelStatement state )
     {
-        return state.txState().augmentRelationshipsGetAll( storeLayer.relationshipsGetAll() );
+        RelationshipIterator iterator = storeLayer.relationshipsGetAll();
+        return state.hasTxStateWithChanges() ? state.txState().augmentRelationshipsGetAll( iterator ) : iterator;
     }
 
     @Override
@@ -502,7 +511,8 @@ public class StateHandlingStatementOperations implements
         try
         {
             IndexDescriptor index = new IndexDescriptor( labelId, propertyKeyId );
-            if ( state.txState().constraintIndexDoUnRemove( index ) ) // ..., DROP, *CREATE*
+            if ( state.hasTxStateWithChanges() &&
+                 state.txState().constraintIndexDoUnRemove( index ) ) // ..., DROP, *CREATE*
             { // creation is undoing a drop
                 if ( !state.txState().constraintDoUnRemove( constraint ) ) // CREATE, ..., DROP, *CREATE*
                 { // ... the drop we are undoing did itself undo a prior create...

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -52,7 +52,6 @@ import org.neo4j.test.PageCacheRule;
 
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.mock;
-import static org.neo4j.kernel.impl.store.StoreFactory.SF_CREATE;
 
 public class ApplyRecoveredTransactionsTest
 {
@@ -119,7 +118,7 @@ public class ApplyRecoveredTransactionsTest
         File storeDir = new File( "dir" );
         StoreFactory storeFactory = new StoreFactory( storeDir, new Config(), new DefaultIdGeneratorFactory( fs ),
                 pageCacheRule.getPageCache( fs ), fs, NullLogProvider.getInstance() );
-        neoStores = storeFactory.openNeoStores( SF_CREATE );
+        neoStores = storeFactory.openAllNeoStores( true );
     }
 
     @After

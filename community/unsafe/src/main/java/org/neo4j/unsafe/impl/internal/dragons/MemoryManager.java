@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -32,8 +32,7 @@ public final class MemoryManager
     /**
      * The amount of memory, in bytes, to grab in each Slab.
      */
-    private static final long GRAB_SIZE = Integer.getInteger(
-            MemoryManager.class.getName() + ".GRAB_SIZE", 512 * 1024 ); // 512 KiB
+    private static final long GRAB_SIZE = FeatureToggles.getInteger( MemoryManager.class, "GRAB_SIZE", 512 * 1024 ); // 512 KiB
 
     /**
      * The amount of memory that this memory manager can still allocate.

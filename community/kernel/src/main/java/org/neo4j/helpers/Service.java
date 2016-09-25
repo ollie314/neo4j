@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -34,6 +34,8 @@ import java.util.ServiceLoader;
 import java.util.Set;
 
 import org.neo4j.helpers.collection.PrefetchingIterator;
+
+import static org.neo4j.unsafe.impl.internal.dragons.FeatureToggles.flag;
 
 /**
  * A utility for locating services. This implements the same functionality as <a
@@ -117,7 +119,7 @@ public abstract class Service
      * Enabling this is useful for debugging why services aren't loaded where you would expect them to.
      */
     private static final boolean printServiceLoaderStackTraces =
-            Boolean.getBoolean( "org.neo4j.helpers.Service.printServiceLoaderStackTraces" );
+            flag( Service.class, "printServiceLoaderStackTraces", false );
 
     /**
      * Designates that a class implements the specified service and should be

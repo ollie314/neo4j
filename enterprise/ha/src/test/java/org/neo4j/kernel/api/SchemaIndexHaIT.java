@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -68,6 +68,7 @@ import org.neo4j.kernel.impl.ha.ClusterManager.ManagedCluster;
 import org.neo4j.kernel.impl.spi.KernelContext;
 import org.neo4j.kernel.impl.storemigration.StoreMigrationParticipant;
 import org.neo4j.kernel.lifecycle.Lifecycle;
+import org.neo4j.logging.NullLogProvider;
 import org.neo4j.register.Register.DoubleLong;
 import org.neo4j.test.DoubleLatch;
 import org.neo4j.test.ha.ClusterRule;
@@ -129,7 +130,7 @@ public class SchemaIndexHaIT
     {
         // GIVEN a cluster of 3
         ControlledGraphDatabaseFactory dbFactory = new ControlledGraphDatabaseFactory();
-        ManagedCluster cluster = clusterRule.factory( dbFactory ).startCluster(  );
+        ManagedCluster cluster = clusterRule.withDbFactory( dbFactory ).startCluster();
         HighlyAvailableGraphDatabase firstMaster = cluster.getMaster();
 
         // where the master gets some data created as well as an index
@@ -181,7 +182,7 @@ public class SchemaIndexHaIT
         // GIVEN
         ControlledGraphDatabaseFactory dbFactory = new ControlledGraphDatabaseFactory( IS_MASTER );
 
-        ManagedCluster cluster = clusterRule.factory( dbFactory ).startCluster( );
+        ManagedCluster cluster = clusterRule.withDbFactory( dbFactory ).startCluster( );
 
         try
         {
@@ -245,7 +246,7 @@ public class SchemaIndexHaIT
         // GIVEN
         ControlledGraphDatabaseFactory dbFactory = new ControlledGraphDatabaseFactory();
 
-        ManagedCluster cluster = clusterRule.factory( dbFactory ).startCluster(  );
+        ManagedCluster cluster = clusterRule.withDbFactory( dbFactory ).startCluster();
         cluster.await( allSeesAllAsAvailable(), 120 );
 
         HighlyAvailableGraphDatabase slave = cluster.getAnySlave();
@@ -556,14 +557,16 @@ public class SchemaIndexHaIT
             {
                 ControlledSchemaIndexProvider provider = new ControlledSchemaIndexProvider(
                         new LuceneSchemaIndexProvider( new DefaultFileSystemAbstraction(),
-                                DirectoryFactory.PERSISTENT, context.storeDir() ) );
+                                DirectoryFactory.PERSISTENT, context.storeDir(), NullLogProvider.getInstance(),
+                                deps.config(), context.operationalMode() ) );
                 perDbIndexProvider.put( deps.db(), provider );
                 return provider;
             }
             else
             {
                 return new LuceneSchemaIndexProvider( new DefaultFileSystemAbstraction(),
-                        DirectoryFactory.PERSISTENT, context.storeDir() );
+                        DirectoryFactory.PERSISTENT, context.storeDir(), NullLogProvider.getInstance(),
+                        deps.config(), context.operationalMode() );
             }
         }
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,7 +27,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 
 import org.neo4j.collection.primitive.Primitive;
 import org.neo4j.collection.primitive.PrimitiveLongObjectMap;
@@ -241,17 +240,6 @@ public class OnlineIndexUpdatesValidatorTest
         when( neoStores.getNodeStore() ).thenReturn( nodeStore );
         when( neoStores.getPropertyStore() ).thenReturn( propertyStore );
         return new OnlineIndexUpdatesValidator( neoStores, null, propertyLoader, indexingService, ONLINE );
-    }
-
-    private static Command nodeAddRandomLabelsCommand( long nodeId )
-    {
-        NodeRecord before = new NodeRecord( nodeId, true, false, NO_NEXT_RELATIONSHIP.intValue(),
-                NO_NEXT_PROPERTY.intValue(), NO_LABELS_FIELD.intValue() );
-        NodeRecord after = new NodeRecord( nodeId, true, false, NO_NEXT_RELATIONSHIP.intValue(),
-                NO_NEXT_PROPERTY.intValue(), ThreadLocalRandom.current().nextLong( 100 ) );
-        NodeCommand command = new NodeCommand();
-        command.init( before, after );
-        return command;
     }
 
     private static NodePropertyCommands createNodeWithLabelAndPropertyCommands( long nodeId, int label, int property )

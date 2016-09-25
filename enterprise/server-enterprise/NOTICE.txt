@@ -48,12 +48,12 @@ Apache Software License, Version 2.0
   Jetty :: XML utilities
   Lucene Core
   Metrics Core
+  Netty
   Netty/All-in-One
   opencsv
   parboiled-core
   parboiled-scala
   RRD4J
-  The Netty Project
 
 BSD - Scala License
   Scala Library
@@ -64,6 +64,7 @@ BSD License
   scala-parser-combinators
 
 Bouncy Castle License
+  Bouncy Castle PKIX, CMS, EAC, TSP, PKCS, OCSP, CMP, and CRMF APIs
   Bouncy Castle Provider
 
 Common Development and Distribution License Version 1.1

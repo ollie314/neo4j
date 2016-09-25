@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,17 +23,32 @@ import org.junit.Test;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReferenceArray;
+
+import org.neo4j.helpers.Clock;
 import org.neo4j.helpers.collection.Iterables;
-import org.neo4j.kernel.impl.api.store.ProcedureCache;
-import org.neo4j.kernel.impl.constraints.ConstraintSemantics;
 import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.api.exceptions.TransactionFailureException;
+import org.neo4j.kernel.configuration.Config;
+import org.neo4j.kernel.impl.api.store.ProcedureCache;
 import org.neo4j.kernel.impl.api.store.StoreReadLayer;
 import org.neo4j.kernel.impl.api.store.StoreStatement;
+import org.neo4j.kernel.impl.constraints.ConstraintSemantics;
 import org.neo4j.kernel.impl.locking.LockGroup;
 import org.neo4j.kernel.impl.locking.Locks;
+import org.neo4j.kernel.impl.locking.SimpleStatementLocksFactory;
 import org.neo4j.kernel.impl.store.MetaDataStore;
 import org.neo4j.kernel.impl.store.NeoStores;
+import org.neo4j.kernel.impl.store.TransactionId;
 import org.neo4j.kernel.impl.store.record.NodeRecord;
 import org.neo4j.kernel.impl.transaction.TransactionHeaderInformationFactory;
 import org.neo4j.kernel.impl.transaction.TransactionMonitor;
@@ -47,12 +62,20 @@ import org.neo4j.kernel.impl.transaction.tracing.CommitEvent;
 import org.neo4j.kernel.lifecycle.LifeSupport;
 import org.neo4j.kernel.monitoring.tracing.Tracers;
 import org.neo4j.logging.NullLog;
+import org.neo4j.test.Race;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.locks.LockSupport.parkNanos;
 import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.not;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.RETURNS_MOCKS;
 import static org.mockito.Mockito.mock;
@@ -101,7 +124,7 @@ public class KernelTransactionsTest
         assertThat( postDispose, not( equalTo( first ) ) );
         assertThat( postDispose, not( equalTo( second ) ) );
 
-        assertTrue( leftOpen.shouldBeTerminated() );
+        assertTrue( leftOpen.getReasonIfTerminated() != null );
     }
 
     @Test
@@ -124,6 +147,177 @@ public class KernelTransactionsTest
         assertTrue( additionalHeader.length > 0 );
     }
 
+    @Test
+    public void shouldReuseClosedTransactionObjects() throws Exception
+    {
+        // GIVEN
+        KernelTransactions transactions = newKernelTransactions();
+        KernelTransaction a = transactions.newInstance();
+
+        // WHEN
+        a.close();
+        KernelTransaction b = transactions.newInstance();
+
+        // THEN
+        assertSame( a, b );
+    }
+
+    @Test
+    public void shouldTellWhenTransactionsFromSnapshotHaveBeenClosed() throws Exception
+    {
+        // GIVEN
+        KernelTransactions transactions = newKernelTransactions();
+        KernelTransaction a = transactions.newInstance();
+        KernelTransaction b = transactions.newInstance();
+        KernelTransaction c = transactions.newInstance();
+        KernelTransactionsSnapshot snapshot = transactions.get();
+        assertFalse( snapshot.allClosed() );
+
+        // WHEN a gets closed
+        a.close();
+        assertFalse( snapshot.allClosed() );
+
+        // WHEN c gets closed and (test knowing too much) that instance getting reused in another transaction "d".
+        c.close();
+        KernelTransaction d = transactions.newInstance();
+        assertFalse( snapshot.allClosed() );
+
+        // WHEN b finally gets closed
+        b.close();
+        assertTrue( snapshot.allClosed() );
+    }
+
+    @Test
+    public void shouldBeAbleToSnapshotDuringHeavyLoad() throws Throwable
+    {
+        // GIVEN
+        final KernelTransactions transactions = newKernelTransactions();
+        Race race = new Race();
+        final int threads = 50;
+        final AtomicBoolean end = new AtomicBoolean();
+        final AtomicReferenceArray<KernelTransactionsSnapshot> snapshots = new AtomicReferenceArray<>( threads );
+
+        // Representing "transaction" threads
+        for ( int i = 0; i < threads; i++ )
+        {
+            final int threadIndex = i;
+            race.addContestant( new Runnable()
+            {
+                @Override
+                public void run()
+                {
+                    ThreadLocalRandom random = ThreadLocalRandom.current();
+                    while ( !end.get() )
+                    {
+                        try ( KernelTransaction transaction = transactions.newInstance() )
+                        {
+                            parkNanos( MILLISECONDS.toNanos( random.nextInt( 3 ) ) );
+                            if ( snapshots.get( threadIndex ) == null )
+                            {
+                                snapshots.set( threadIndex, transactions.get() );
+                                parkNanos( MILLISECONDS.toNanos( random.nextInt( 3 ) ) );
+                            }
+                        }
+                        catch ( TransactionFailureException e )
+                        {
+                            throw new RuntimeException( e );
+                        }
+                    }
+                }
+            } );
+        }
+
+        // Just checks snapshots
+        race.addContestant( new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                ThreadLocalRandom random = ThreadLocalRandom.current();
+                int snapshotsLeft = 1_000;
+                while ( snapshotsLeft > 0 )
+                {
+                    int threadIndex = random.nextInt( threads );
+                    KernelTransactionsSnapshot snapshot = snapshots.get( threadIndex );
+                    if ( snapshot != null && snapshot.allClosed() )
+                    {
+                        snapshotsLeft--;
+                        snapshots.set( threadIndex, null );
+                    }
+                }
+
+                // End condition of this test can be described as:
+                //   when 1000 snapshots have been seen as closed.
+                // setting this boolean to true will have all other threads end as well so that race.go() will end
+                end.set( true );
+            }
+        } );
+
+        // WHEN
+        race.go();
+    }
+
+    @Test
+    public void threadThatBlocksNewTxsCantStartNewTxs() throws Exception
+    {
+        KernelTransactions kernelTransactions = newKernelTransactions();
+        kernelTransactions.blockNewTransactions();
+        try
+        {
+            kernelTransactions.newInstance();
+            fail( "Exception expected" );
+        }
+        catch ( Exception e )
+        {
+            assertThat( e, instanceOf( IllegalStateException.class ) );
+        }
+    }
+
+    @Test
+    public void blockNewTransactions() throws Exception
+    {
+        KernelTransactions kernelTransactions = newKernelTransactions();
+        kernelTransactions.blockNewTransactions();
+
+        CountDownLatch aboutToStartTx = new CountDownLatch( 1 );
+        Future<KernelTransaction> txOpener = startTxInSeparateThread( kernelTransactions, aboutToStartTx );
+
+        await( aboutToStartTx );
+        assertNotDone( txOpener );
+
+        kernelTransactions.unblockNewTransactions();
+        assertNotNull( txOpener.get( 2, TimeUnit.SECONDS ) );
+    }
+
+    @Test
+    public void unblockNewTransactionsFromWrongThreadThrows() throws Exception
+    {
+        KernelTransactions kernelTransactions = newKernelTransactions();
+        kernelTransactions.blockNewTransactions();
+
+        CountDownLatch aboutToStartTx = new CountDownLatch( 1 );
+        Future<KernelTransaction> txOpener = startTxInSeparateThread( kernelTransactions, aboutToStartTx );
+
+        await( aboutToStartTx );
+        assertNotDone( txOpener );
+
+        Future<?> wrongUnblocker = unblockTxsInSeparateThread( kernelTransactions );
+
+        try
+        {
+            wrongUnblocker.get( 2, TimeUnit.SECONDS );
+        }
+        catch ( Exception e )
+        {
+            assertThat( e, instanceOf( ExecutionException.class ) );
+            assertThat( e.getCause(), instanceOf( IllegalStateException.class ) );
+        }
+        assertNotDone( txOpener );
+
+        kernelTransactions.unblockNewTransactions();
+        assertNotNull( txOpener.get( 2, TimeUnit.SECONDS ) );
+    }
+
     private static KernelTransactions newKernelTransactions()
     {
         return newKernelTransactions( mock( TransactionCommitProcess.class ), newMockContextFactory() );
@@ -142,12 +336,15 @@ public class KernelTransactionsTest
         when( readLayer.acquireStatement() ).thenReturn( mock( StoreStatement.class ) );
 
         NeoStores neoStores = mock( NeoStores.class );
-        when( neoStores.getMetaDataStore() ).thenReturn( mock( MetaDataStore.class ) );
-        return new KernelTransactions( contextSupplier, neoStores, locks,
+        MetaDataStore metaDataStore = mock( MetaDataStore.class );
+        when( metaDataStore.getLastCommittedTransaction() ).thenReturn( new TransactionId( 2, 3, 4 ) );
+        when( neoStores.getMetaDataStore() ).thenReturn( metaDataStore );
+        return new KernelTransactions( contextSupplier, neoStores, new SimpleStatementLocksFactory( locks ),
                 mock( IntegrityValidator.class ), null, null, null, null, null, null, null,
                 TransactionHeaderInformationFactory.DEFAULT, readLayer, commitProcess, null,
-                null, new TransactionHooks(), mock( ConstraintSemantics.class ), mock( TransactionMonitor.class ), life, new ProcedureCache(),
-                new Tracers( "null", NullLog.getInstance() ));
+                null, new TransactionHooks(), mock( ConstraintSemantics.class ), mock( TransactionMonitor.class ),
+                life, new ProcedureCache(), new Config(), new Tracers( "null", NullLog.getInstance() ),
+                Clock.SYSTEM_CLOCK );
     }
 
     private static TransactionCommitProcess newRememberingCommitProcess( final TransactionRepresentation[] slot )
@@ -176,7 +373,7 @@ public class KernelTransactionsTest
     {
         NeoStoreTransactionContextFactory factory = mock( NeoStoreTransactionContextFactory.class );
         NeoStoreTransactionContext context = mock( NeoStoreTransactionContext.class, RETURNS_MOCKS );
-        when( factory.newInstance( any( Locks.Client.class ) ) ).thenReturn( context );
+        when( factory.newInstance() ).thenReturn( context );
         return factory;
     }
 
@@ -197,7 +394,51 @@ public class KernelTransactionsTest
         when( recordChanges.changes() ).thenReturn( Iterables.option( recordChange ) );
         when( context.getNodeRecords() ).thenReturn( recordChanges );
 
-        when( factory.newInstance( any( Locks.Client.class ) ) ).thenReturn( context );
+        when( factory.newInstance() ).thenReturn( context );
         return factory;
+    }
+
+    private static Future<KernelTransaction> startTxInSeparateThread( final KernelTransactions kernelTransactions,
+            final CountDownLatch aboutToStartTx )
+    {
+        return Executors.newSingleThreadExecutor().submit( new Callable<KernelTransaction>()
+        {
+            @Override
+            public KernelTransaction call()
+            {
+                aboutToStartTx.countDown();
+                return kernelTransactions.newInstance();
+            }
+        } );
+    }
+
+    private static Future<?> unblockTxsInSeparateThread( final KernelTransactions kernelTransactions )
+    {
+        return Executors.newSingleThreadExecutor().submit( new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                kernelTransactions.unblockNewTransactions();
+            }
+        } );
+    }
+
+    private void await( CountDownLatch latch ) throws InterruptedException
+    {
+        assertTrue( latch.await( 1, MINUTES ) );
+    }
+
+    private static void assertNotDone( Future<?> future )
+    {
+        try
+        {
+            future.get( 2, TimeUnit.SECONDS );
+            fail( "Exception expected" );
+        }
+        catch ( Exception e )
+        {
+            assertThat( e, instanceOf( TimeoutException.class ) );
+        }
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -39,11 +39,12 @@ case class ShortestPathPipe(source: Pipe, shortestPathCommand: ShortestPath, pre
   private def pathName = shortestPathCommand.pathName
   private val shortestPathExpression = ShortestPathExpression(shortestPathCommand, predicates)
 
-  protected def internalCreateResults(input:Iterator[ExecutionContext], state: QueryState) = input.flatMap(ctx => {
+  protected def internalCreateResults(input: Iterator[ExecutionContext], state: QueryState) = input.flatMap(ctx => {
     val result: Stream[Path] = shortestPathExpression(ctx)(state) match {
       case in: Stream[_] => CastSupport.castOrFail[Stream[Path]](in)
-      case null          => Stream()
-      case path: Path    => Stream(path)
+      case null => Stream()
+      case path: Path => Stream(path)
+      case in: Iterator[_] => CastSupport.castOrFail[Stream[Path]](in.toStream)
     }
 
     shortestPathCommand.relIterator match {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,8 +19,6 @@
  */
 package org.neo4j.server;
 
-import io.netty.util.internal.logging.InternalLoggerFactory;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.logging.Level;
@@ -36,13 +34,12 @@ import org.neo4j.kernel.lifecycle.LifeSupport;
 import org.neo4j.logging.FormattedLogProvider;
 import org.neo4j.logging.Log;
 import org.neo4j.logging.LogProvider;
+import org.neo4j.server.configuration.BaseServerConfigLoader;
 import org.neo4j.server.configuration.ServerSettings;
 import org.neo4j.server.logging.JULBridge;
 import org.neo4j.server.logging.JettyLogBridge;
-import org.neo4j.server.logging.Netty4LoggerFactory;
-
+import org.neo4j.server.logging.Netty4LogBridge;
 import static java.lang.String.format;
-import static org.neo4j.server.configuration.ServerConfigFactory.loadConfig;
 import static org.neo4j.server.web.ServerInternalSettings.SERVER_CONFIG_FILE;
 import static org.neo4j.server.web.ServerInternalSettings.SERVER_CONFIG_FILE_KEY;
 
@@ -81,7 +78,7 @@ public abstract class Bootstrapper
         Logger.getLogger( "" ).setLevel( Level.WARNING );
         JULBridge.forwardTo( userLogProvider );
         JettyLogBridge.setLogProvider( userLogProvider );
-        InternalLoggerFactory.setDefaultFactory( new Netty4LoggerFactory( userLogProvider ) );
+        Netty4LogBridge.setLogProvider( userLogProvider );
 
         log = userLogProvider.getLog( getClass() );
 
@@ -198,7 +195,6 @@ public abstract class Bootstrapper
      */
     protected Config createConfig( Log log, File file, Pair<String, String>[] configOverrides ) throws IOException
     {
-        return loadConfig( file, new File( System.getProperty( SERVER_CONFIG_FILE_KEY, SERVER_CONFIG_FILE ) ), log, configOverrides );
+        return new BaseServerConfigLoader().loadConfig( file, new File( System.getProperty( SERVER_CONFIG_FILE_KEY, SERVER_CONFIG_FILE ) ), log, configOverrides );
     }
-
 }

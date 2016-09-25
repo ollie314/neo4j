@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -340,7 +340,7 @@ case class RelationshipPattern(
   private def checkProperties(ctx: SemanticContext): SemanticCheck =
     properties.semanticCheck(Expression.SemanticContext.Simple) chain properties.expectType(CTMap.covariant)
 
-  def isSingleLength = length.fold(true)(_.fold(false)(_.isSingleLength))
+  def isSingleLength = length.isEmpty
 
   def isDirected = direction != SemanticDirection.BOTH
 }

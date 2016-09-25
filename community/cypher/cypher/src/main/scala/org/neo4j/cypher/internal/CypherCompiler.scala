@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,7 +20,6 @@
 package org.neo4j.cypher.internal
 
 import org.neo4j.cypher.CypherVersion._
-import org.neo4j.cypher.internal.compatibility._
 import org.neo4j.cypher.internal.compiler.v2_3._
 import org.neo4j.cypher.internal.frontend.v2_3.InputPosition
 import org.neo4j.cypher.{InvalidArgumentException, SyntaxException, _}
@@ -64,6 +63,8 @@ class CypherCompiler(graph: GraphDatabaseService,
                      configuredPlanner: CypherPlanner,
                      configuredRuntime: CypherRuntime,
                      useErrorsOverWarnings: Boolean,
+                     idpMaxTableSize: Int,
+                     idpIterationDuration: Long,
                      logProvider: LogProvider) {
   import org.neo4j.cypher.internal.CypherCompiler._
 
@@ -74,6 +75,8 @@ class CypherCompiler(graph: GraphDatabaseService,
     statsDivergenceThreshold = getStatisticsDivergenceThreshold,
     queryPlanTTL = getMinimumTimeBeforeReplanning,
     useErrorsOverWarnings = useErrorsOverWarnings,
+    idpMaxTableSize = idpMaxTableSize,
+    idpIterationDuration = idpIterationDuration,
     nonIndexedLabelWarningThreshold = getNonIndexedLabelWarningThreshold
   )
 
@@ -82,8 +85,6 @@ class CypherCompiler(graph: GraphDatabaseService,
 
   private final val VERSIONS_WITH_FIXED_PLANNER: Set[CypherVersion] = Set(v1_9)
   private final val VERSIONS_WITH_FIXED_RUNTIME: Set[CypherVersion] = Set(v1_9, v2_2)
-
-  private final val ILLEGAL_PLANNER_RUNTIME_COMBINATIONS: Set[(CypherPlanner, CypherRuntime)] = Set((CypherPlanner.rule, CypherRuntime.compiled))
 
   @throws(classOf[SyntaxException])
   def preParseQuery(queryText: String): PreParsedQuery = {
@@ -122,9 +123,6 @@ class CypherCompiler(graph: GraphDatabaseService,
 
     if (VERSIONS_WITH_FIXED_RUNTIME(cypherVersion) && statementWithOption.runtime.nonEmpty)
       throw new InvalidArgumentException("RUNTIME not supported in versions older than Neo4j v2.3")
-
-    if (ILLEGAL_PLANNER_RUNTIME_COMBINATIONS((planner, runtime)))
-      throw new InvalidArgumentException(s"Unsupported PLANNER - RUNTIME combination: ${planner.name} - ${runtime.name}")
   }
 
   @throws(classOf[SyntaxException])

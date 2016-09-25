@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -159,6 +159,8 @@ object WritesNodesWithLabels {
 
 case class WritesNodesWithLabels(labels: Set[String]) extends WritesNodes
 
+case object DeletesNode extends WritesNodes
+
 trait ReadsNodeProperty extends ReadEffect
 
 case class ReadsGivenNodeProperty(propertyName: String) extends ReadsNodeProperty {
@@ -188,6 +190,8 @@ case object ReadsRelationships extends ReadEffect {
 }
 
 case object WritesRelationships extends WriteEffect
+
+case object DeletesRelationship extends WriteEffect
 
 trait ReadsRelationshipProperty extends ReadEffect
 

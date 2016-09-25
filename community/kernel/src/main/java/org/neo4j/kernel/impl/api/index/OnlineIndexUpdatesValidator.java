@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -35,7 +35,7 @@ import org.neo4j.kernel.impl.transaction.state.PropertyLoader;
  * {@link org.neo4j.kernel.impl.transaction.command.Command}s in transaction state.
  * It is done by inferring {@link org.neo4j.kernel.api.index.NodePropertyUpdate}s from commands and asking
  * {@link org.neo4j.kernel.impl.api.index.IndexingService} to check those via
- * {@link org.neo4j.kernel.impl.api.index.IndexingService#validate(Iterable)}.
+ * {@link org.neo4j.kernel.impl.api.index.IndexingService#validate(Iterable,IndexUpdateMode)}.
  */
 public class OnlineIndexUpdatesValidator implements IndexUpdatesValidator
 {
@@ -43,8 +43,8 @@ public class OnlineIndexUpdatesValidator implements IndexUpdatesValidator
     private final PropertyStore propertyStore;
     private final PropertyLoader propertyLoader;
     private final IndexingService indexing;
-    private final IndexUpdateMode updateMode;
     private final KernelHealth kernelHealth;
+    private final IndexUpdateMode updateMode;
 
     public OnlineIndexUpdatesValidator( NeoStores neoStore, KernelHealth kernelHealth, PropertyLoader propertyLoader,
             IndexingService indexing, IndexUpdateMode updateMode )
@@ -58,8 +58,7 @@ public class OnlineIndexUpdatesValidator implements IndexUpdatesValidator
     }
 
     @Override
-    public ValidatedIndexUpdates validate( TransactionRepresentation transaction )
-            throws IOException
+    public ValidatedIndexUpdates validate( TransactionRepresentation transaction ) throws IOException
     {
         NodePropertyCommandsExtractor extractor = new NodePropertyCommandsExtractor();
         try

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -48,6 +48,7 @@ import org.neo4j.kernel.impl.pagecache.ConfiguringPageCacheFactory;
 import org.neo4j.kernel.impl.pagecache.PageCacheLifecycle;
 import org.neo4j.kernel.impl.security.URLAccessRules;
 import org.neo4j.kernel.impl.spi.KernelContext;
+import org.neo4j.kernel.impl.spi.SimpleKernelContext;
 import org.neo4j.kernel.impl.transaction.TransactionCounters;
 import org.neo4j.kernel.impl.transaction.state.DataSourceManager;
 import org.neo4j.kernel.impl.util.JobScheduler;
@@ -63,6 +64,7 @@ import org.neo4j.logging.Log;
 import org.neo4j.logging.LogProvider;
 import org.neo4j.udc.UsageData;
 import org.neo4j.udc.UsageDataKeys;
+import org.neo4j.udc.UsageDataKeys.OperationalMode;
 
 /**
  * Platform module for {@link org.neo4j.kernel.impl.factory.GraphDatabaseFacadeFactory}. This creates
@@ -105,7 +107,8 @@ public class PlatformModule
     public final TransactionCounters transactionMonitor;
 
     public PlatformModule( File storeDir, Map<String, String> params, final GraphDatabaseFacadeFactory.Dependencies externalDependencies,
-                                                  final GraphDatabaseFacade graphDatabaseFacade)
+            final GraphDatabaseFacade graphDatabaseFacade,
+            OperationalMode operationalMode )
     {
         dependencies = new org.neo4j.kernel.impl.util.Dependencies( new Supplier<DependencyResolver>()
         {
@@ -150,6 +153,8 @@ public class PlatformModule
         tracers = dependencies.satisfyDependency(
                 new Tracers( desiredImplementationName, logging.getInternalLog( Tracers.class ) ) );
         dependencies.satisfyDependency( tracers.pageCacheTracer );
+        dependencies.satisfyDependency( tracers.transactionTracer );
+        dependencies.satisfyDependency( tracers.checkPointTracer );
 
         pageCache = dependencies.satisfyDependency( createPageCache( fileSystem, config, logging, tracers ) );
         life.add( new PageCacheLifecycle( pageCache ) );
@@ -168,20 +173,8 @@ public class PlatformModule
 
         transactionMonitor = dependencies.satisfyDependency( createTransactionCounters() );
 
-        KernelContext kernelContext = new KernelContext()
-        {
-            @Override
-            public FileSystemAbstraction fileSystem()
-            {
-                return PlatformModule.this.fileSystem;
-            }
-
-            @Override
-            public File storeDir()
-            {
-                return PlatformModule.this.storeDir;
-            }
-        };
+        KernelContext kernelContext = dependencies.satisfyDependency(
+                new SimpleKernelContext( this.fileSystem, this.storeDir, operationalMode ));
 
         kernelExtensions = dependencies.satisfyDependency( new KernelExtensions(
                 kernelContext,
@@ -198,7 +191,7 @@ public class PlatformModule
     {
         sysInfo.set( UsageDataKeys.version, Version.getKernel().getReleaseVersion() );
         sysInfo.set( UsageDataKeys.revision, Version.getKernel().getVersion() );
-        sysInfo.set( UsageDataKeys.operationalMode, UsageDataKeys.OperationalMode.ha );
+        sysInfo.set( UsageDataKeys.operationalMode, OperationalMode.ha );
     }
 
     public LifeSupport createLife()
@@ -214,7 +207,7 @@ public class PlatformModule
     protected LogService createLogService( LogProvider userLogProvider )
     {
         long internalLogRotationThreshold = config.get( GraphDatabaseSettings.store_internal_log_rotation_threshold );
-        int internalLogRotationDelay = config.get( GraphDatabaseSettings.store_internal_log_rotation_delay );
+        long internalLogRotationDelay = config.get( GraphDatabaseSettings.store_internal_log_rotation_delay );
         int internalLogMaxArchives = config.get( GraphDatabaseSettings.store_internal_log_max_archives );
 
         final StoreLogService.Builder builder =

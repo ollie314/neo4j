@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -42,7 +42,7 @@ public class UpdateRecordsStep<RECORD extends AbstractBaseRecord>
 {
     protected final RecordStore<RECORD> store;
     private final int recordSize;
-    private int recordsUpdated;
+    private long recordsUpdated;
 
     public UpdateRecordsStep( StageControl control, Configuration config, RecordStore<RECORD> store )
     {
@@ -64,10 +64,6 @@ public class UpdateRecordsStep<RECORD extends AbstractBaseRecord>
             }
             update( record );
         }
-
-        // Flush after each batch.
-        // We get vectored, sequential IO when we write with flush, plus it makes future page faulting faster.
-        store.flush();
         recordsUpdated += batch.length;
     }
 

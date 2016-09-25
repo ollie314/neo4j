@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -37,12 +37,11 @@ import org.neo4j.helpers.CancellationRequest;
 import org.neo4j.helpers.Functions;
 import org.neo4j.helpers.Listeners;
 import org.neo4j.kernel.ha.store.HighAvailabilityStoreFailureException;
-import org.neo4j.kernel.ha.store.InconsistentlyUpgradedClusterException;
 import org.neo4j.kernel.ha.store.UnableToCopyStoreFromOldMasterException;
-import org.neo4j.kernel.ha.store.UnavailableMembersException;
 import org.neo4j.kernel.impl.logging.LogService;
 import org.neo4j.kernel.impl.store.MismatchingStoreIdException;
 import org.neo4j.kernel.impl.store.StoreId;
+import org.neo4j.kernel.impl.transaction.state.DataSourceManager;
 import org.neo4j.kernel.lifecycle.LifeSupport;
 import org.neo4j.kernel.lifecycle.Lifecycle;
 import org.neo4j.logging.Log;
@@ -86,8 +85,8 @@ public class HighAvailabilityModeSwitcher
     private SwitchToMaster switchToMaster;
     private final Election election;
     private final ClusterMemberAvailability clusterMemberAvailability;
-    private ClusterClient clusterClient;
-    private Supplier<StoreId> storeIdSupplier;
+    private final ClusterClient clusterClient;
+    private final Supplier<StoreId> storeIdSupplier;
     private final InstanceId instanceId;
 
     private final Log msgLog;
@@ -100,6 +99,7 @@ public class HighAvailabilityModeSwitcher
     private volatile Future<?> modeSwitcherFuture;
     private volatile HighAvailabilityMemberState currentTargetState;
     private final AtomicBoolean canAskForElections = new AtomicBoolean( true );
+    private final DataSourceManager neoStoreDataSourceSupplier;
 
     public HighAvailabilityModeSwitcher( SwitchToSlave switchToSlave,
                                          SwitchToMaster switchToMaster,
@@ -107,7 +107,8 @@ public class HighAvailabilityModeSwitcher
                                          ClusterMemberAvailability clusterMemberAvailability,
                                          ClusterClient clusterClient,
                                          Supplier<StoreId> storeIdSupplier,
-                                         InstanceId instanceId, LogService logService )
+                                         InstanceId instanceId, LogService logService,
+                                         DataSourceManager neoStoreDataSourceSupplier )
     {
         this.switchToSlave = switchToSlave;
         this.switchToMaster = switchToMaster;
@@ -118,6 +119,7 @@ public class HighAvailabilityModeSwitcher
         this.instanceId = instanceId;
         this.msgLog = logService.getInternalLog( getClass() );
         this.userLog = logService.getUserLog( getClass() );
+        this.neoStoreDataSourceSupplier = neoStoreDataSourceSupplier;
         this.haCommunicationLife = new LifeSupport();
     }
 
@@ -197,6 +199,12 @@ public class HighAvailabilityModeSwitcher
     public void instanceStops( HighAvailabilityMemberChangeEvent event )
     {
         stateChanged( event );
+    }
+
+    @Override
+    public void instanceDetached( HighAvailabilityMemberChangeEvent event )
+    {
+        switchToDetached();
     }
 
     @Override
@@ -460,6 +468,7 @@ public class HighAvailabilityModeSwitcher
                         listener.switchToPending();
                     }
                 } );
+                neoStoreDataSourceSupplier.getDataSource().beforeModeSwitch();
 
                 if ( cancellationHandle.cancellationRequested() )
                 {
@@ -476,8 +485,55 @@ public class HighAvailabilityModeSwitcher
         {
             modeSwitcherFuture.get( 10, TimeUnit.SECONDS );
         }
-        catch ( Exception ignored )
+        catch ( Exception e )
         {
+            msgLog.warn( "Exception received while waiting for switching to pending", e );
+        }
+    }
+
+    private void switchToDetached()
+    {
+        msgLog.info( "I am %s, moving to detached", instanceId );
+
+        startModeSwitching( new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                if ( cancellationHandle.cancellationRequested() )
+                {
+                    msgLog.info( "Switch to pending cancelled on start." );
+                    return;
+                }
+
+                Listeners.notifyListeners( modeSwitchListeners, new Listeners.Notification<ModeSwitcher>()
+                {
+                    @Override
+                    public void notify( ModeSwitcher listener )
+                    {
+                        listener.switchToSlave();
+                    }
+                } );
+                neoStoreDataSourceSupplier.getDataSource().beforeModeSwitch();
+
+                if ( cancellationHandle.cancellationRequested() )
+                {
+                    msgLog.info( "Switch to pending cancelled before ha communication shutdown." );
+                    return;
+                }
+
+                haCommunicationLife.shutdown();
+                haCommunicationLife = new LifeSupport();
+            }
+        }, new CancellationHandle() );
+
+        try
+        {
+            modeSwitcherFuture.get( 10, TimeUnit.SECONDS );
+        }
+        catch ( Exception e )
+        {
+            msgLog.warn( "Exception received while waiting for switching to detached", e );
         }
     }
 
@@ -492,8 +548,7 @@ public class HighAvailabilityModeSwitcher
             {
                 modeSwitcherFuture.get();
             }
-            catch ( UnableToCopyStoreFromOldMasterException | InconsistentlyUpgradedClusterException |
-                    UnavailableMembersException e )
+            catch ( UnableToCopyStoreFromOldMasterException e )
             {
                 throw e;
             }

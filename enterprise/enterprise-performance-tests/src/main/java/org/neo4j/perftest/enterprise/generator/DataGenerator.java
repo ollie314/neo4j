@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -137,7 +137,7 @@ public class DataGenerator
             if ( configuration.get( report_stats ) )
             {
                 PropertyStats stats = new PropertyStats();
-                stats.applyFiltered( stores.getPropertyStore(), RecordStore.IN_USE );
+                stats.applyFiltered( stores.getPropertyStore() );
                 // TODO please pass in the PrintStream as an argument
                 System.out.println( stats );
             }

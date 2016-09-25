@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -42,6 +42,7 @@ import org.neo4j.kernel.impl.transaction.log.LogFileInformation;
 import org.neo4j.kernel.impl.transaction.log.LogicalTransactionStore;
 import org.neo4j.kernel.impl.transaction.log.TransactionIdStore;
 import org.neo4j.kernel.impl.transaction.log.checkpoint.CheckPointer;
+import org.neo4j.kernel.impl.util.UnsatisfiedDependencyException;
 import org.neo4j.kernel.lifecycle.Lifecycle;
 import org.neo4j.kernel.monitoring.ByteCounterMonitor;
 import org.neo4j.kernel.monitoring.Monitors;
@@ -100,7 +101,7 @@ public class OnlineBackupKernelExtension implements Lifecycle
                             {
                                 return graphDatabaseAPI.storeId();
                             }
-                        } );
+                        }, logProvider );
             }
         }, monitors, logProvider );
     }
@@ -150,7 +151,7 @@ public class OnlineBackupKernelExtension implements Lifecycle
                     graphDatabaseAPI.getDependencyResolver().resolveDependency( BindingNotifier.class ).addBindingListener(
                             (BindingListener) bindingListener );
                 }
-                catch ( NoClassDefFoundError | IllegalArgumentException e )
+                catch ( NoClassDefFoundError | UnsatisfiedDependencyException e )
                 {
                     // Not running HA
                 }
@@ -181,7 +182,7 @@ public class OnlineBackupKernelExtension implements Lifecycle
                 ClusterMemberAvailability client = getClusterMemberAvailability();
                 client.memberIsUnavailable( BACKUP );
             }
-            catch ( NoClassDefFoundError | IllegalArgumentException e )
+            catch ( NoClassDefFoundError | UnsatisfiedDependencyException e )
             {
                 // Not running HA
             }

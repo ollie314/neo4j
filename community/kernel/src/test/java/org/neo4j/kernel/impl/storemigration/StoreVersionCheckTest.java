@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -32,7 +32,6 @@ import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.kernel.impl.store.MetaDataStore;
 import org.neo4j.test.EphemeralFileSystemRule;
 import org.neo4j.test.PageCacheRule;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -119,6 +118,7 @@ public class StoreVersionCheckTest
     private File emptyFile( FileSystemAbstraction fs ) throws IOException
     {
         File shortFile = new File( "shortFile" );
+        fs.deleteFile( shortFile );
         fs.create( shortFile );
         return shortFile;
     }
@@ -126,7 +126,8 @@ public class StoreVersionCheckTest
     private File fileContaining( FileSystemAbstraction fs, String content ) throws IOException
     {
         File shortFile = new File( "shortFile" );
-        try ( OutputStream outputStream = fs.openAsOutputStream( shortFile, true ) )
+        fs.deleteFile( shortFile );
+        try ( OutputStream outputStream = fs.openAsOutputStream( shortFile, false ) )
         {
             outputStream.write( UTF8.encode( content ) );
             return shortFile;

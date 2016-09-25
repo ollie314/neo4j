@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -58,13 +58,10 @@ public class UsersDocIT extends ExclusiveServerTestBase
         gen.get().setSection( "dev/rest-api" );
     }
 
-    /**
-     * User status
-     *
-     * Given that you know the current password, you can ask the server for the user status.
-     */
     @Test
-    @Documented
+    @Documented( "User status\n" +
+                 "\n" +
+                 "Given that you know the current password, you can ask the server for the user status." )
     public void user_status() throws JsonParseException, IOException
     {
         // Given
@@ -84,13 +81,10 @@ public class UsersDocIT extends ExclusiveServerTestBase
         assertThat( data.get( "password_change" ).asText(), equalTo( passwordURL( "neo4j" ) ) );
     }
 
-    /**
-     * User status on first access
-     *
-     * On first access, and using the default password, the user status will indicate that the users password requires changing.
-     */
     @Test
-    @Documented
+    @Documented( "User status on first access\n" +
+                 "\n" +
+                 "On first access, and using the default password, the user status will indicate that the users password requires changing." )
     public void user_status_first_access() throws JsonParseException, IOException
     {
         // Given
@@ -110,14 +104,11 @@ public class UsersDocIT extends ExclusiveServerTestBase
         assertThat( data.get( "password_change" ).asText(), equalTo( passwordURL( "neo4j" ) ) );
     }
 
-    /**
-     * Changing the user password
-     *
-     * Given that you know the current password, you can ask the server to change a users password. You can choose any
-     * password you like, as long as it is different from the current password.
-     */
     @Test
-    @Documented
+    @Documented( "Changing the user password\n" +
+                 "\n" +
+                 "Given that you know the current password, you can ask the server to change a users password. You can choose any\n" +
+                 "password you like, as long as it is different from the current password." )
     public void change_password() throws JsonParseException, IOException
     {
         // Given
@@ -161,7 +152,7 @@ public class UsersDocIT extends ExclusiveServerTestBase
 
     public void startServer(boolean authEnabled) throws IOException
     {
-        FileUtils.deleteRecursively( new File( "neo4j-home/data/" ) ); // TODO: Implement a common component for managing Neo4j file structure and use that here
+        FileUtils.deleteFile( new File( "neo4j-home/data/dbms/authorization" ) ); // TODO: Implement a common component for managing Neo4j file structure and use that here
         server = CommunityServerBuilder.server().withProperty( ServerSettings.auth_enabled.name(),
                 Boolean.toString( authEnabled ) ).build();
         server.start();

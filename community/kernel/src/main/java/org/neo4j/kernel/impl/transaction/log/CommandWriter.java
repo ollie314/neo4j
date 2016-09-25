@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -293,11 +293,15 @@ public class CommandWriter implements CommandHandler
 
     private void writeMap( Map<String,Integer> map ) throws IOException
     {
-        channel.put( (byte) map.size() );
+        assert map.size() <= IndexDefineCommand.HIGHEST_POSSIBLE_ID :
+            "Can not write map with size larger than 2 bytes. Actual size " + map.size();
+        channel.putShort( (short) map.size() );
         for ( Map.Entry<String,Integer> entry : map.entrySet() )
         {
             write2bLengthAndString( channel, entry.getKey() );
             int id = entry.getValue();
+            assert id <= IndexDefineCommand.HIGHEST_POSSIBLE_ID :
+                "Can not write id larger than 2 bytes. Actual value " + id;
             channel.putShort( (short) id );
         }
     }

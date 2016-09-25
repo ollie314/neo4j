@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -62,7 +62,7 @@ public class ReadOnlyTransactionIdStore implements TransactionIdStore
     }
 
     @Override
-    public void transactionCommitted( long transactionId, long checksum )
+    public void transactionCommitted( long transactionId, long checksum, long commitTimestamp )
     {
         throw new UnsupportedOperationException( "Read-only transaction ID store" );
     }
@@ -76,7 +76,7 @@ public class ReadOnlyTransactionIdStore implements TransactionIdStore
     @Override
     public TransactionId getLastCommittedTransaction()
     {
-        return new TransactionId( transactionId, transactionChecksum );
+        return new TransactionId( transactionId, transactionChecksum, BASE_TX_COMMIT_TIMESTAMP );
     }
 
     @Override
@@ -98,7 +98,8 @@ public class ReadOnlyTransactionIdStore implements TransactionIdStore
     }
 
     @Override
-    public void setLastCommittedAndClosedTransactionId( long transactionId, long checksum, long logVersion, long logByteOffset )
+    public void setLastCommittedAndClosedTransactionId( long transactionId, long checksum, long commitTimestamp,
+            long logByteOffset, long logVersion )
     {
         throw new UnsupportedOperationException( "Read-only transaction ID store" );
     }

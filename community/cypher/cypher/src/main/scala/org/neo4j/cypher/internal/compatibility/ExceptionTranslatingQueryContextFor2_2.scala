@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -129,8 +129,8 @@ class ExceptionTranslatingQueryContextFor2_2(inner: QueryContext) extends Delega
   override def getRelTypeName(id: Int) =
     translateException(super.getRelTypeName(id))
 
-  override def exactUniqueIndexSearch(index: IndexDescriptor, value: Any) =
-    translateException(super.exactUniqueIndexSearch(index, value))
+  override def lockingExactUniqueIndexSearch(index: IndexDescriptor, value: Any) =
+    translateException(super.lockingExactUniqueIndexSearch(index, value))
 
   override def commitAndRestartTx() =
     translateException(super.commitAndRestartTx())

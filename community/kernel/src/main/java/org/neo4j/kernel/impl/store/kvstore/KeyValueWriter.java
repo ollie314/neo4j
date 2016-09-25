@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -29,6 +29,8 @@ import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.io.pagecache.PageCursor;
 import org.neo4j.io.pagecache.PagedFile;
 
+import static org.neo4j.unsafe.impl.internal.dragons.FeatureToggles.flag;
+
 class KeyValueWriter implements Closeable
 {
     private final MetadataCollector metadata;
@@ -51,7 +53,7 @@ class KeyValueWriter implements Closeable
 
     public boolean writeHeader( BigEndianByteArrayBuffer key, BigEndianByteArrayBuffer value ) throws IOException
     {
-        boolean result = state.header( this, value.allZeroes() );
+        boolean result = state.header( this, value.allZeroes() || value.minusOneAtTheEnd() );
         doWrite( key, value, State.done );
         return result;
     }
@@ -117,9 +119,9 @@ class KeyValueWriter implements Closeable
         expecting_format_specifier
         {
             @Override
-            boolean header( KeyValueWriter writer, boolean zeroValue )
+            boolean header( KeyValueWriter writer, boolean zeroValueOrMinusOne )
             {
-                if ( zeroValue )
+                if ( zeroValueOrMinusOne )
                 {
                     writer.state = in_error;
                     return false;
@@ -134,18 +136,18 @@ class KeyValueWriter implements Closeable
         expecting_header
         {
             @Override
-            boolean header( KeyValueWriter writer, boolean zeroValue )
+            boolean header( KeyValueWriter writer, boolean zeroValueOrMinusOne )
             {
-                writer.state = zeroValue ? expecting_data : writing_header;
+                writer.state = zeroValueOrMinusOne ? expecting_data : writing_header;
                 return true;
             }
         },
         writing_header
         {
             @Override
-            boolean header( KeyValueWriter writer, boolean zeroValue )
+            boolean header( KeyValueWriter writer, boolean zeroValueOrMinusOne )
             {
-                if ( zeroValue )
+                if ( zeroValueOrMinusOne )
                 {
                     writer.state = done;
                 }
@@ -161,9 +163,9 @@ class KeyValueWriter implements Closeable
         expecting_data
         {
             @Override
-            boolean header( KeyValueWriter writer, boolean zeroValue )
+            boolean header( KeyValueWriter writer, boolean zeroValueOrMinusOne )
             {
-                if ( zeroValue )
+                if ( zeroValueOrMinusOne )
                 {
                     writer.state = done;
                     return true;
@@ -184,9 +186,9 @@ class KeyValueWriter implements Closeable
         writing_data
         {
             @Override
-            boolean header( KeyValueWriter writer, boolean zeroValue )
+            boolean header( KeyValueWriter writer, boolean zeroValueOrMinusOne )
             {
-                if ( zeroValue )
+                if ( zeroValueOrMinusOne )
                 {
                     writer.state = in_error;
                     return false;
@@ -215,7 +217,7 @@ class KeyValueWriter implements Closeable
         in_error;
         // </pre>
 
-        boolean header( KeyValueWriter writer, boolean zeroValue )
+        boolean header( KeyValueWriter writer, boolean zeroValueOrMinusOne )
         {
             throw illegalState( writer, "write header" );
         }
@@ -223,11 +225,6 @@ class KeyValueWriter implements Closeable
         void data( KeyValueWriter writer )
         {
             throw illegalState( writer, "write data" );
-        }
-
-        boolean trailer( KeyValueWriter writer, boolean zeroValue )
-        {
-            throw illegalState( writer, "write trailer" );
         }
 
         void open( KeyValueWriter writer )
@@ -245,7 +242,7 @@ class KeyValueWriter implements Closeable
     static abstract class Writer
     {
         private static final boolean WRITE_TO_PAGE_CACHE =
-                Boolean.getBoolean( KeyValueWriter.class.getName() + ".WRITE_TO_PAGE_CACHE" );
+                flag( KeyValueWriter.class, "WRITE_TO_PAGE_CACHE", false );
 
         abstract void write( byte[] data ) throws IOException;
 

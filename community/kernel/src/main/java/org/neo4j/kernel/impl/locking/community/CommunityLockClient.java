@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,8 +28,8 @@ import org.neo4j.collection.primitive.PrimitiveIntObjectVisitor;
 import org.neo4j.collection.primitive.PrimitiveLongObjectMap;
 import org.neo4j.collection.primitive.PrimitiveLongObjectVisitor;
 import org.neo4j.helpers.collection.Visitor;
-import org.neo4j.kernel.impl.locking.LockClientAlreadyClosedException;
 import org.neo4j.kernel.impl.locking.LockClientStateHolder;
+import org.neo4j.kernel.impl.locking.LockClientStoppedException;
 import org.neo4j.kernel.impl.locking.Locks;
 
 import static java.lang.String.format;
@@ -60,30 +60,30 @@ public class CommunityLockClient implements Locks.Client
     }
 
     @Override
-    public void acquireShared( Locks.ResourceType resourceType, long resourceId )
+    public void acquireShared( Locks.ResourceType resourceType, long... resourceIds )
     {
-        if ( !stateHolder.incrementActiveClients() )
-        {
-            throw new LockClientAlreadyClosedException( String.format( "%s is already closed", this ) );
-        }
+        stateHolder.incrementActiveClients( this );
         try
         {
             PrimitiveLongObjectMap<LockResource> localLocks = localShared( resourceType );
-            LockResource resource = localLocks.get( resourceId );
-            if ( resource != null )
+            for ( long resourceId : resourceIds )
             {
-                resource.acquireReference();
-            }
-            else
-            {
-                resource = new LockResource( resourceType, resourceId );
-                if ( manager.getReadLock( resource, lockTransaction ) )
+                LockResource resource = localLocks.get( resourceId );
+                if ( resource != null )
                 {
-                    localLocks.put( resourceId, resource );
+                    resource.acquireReference();
                 }
                 else
                 {
-                    throw new LockClientAlreadyClosedException( String.format( "%s is already closed", this ) );
+                    resource = new LockResource( resourceType, resourceId );
+                    if ( manager.getReadLock( resource, lockTransaction ) )
+                    {
+                        localLocks.put( resourceId, resource );
+                    }
+                    else
+                    {
+                        throw new LockClientStoppedException( this );
+                    }
                 }
             }
         }
@@ -96,30 +96,30 @@ public class CommunityLockClient implements Locks.Client
 
 
     @Override
-    public void acquireExclusive( Locks.ResourceType resourceType, long resourceId )
+    public void acquireExclusive( Locks.ResourceType resourceType, long... resourceIds )
     {
-        if ( !stateHolder.incrementActiveClients() )
-        {
-            throw new LockClientAlreadyClosedException( String.format( "%s is already closed", this ) );
-        }
+        stateHolder.incrementActiveClients( this );
         try
         {
             PrimitiveLongObjectMap<LockResource> localLocks = localExclusive( resourceType );
-            LockResource resource = localLocks.get( resourceId );
-            if ( resource != null )
+            for ( long resourceId : resourceIds )
             {
-                resource.acquireReference();
-            }
-            else
-            {
-                resource = new LockResource( resourceType, resourceId );
-                if ( manager.getWriteLock( resource, lockTransaction ) )
+                LockResource resource = localLocks.get( resourceId );
+                if ( resource != null )
                 {
-                    localLocks.put( resourceId, resource );
+                    resource.acquireReference();
                 }
                 else
                 {
-                    throw new LockClientAlreadyClosedException( String.format( "%s is already closed", this ) );
+                    resource = new LockResource( resourceType, resourceId );
+                    if ( manager.getWriteLock( resource, lockTransaction ) )
+                    {
+                        localLocks.put( resourceId, resource );
+                    }
+                    else
+                    {
+                        throw new LockClientStoppedException( this );
+                    }
                 }
             }
         }
@@ -132,10 +132,7 @@ public class CommunityLockClient implements Locks.Client
     @Override
     public boolean tryExclusiveLock( Locks.ResourceType resourceType, long resourceId )
     {
-        if ( !stateHolder.incrementActiveClients() )
-        {
-            return false;
-        }
+        stateHolder.incrementActiveClients( this );
         try
         {
             PrimitiveLongObjectMap<LockResource> localLocks = localExclusive( resourceType );
@@ -168,10 +165,7 @@ public class CommunityLockClient implements Locks.Client
     @Override
     public boolean trySharedLock( Locks.ResourceType resourceType, long resourceId )
     {
-        if ( !stateHolder.incrementActiveClients() )
-        {
-            return false;
-        }
+        stateHolder.incrementActiveClients( this );
         try
         {
             PrimitiveLongObjectMap<LockResource> localLocks = localShared( resourceType );
@@ -204,10 +198,7 @@ public class CommunityLockClient implements Locks.Client
     @Override
     public void releaseShared( Locks.ResourceType resourceType, long resourceId )
     {
-        if ( !stateHolder.incrementActiveClients() )
-        {
-            throw new LockClientAlreadyClosedException( String.format( "%s is already closed", this ) );
-        }
+        stateHolder.incrementActiveClients( this );
         try
         {
             PrimitiveLongObjectMap<LockResource> localLocks = localShared( resourceType );
@@ -230,10 +221,7 @@ public class CommunityLockClient implements Locks.Client
     @Override
     public void releaseExclusive( Locks.ResourceType resourceType, long resourceId )
     {
-        if ( !stateHolder.incrementActiveClients() )
-        {
-            throw new LockClientAlreadyClosedException( String.format( "%s is already closed", this ) );
-        }
+        stateHolder.incrementActiveClients( this );
         try
         {
             PrimitiveLongObjectMap<LockResource> localLocks = localExclusive( resourceType );
@@ -245,23 +233,6 @@ public class CommunityLockClient implements Locks.Client
             localLocks.remove( resourceId );
 
             manager.releaseWriteLock( new LockResource( resourceType, resourceId ), lockTransaction );
-        }
-        finally
-        {
-            stateHolder.decrementActiveClients();
-        }
-    }
-
-    @Override
-    public void releaseAll()
-    {
-        if ( !stateHolder.incrementActiveClients() )
-        {
-            throw new LockClientAlreadyClosedException( String.format( "%s is already closed", this ) );
-        }
-        try
-        {
-            releaseLocks();
         }
         finally
         {

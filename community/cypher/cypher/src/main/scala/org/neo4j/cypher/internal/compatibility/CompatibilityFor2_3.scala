@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,10 +22,9 @@ package org.neo4j.cypher.internal.compatibility
 import java.io.PrintWriter
 import java.util
 
-import org.neo4j.cypher._
 import org.neo4j.cypher.internal._
 import org.neo4j.cypher.internal.compiler.v2_3
-import org.neo4j.cypher.internal.compiler.v2_3.executionplan.{ExecutionPlan => ExecutionPlan_v2_3, InternalExecutionResult}
+import org.neo4j.cypher.internal.compiler.v2_3.executionplan.{EntityAccessor, ExecutionPlan => ExecutionPlan_v2_3, InternalExecutionResult}
 import org.neo4j.cypher.internal.compiler.v2_3.planDescription.InternalPlanDescription.Arguments._
 import org.neo4j.cypher.internal.compiler.v2_3.planDescription.{Argument, InternalPlanDescription, PlanDescriptionArgumentSerializer}
 import org.neo4j.cypher.internal.compiler.v2_3.tracing.rewriters.RewriterStepSequencer
@@ -33,14 +32,17 @@ import org.neo4j.cypher.internal.compiler.v2_3.{CypherCompilerFactory, DPPlanner
 import org.neo4j.cypher.internal.frontend.v2_3.notification.{InternalNotification, LegacyPlannerNotification, PlannerUnsupportedNotification, RuntimeUnsupportedNotification, _}
 import org.neo4j.cypher.internal.frontend.v2_3.spi.MapToPublicExceptions
 import org.neo4j.cypher.internal.frontend.v2_3.{CypherException => InternalCypherException}
-import org.neo4j.cypher.internal.spi.v2_3.{GeneratedQueryStructure, TransactionBoundGraphStatistics, TransactionBoundPlanContext, TransactionBoundQueryContext}
+import org.neo4j.cypher.internal.spi.v2_3.TransactionBoundQueryContext.IndexSearchMonitor
+import org.neo4j.cypher.internal.spi.v2_3.{TransactionBoundGraphStatistics, TransactionBoundPlanContext, TransactionBoundQueryContext}
 import org.neo4j.cypher.javacompat.ProfilerStatistics
+import org.neo4j.cypher.{QueryStatistics, _}
 import org.neo4j.graphdb.Result.ResultVisitor
+import org.neo4j.graphdb._
 import org.neo4j.graphdb.impl.notification.{NotificationCode, NotificationDetail}
-import org.neo4j.graphdb.{GraphDatabaseService, InputPosition, QueryExecutionType, ResourceIterator}
 import org.neo4j.helpers.Clock
 import org.neo4j.kernel.GraphDatabaseAPI
 import org.neo4j.kernel.api.{KernelAPI, Statement}
+import org.neo4j.kernel.impl.core.NodeManager
 import org.neo4j.kernel.impl.query.{QueryExecutionMonitor, QuerySession}
 import org.neo4j.kernel.monitoring.{Monitors => KernelMonitors}
 import org.neo4j.logging.Log
@@ -156,7 +158,12 @@ trait CompatibilityFor2_3 {
   implicit val executionMonitor = kernelMonitors.newMonitor(classOf[QueryExecutionMonitor])
 
   def produceParsedQuery(preParsedQuery: PreParsedQuery, tracer: CompilationPhaseTracer) = {
-    val preparedQueryForV_2_3 = Try(compiler.prepareQuery(preParsedQuery.statement, preParsedQuery.rawStatement, preParsedQuery.notificationLogger, Some(preParsedQuery.offset), tracer))
+    val preparedQueryForV_2_3 =
+      Try(compiler.prepareQuery(preParsedQuery.statement,
+                                preParsedQuery.rawStatement,
+                                preParsedQuery.notificationLogger,
+                                preParsedQuery.planner.name,
+                                Some(preParsedQuery.offset), tracer))
     new ParsedQuery {
       def isPeriodicCommit = preparedQueryForV_2_3.map(_.isPeriodicCommit).getOrElse(false)
 
@@ -165,7 +172,7 @@ trait CompatibilityFor2_3 {
         val (planImpl, extractedParameters) = compiler.planPreparedQuery(preparedQueryForV_2_3.get, planContext, tracer)
 
         // Log notifications/warnings from planning
-        planImpl.notifications.foreach(preParsedQuery.notificationLogger += _)
+        planImpl.notifications(planContext).foreach(preParsedQuery.notificationLogger += _)
 
         (new ExecutionPlanWrapper(planImpl), extractedParameters)
       }
@@ -177,7 +184,8 @@ trait CompatibilityFor2_3 {
   class ExecutionPlanWrapper(inner: ExecutionPlan_v2_3) extends ExecutionPlan {
 
     private def queryContext(graph: GraphDatabaseAPI, txInfo: TransactionInfo) = {
-      val ctx = new TransactionBoundQueryContext(graph, txInfo.tx, txInfo.isTopLevelTx, txInfo.statement)
+      val searchMonitor: IndexSearchMonitor = kernelMonitors.newMonitor(classOf[IndexSearchMonitor])
+      val ctx = new TransactionBoundQueryContext(graph, txInfo.tx, txInfo.isTopLevelTx, txInfo.statement)(searchMonitor)
       new ExceptionTranslatingQueryContextFor2_3(ctx)
     }
 
@@ -195,8 +203,8 @@ trait CompatibilityFor2_3 {
 
     def isPeriodicCommit = inner.isPeriodicCommit
 
-    def isStale(lastTxId: () => Long, statement: Statement) =
-      inner.isStale(lastTxId, TransactionBoundGraphStatistics(statement))
+    def isStale(lastCommittedTxId: LastCommittedTxIdProvider, statement: Statement): Boolean =
+      inner.isStale(lastCommittedTxId, TransactionBoundGraphStatistics(statement))
   }
 }
 
@@ -275,11 +283,20 @@ case class ExecutionResultWrapperFor2_3(inner: InternalExecutionResult, planner:
     )
   }
 
-  def close() = exceptionHandlerFor2_3.runSafely{ inner.close() }
+  def close() = exceptionHandlerFor2_3.runSafely {
+    endQueryExecution()
+    inner.close()
+  }
 
   def next() = exceptionHandlerFor2_3.runSafely{ inner.next() }
 
-  def hasNext = exceptionHandlerFor2_3.runSafely{ inner.hasNext }
+  def hasNext = exceptionHandlerFor2_3.runSafely {
+    val next = inner.hasNext
+    if (!next) {
+      endQueryExecution()
+    }
+    next
+  }
 
   def convert(i: InternalPlanDescription): ExtendedPlanDescription = exceptionHandlerFor2_3.runSafely {
     CompatibilityPlanDescriptionFor2_3(i, CypherVersion.v2_3, planner, runtime)
@@ -398,6 +415,12 @@ class StringInfoLogger2_3(log: Log) extends InfoLogger {
     log.info(message)
   }
 }
+
+class EntityAccessorWrapper2_3(nodeManager: NodeManager) extends EntityAccessor {
+  override def newNodeProxyById(id: Long): Node = nodeManager.newNodeProxyById(id)
+  override def newRelationshipProxyById(id: Long): Relationship = nodeManager.newRelationshipProxyById(id)
+}
+
 case class CompatibilityFor2_3Cost(graph: GraphDatabaseService,
                                    config: CypherCompilerConfiguration,
                                    clock: Clock,
@@ -419,12 +442,11 @@ case class CompatibilityFor2_3Cost(graph: GraphDatabaseService,
     val runtimeName = runtime match {
       case CypherRuntime.default => None
       case CypherRuntime.interpreted => Some(InterpretedRuntimeName)
-      case CypherRuntime.compiled => Some(CompiledRuntimeName)
     }
 
-    CypherCompilerFactory.costBasedCompiler(
-      graph, config, clock, GeneratedQueryStructure, new WrappedMonitors2_3( kernelMonitors ),
-      new StringInfoLogger2_3( log ), rewriterSequencer, plannerName, runtimeName)
+    val nodeManager = graph.asInstanceOf[GraphDatabaseAPI].getDependencyResolver.resolveDependency(classOf[NodeManager])
+    CypherCompilerFactory.costBasedCompiler( graph, new EntityAccessorWrapper2_3(nodeManager), config, clock, new WrappedMonitors2_3( kernelMonitors ), new StringInfoLogger2_3( log ),
+      rewriterSequencer, plannerName, runtimeName)
   }
 
   override val queryCacheSize: Int = config.queryCacheSize
@@ -435,8 +457,11 @@ case class CompatibilityFor2_3Rule(graph: GraphDatabaseService,
                                    clock: Clock,
                                    kernelMonitors: KernelMonitors,
                                    kernelAPI: KernelAPI) extends CompatibilityFor2_3 {
-  protected val compiler = CypherCompilerFactory.ruleBasedCompiler(
-    graph, config, clock, new WrappedMonitors2_3( kernelMonitors ), rewriterSequencer)
+  protected val compiler = {
+    val nodeManager = graph.asInstanceOf[GraphDatabaseAPI].getDependencyResolver.resolveDependency(classOf[NodeManager])
+    CypherCompilerFactory.ruleBasedCompiler( graph, new EntityAccessorWrapper2_3(nodeManager), config, clock,
+      new WrappedMonitors2_3( kernelMonitors ), rewriterSequencer)
+  }
 
   override val queryCacheSize: Int = config.queryCacheSize
 }

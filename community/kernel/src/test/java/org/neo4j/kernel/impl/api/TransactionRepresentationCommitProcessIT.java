@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -99,7 +99,7 @@ import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.neo4j.helpers.collection.MapUtil.stringMap;
-import static org.neo4j.kernel.impl.store.StoreFactory.SF_CREATE;
+
 
 public class TransactionRepresentationCommitProcessIT
 {
@@ -142,7 +142,7 @@ public class TransactionRepresentationCommitProcessIT
         PageCache pageCache = pageCacheRule.getPageCache( fileSystem );
         storeDir = testDirectory.graphDbDir();
         StoreFactory storeFactory = new StoreFactory( fileSystem, storeDir, pageCache, NullLogProvider.getInstance() );
-        neoStores = storeFactory.openNeoStores( SF_CREATE );
+        neoStores = storeFactory.openAllNeoStores( true );
     }
 
     @After
@@ -151,7 +151,7 @@ public class TransactionRepresentationCommitProcessIT
         neoStores.close();
     }
 
-    @Test(timeout = 5000)
+    @Test(timeout = 15000)
     public void commitDuringContinuousCheckpointing() throws Exception
     {
         // prepare

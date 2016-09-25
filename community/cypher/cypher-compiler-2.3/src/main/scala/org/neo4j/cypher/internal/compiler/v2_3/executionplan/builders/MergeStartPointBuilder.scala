@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -79,7 +79,7 @@ class MergeStartPointBuilder extends PlanBuilder {
           case other                                             => other
         }
 
-        val nodeProducer = PlainMergeNodeProducer(entityProducerFactory.nodeStartItems((ctx, startItem.s)))
+        val nodeProducer = PlainMergeNodeProducer(entityProducerFactory.updateNodeStartItems((ctx, startItem.s)))
         val solvedPredicates = startItem.solvedPredicates
         val predicatesLeft = where.toSet -- solvedPredicates
 
@@ -97,7 +97,7 @@ class MergeStartPointBuilder extends PlanBuilder {
         }
 
         val nodeProducer = UniqueMergeNodeProducers(startItems.map {
-          case (label: KeyToken, propertyKey: KeyToken, item: RatedStartItem) => IndexNodeProducer(label, propertyKey, entityProducerFactory.nodeStartItems((ctx, item.s)))
+          case (label: KeyToken, propertyKey: KeyToken, item: RatedStartItem) => IndexNodeProducer(label, propertyKey, entityProducerFactory.updateNodeStartItems((ctx, item.s)))
         })
         val solvedPredicates = startItems.flatMap {
           case (_, _, item: RatedStartItem) => item.solvedPredicates

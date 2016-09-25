@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,8 +26,11 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
@@ -45,6 +48,7 @@ import org.neo4j.kernel.impl.store.NeoStores;
 import org.neo4j.kernel.impl.store.StoreFactory;
 import org.neo4j.kernel.impl.store.record.DynamicRecord;
 import org.neo4j.kernel.impl.store.record.NodeRecord;
+import org.neo4j.kernel.impl.store.record.RelationshipGroupRecord;
 import org.neo4j.kernel.impl.transaction.CommittedTransactionRepresentation;
 import org.neo4j.kernel.impl.transaction.TransactionRepresentation;
 import org.neo4j.kernel.impl.transaction.command.Command;
@@ -70,10 +74,13 @@ import org.neo4j.test.PageCacheRule;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.RETURNS_MOCKS;
 import static org.mockito.Mockito.mock;
+
+import static org.mockito.Mockito.when;
 import static org.neo4j.helpers.collection.IteratorUtil.single;
 import static org.neo4j.helpers.collection.MapUtil.stringMap;
-import static org.neo4j.kernel.impl.store.StoreFactory.SF_CREATE;
+
 
 public class TransactionRecordStateTest
 {
@@ -132,7 +139,7 @@ public class TransactionRecordStateTest
     {
         // GIVEN
         NeoStores neoStores = newNeoStores( GraphDatabaseSettings.dense_node_threshold.name(), "1" );
-        NeoStoreTransactionContext context = new NeoStoreTransactionContext( neoStores, mock( Locks.Client.class ) );
+        NeoStoreTransactionContext context = getNeoStoreTransactionContext( neoStores );
         TransactionRecordState recordState =
                 new TransactionRecordState( neoStores, mock( IntegrityValidator.class ), context );
         long nodeId = 0, relId = 1;
@@ -156,12 +163,13 @@ public class TransactionRecordStateTest
         assertFalse( commandIterator.hasNext() );
     }
 
+
     @Test
     public void shouldExtractUpdateCommandsInCorrectOrder() throws Exception
     {
         // GIVEN
         NeoStores neoStores = newNeoStores( GraphDatabaseSettings.dense_node_threshold.name(), "1" );
-        NeoStoreTransactionContext context = new NeoStoreTransactionContext( neoStores, mock( Locks.Client.class ) );
+        NeoStoreTransactionContext context = getNeoStoreTransactionContext( neoStores );
         TransactionRecordState recordState =
                 new TransactionRecordState( neoStores, mock( IntegrityValidator.class ), context );
         long nodeId = 0, relId1 = 1, relId2 = 2, relId3 = 3;
@@ -173,7 +181,7 @@ public class TransactionRecordStateTest
                 LockService.NO_LOCK_SERVICE, new LockGroup(), 1 );
         apply( applier, transaction( recordState ) );
 
-        context = new NeoStoreTransactionContext( neoStores, mock( Locks.Client.class ) );
+        context = getNeoStoreTransactionContext( neoStores );
         recordState = new TransactionRecordState( neoStores, mock( IntegrityValidator.class ), context );
         recordState.nodeChangeProperty( nodeId, 0, 102 );
         recordState.relCreate( relId3, 0, nodeId, nodeId );
@@ -200,11 +208,58 @@ public class TransactionRecordStateTest
     }
 
     @Test
+    public void shouldIgnoreRelationshipGroupCommandsForGroupThatIsCreatedAndDeletedInThisTx() throws Exception
+    {
+        /*
+         * This test verifies that there are no transaction commands generated for a state diff that contains a
+         * relationship group that is created and deleted in this tx. This case requires special handling because
+         * relationship groups can be created and then deleted from disjoint code paths. Look at
+         * TransactionRecordState.extractCommands() for more details.
+         *
+         * The test setup looks complicated but all it does is mock properly a NeoStoreTransactionContext to
+         * return an Iterable<RecordSet< that contains a RelationshipGroup record which has been created in this
+         * tx and also is set notInUse.
+         */
+        // Given
+        NeoStores neoStore = newNeoStores();
+        NeoStoreTransactionContext context = mock( NeoStoreTransactionContext.class, RETURNS_MOCKS );
+
+        RecordAccess<Long, RelationshipGroupRecord, Integer> relGroupRecordsMock = mock( RecordAccess.class );
+
+        Command.RelationshipGroupCommand theCommand = new Command.RelationshipGroupCommand();
+        RelationshipGroupRecord theRecord = new RelationshipGroupRecord( 1, 1 );
+        theRecord.setInUse( false ); // this is where we set the record to be not in use
+        theCommand.init( theRecord );
+
+        LinkedList<RecordAccess.RecordProxy<Long, RelationshipGroupRecord, Integer>> commands =
+                new LinkedList<>();
+
+        RecordAccess.RecordProxy<Long, RelationshipGroupRecord, Integer> theProxyMock = mock( RecordAccess.RecordProxy.class );
+        when( theProxyMock.isCreated() ).thenReturn( true ); // and this is where it is set to be created in this tx
+        when( theProxyMock.forReadingLinkage() ).thenReturn( theRecord );
+        commands.add( theProxyMock );
+
+        when( relGroupRecordsMock.changes() ).thenReturn( commands );
+        when( context.getRelGroupRecords() ).thenReturn( relGroupRecordsMock );
+        when( relGroupRecordsMock.changeSize() ).thenReturn( 1 ); // necessary for passingan assertion in recordState
+
+        TransactionRecordState recordState =
+                new TransactionRecordState( neoStore, mock( IntegrityValidator.class ), context );
+
+        // When
+        Set<Command> resultingCommands = new HashSet<>();
+        recordState.extractCommands( resultingCommands );
+
+        // Then
+        assertTrue( resultingCommands.isEmpty() );
+    }
+
+    @Test
     public void shouldExtractDeleteCommandsInCorrectOrder() throws Exception
     {
         // GIVEN
         NeoStores neoStores = newNeoStores( GraphDatabaseSettings.dense_node_threshold.name(), "1" );
-        NeoStoreTransactionContext context = new NeoStoreTransactionContext( neoStores, mock( Locks.Client.class ) );
+        NeoStoreTransactionContext context = getNeoStoreTransactionContext( neoStores );
         TransactionRecordState recordState =
                 new TransactionRecordState( neoStores, mock( IntegrityValidator.class ), context );
         long nodeId1 = 0, nodeId2 = 1, relId1 = 1, relId2 = 2, relId4 = 10;
@@ -218,7 +273,7 @@ public class TransactionRecordStateTest
                 LockService.NO_LOCK_SERVICE, new LockGroup(), 1 );
         apply( applier, transaction( recordState ) );
 
-        context = new NeoStoreTransactionContext( neoStores, mock( Locks.Client.class ) );
+        context = getNeoStoreTransactionContext( neoStores );
         recordState = new TransactionRecordState( neoStores, mock( IntegrityValidator.class ), context );
         recordState.relDelete( relId4 );
         recordState.nodeDelete( nodeId2 );
@@ -275,13 +330,13 @@ public class TransactionRecordStateTest
         Config configuration = new Config( stringMap( config ) );
         StoreFactory storeFactory = new StoreFactory( storeDir, configuration, new DefaultIdGeneratorFactory( fs ),
                 pageCacheRule.getPageCache( fs ), fs, NullLogProvider.getInstance() );
-        return cleanup.add( storeFactory.openNeoStores( SF_CREATE ) );
+        return cleanup.add( storeFactory.openAllNeoStores( true ) );
     }
 
     private TransactionRecordState nodeWithDynamicLabelRecord( NeoStores store,
             AtomicLong nodeId, AtomicLong dynamicLabelRecordId )
     {
-        NeoStoreTransactionContext context = new NeoStoreTransactionContext( store, mock( Locks.Client.class ) );
+        NeoStoreTransactionContext context = new NeoStoreTransactionContext( store );
         TransactionRecordState recordState = recordState( store, context );
 
         nodeId.set( store.getNodeStore().nextId() );
@@ -307,7 +362,7 @@ public class TransactionRecordStateTest
 
     private TransactionRecordState deleteNode( NeoStores store, long nodeId )
     {
-        NeoStoreTransactionContext context = new NeoStoreTransactionContext( store, mock( Locks.Client.class ) );
+        NeoStoreTransactionContext context = new NeoStoreTransactionContext( store );
         TransactionRecordState recordState = recordState( store, context );
         recordState.nodeDelete( nodeId );
         return recordState;
@@ -338,5 +393,12 @@ public class TransactionRecordStateTest
     {
         DynamicRecord record = store.getNodeStore().getDynamicLabelStore().forceGetRecord( id );
         assertTrue( inUse == record.inUse() );
+    }
+
+    private NeoStoreTransactionContext getNeoStoreTransactionContext( NeoStores neoStores )
+    {
+        NeoStoreTransactionContext context = new NeoStoreTransactionContext( neoStores );
+        context.init( mock( Locks.Client.class ) );
+        return context;
     }
 }

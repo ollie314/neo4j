@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,6 +26,14 @@ import org.neo4j.cypher.internal.compiler.v2_3.commands.expressions.StringHelper
 import org.neo4j.cypher.internal.frontend.v2_3.helpers.StringHelper
 
 class ErrorMessagesTest extends ExecutionEngineFunSuite with StringHelper {
+
+  test("fails on incorrect unicode literal") {
+    expectSyntaxError(
+      "RETURN '\\uH'",
+      "Invalid input 'H': expected four hexadecimal digits specifying a unicode character (line 1, column 11 (offset: 10))",
+      10
+    )
+  }
 
   test("fails when merging relationship with null property") {
     expectError("create (a) create (b) merge (a)-[r:X {p: null}]->(b) return r", "Cannot merge relationship using null property value for p")

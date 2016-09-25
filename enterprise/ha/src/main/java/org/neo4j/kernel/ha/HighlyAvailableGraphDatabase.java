@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,6 +26,7 @@ import org.neo4j.cluster.ClusterSettings;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.kernel.extension.KernelExtensionFactory;
 import org.neo4j.kernel.ha.cluster.HighAvailabilityMemberState;
+import org.neo4j.kernel.ha.cluster.HighAvailabilityModeSwitcher;
 import org.neo4j.kernel.ha.factory.HighlyAvailableEditionModule;
 import org.neo4j.kernel.ha.factory.HighlyAvailableFacadeFactory;
 import org.neo4j.kernel.impl.factory.DataSourceModule;
@@ -86,12 +87,12 @@ public class HighlyAvailableGraphDatabase extends GraphDatabaseFacade
 
     public String role()
     {
-        return highlyAvailableEditionModule.members.getSelf().getHARole();
+        return highlyAvailableEditionModule.members.getCurrentMemberRole();
     }
 
     public boolean isMaster()
     {
-        return highlyAvailableEditionModule.memberStateMachine.isMaster();
+        return HighAvailabilityModeSwitcher.MASTER.equals( role() );
     }
 
     public File getStoreDirectory()

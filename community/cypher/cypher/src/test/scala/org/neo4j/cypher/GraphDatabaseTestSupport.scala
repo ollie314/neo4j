@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,6 +22,7 @@ package org.neo4j.cypher
 import org.neo4j.cypher.internal.compiler.v2_3.spi.PlanContext
 import org.neo4j.cypher.internal.frontend.v2_3.test_helpers.{CypherFunSuite, CypherTestSupport}
 import org.neo4j.cypher.internal.helpers.GraphIcing
+import org.neo4j.cypher.internal.spi.v2_3.TransactionBoundQueryContext.IndexSearchMonitor
 import org.neo4j.cypher.internal.spi.v2_3.TransactionBoundPlanContext
 import org.neo4j.graphdb._
 import org.neo4j.graphdb.factory.GraphDatabaseSettings
@@ -37,7 +38,7 @@ import scala.collection.Map
 trait GraphDatabaseTestSupport extends CypherTestSupport with GraphIcing {
   self: CypherFunSuite  =>
 
-  var graph: GraphDatabaseAPI with Snitch = null
+  var graph: GraphDatabaseAPI = null
   var nodes: List[Node] = null
 
   def databaseConfig(): Map[String,String] = Map()
@@ -47,9 +48,9 @@ trait GraphDatabaseTestSupport extends CypherTestSupport with GraphIcing {
     graph = createGraphDatabase()
   }
 
-  protected def createGraphDatabase(): GraphDatabaseAPI with Snitch = {
+  protected def createGraphDatabase(): GraphDatabaseAPI = {
     val config: Map[String, String] = databaseConfig() + (GraphDatabaseSettings.pagecache_memory.name -> "8M")
-    new ImpermanentGraphDatabase(config.asJava) with Snitch
+    new ImpermanentGraphDatabase(config.asJava)
   }
 
   override protected def stopTest() {
@@ -225,14 +226,6 @@ trait GraphDatabaseTestSupport extends CypherTestSupport with GraphIcing {
   def kernelAPI = graph.getDependencyResolver.resolveDependency(classOf[KernelAPI])
 
   def planContext: PlanContext = new TransactionBoundPlanContext(statement, graph)
-}
 
-trait Snitch extends GraphDatabaseAPI {
-  val createdNodes = collection.mutable.Queue[Node]()
-
-  abstract override def createNode(): Node = {
-    val n = super.createNode()
-    createdNodes.enqueue(n)
-    n
-  }
+  def indexSearchMonitor = kernelMonitors.newMonitor(classOf[IndexSearchMonitor])
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,7 +28,6 @@ import java.util.Date;
 import org.neo4j.function.Supplier;
 import org.neo4j.function.Suppliers;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
-import org.neo4j.helpers.Settings;
 import org.neo4j.helpers.collection.MapUtil;
 import org.neo4j.helpers.progress.ProgressMonitorFactory;
 import org.neo4j.index.lucene.LuceneLabelScanStoreBuilder;
@@ -42,6 +41,7 @@ import org.neo4j.kernel.api.impl.index.LuceneSchemaIndexProvider;
 import org.neo4j.kernel.api.index.SchemaIndexProvider;
 import org.neo4j.kernel.api.labelscan.LabelScanStore;
 import org.neo4j.kernel.configuration.Config;
+import org.neo4j.kernel.configuration.Settings;
 import org.neo4j.kernel.impl.pagecache.ConfiguringPageCacheFactory;
 import org.neo4j.kernel.impl.store.NeoStores;
 import org.neo4j.kernel.impl.store.StoreAccess;
@@ -52,6 +52,7 @@ import org.neo4j.legacy.consistency.report.ConsistencySummaryStatistics;
 import org.neo4j.logging.DuplicatingLog;
 import org.neo4j.logging.Log;
 import org.neo4j.logging.LogProvider;
+import org.neo4j.udc.UsageDataKeys.OperationalMode;
 
 import static org.neo4j.io.file.Files.createOrOpenAsOuputStream;
 
@@ -134,17 +135,19 @@ public class ConsistencyCheckService
             }
         } ) );
 
-        try ( NeoStores neoStores = factory.openNeoStoresEagerly() )
+        try ( NeoStores neoStores = factory.openAllNeoStores() )
         {
             StoreAccess store = new StoreAccess( neoStores ).initialize();
             LabelScanStore labelScanStore = null;
             try
             {
-                labelScanStore = new LuceneLabelScanStoreBuilder(
-                        storeDir, store.getRawNeoStores(), fileSystem, logProvider ).build();
+                OperationalMode operationalMode = OperationalMode.single;
+                labelScanStore = new LuceneLabelScanStoreBuilder( storeDir, store.getRawNeoStores(), fileSystem,
+                        consistencyCheckerConfig, operationalMode, logProvider )
+                        .build();
                 SchemaIndexProvider indexes = new LuceneSchemaIndexProvider(
                         fileSystem, DirectoryFactory.PERSISTENT,
-                        storeDir );
+                        storeDir, logProvider, tuningConfiguration, operationalMode );
                 DirectStoreAccess stores = new DirectStoreAccess( store, labelScanStore, indexes );
                 FullCheck check = new FullCheck( tuningConfiguration, progressFactory );
                 summary = check.execute( stores, new DuplicatingLog( log, reportLog ) );

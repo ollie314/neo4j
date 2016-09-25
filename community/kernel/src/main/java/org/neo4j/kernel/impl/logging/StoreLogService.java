@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -49,7 +49,7 @@ public class StoreLogService extends AbstractLogService implements Lifecycle
         private LogProvider userLogProvider = NullLogProvider.getInstance();
         private Executor rotationExecutor;
         private long internalLogRotationThreshold = 0L;
-        private int internalLogRotationDelay = 0;
+        private long internalLogRotationDelay = 0L;
         private int maxInternalLogArchives = 0;
         private Consumer<LogProvider> rotationListener = Consumers.noop();
         private Map<String, Level> logLevels = new HashMap<>();
@@ -65,15 +65,15 @@ public class StoreLogService extends AbstractLogService implements Lifecycle
             return this;
         }
 
-        public Builder withRotation( long internalLogRotationThreshold, int internalLogRotationDelay, int maxInternalLogArchives,
-                JobScheduler jobScheduler )
+        public Builder withRotation( long internalLogRotationThreshold, long internalLogRotationDelay,
+                int maxInternalLogArchives, JobScheduler jobScheduler )
         {
             return withRotation( internalLogRotationThreshold, internalLogRotationDelay, maxInternalLogArchives,
                     jobScheduler.executor( JobScheduler.Groups.internalLogRotation ) );
         }
 
-        public Builder withRotation( long internalLogRotationThreshold, int internalLogRotationDelay, int maxInternalLogArchives,
-                Executor rotationExecutor )
+        public Builder withRotation( long internalLogRotationThreshold, long internalLogRotationDelay,
+                int maxInternalLogArchives, Executor rotationExecutor )
         {
             this.internalLogRotationThreshold = internalLogRotationThreshold;
             this.internalLogRotationDelay = internalLogRotationDelay;
@@ -119,7 +119,7 @@ public class StoreLogService extends AbstractLogService implements Lifecycle
         return new Builder().withUserLogProvider( userLogProvider );
     }
 
-    public static Builder withRotation( long internalLogRotationThreshold, int internalLogRotationDelay, int maxInternalLogArchives, JobScheduler jobScheduler )
+    public static Builder withRotation( long internalLogRotationThreshold, long internalLogRotationDelay, int maxInternalLogArchives, JobScheduler jobScheduler )
     {
         return new Builder().withRotation( internalLogRotationThreshold, internalLogRotationDelay, maxInternalLogArchives, jobScheduler );
     }
@@ -138,7 +138,7 @@ public class StoreLogService extends AbstractLogService implements Lifecycle
             Map<String, Level> logLevels,
             Level defaultLevel,
             long internalLogRotationThreshold,
-            int internalLogRotationDelay,
+            long internalLogRotationDelay,
             int maxInternalLogArchives,
             Executor rotationExecutor,
             final Consumer<LogProvider> rotationListener ) throws IOException

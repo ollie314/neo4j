@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -174,7 +174,7 @@ public final class PathImpl implements Path
     @Override
     public Iterable<Node> reverseNodes()
     {
-        return nodeIterator( end, reverseRelationships() );
+        return nodeIterator( endNode(), reverseRelationships() );
     }
 
     private Iterable<Node> nodeIterator( final Node start, final Iterable<Relationship> relationships )

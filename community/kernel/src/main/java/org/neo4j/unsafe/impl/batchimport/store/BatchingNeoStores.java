@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -37,6 +37,7 @@ import org.neo4j.kernel.impl.api.scan.LabelScanStoreProvider;
 import org.neo4j.kernel.impl.logging.LogService;
 import org.neo4j.kernel.impl.pagecache.ConfiguringPageCacheFactory;
 import org.neo4j.kernel.impl.spi.KernelContext;
+import org.neo4j.kernel.impl.spi.SimpleKernelContext;
 import org.neo4j.kernel.impl.store.NeoStores;
 import org.neo4j.kernel.impl.store.NodeStore;
 import org.neo4j.kernel.impl.store.PropertyStore;
@@ -50,6 +51,7 @@ import org.neo4j.kernel.impl.util.Dependencies;
 import org.neo4j.kernel.lifecycle.LifeSupport;
 import org.neo4j.logging.LogProvider;
 import org.neo4j.logging.NullLogProvider;
+import org.neo4j.udc.UsageDataKeys;
 import org.neo4j.unsafe.impl.batchimport.AdditionalInitialIds;
 import org.neo4j.unsafe.impl.batchimport.Configuration;
 import org.neo4j.unsafe.impl.batchimport.ParallelBatchImporter;
@@ -59,11 +61,13 @@ import org.neo4j.unsafe.impl.batchimport.store.BatchingTokenRepository.BatchingR
 import org.neo4j.unsafe.impl.batchimport.store.io.IoTracer;
 
 import static java.lang.String.valueOf;
-
 import static org.neo4j.graphdb.factory.GraphDatabaseSettings.dense_node_threshold;
+import static org.neo4j.graphdb.factory.GraphDatabaseSettings.mapped_memory_page_size;
 import static org.neo4j.graphdb.factory.GraphDatabaseSettings.pagecache_memory;
 import static org.neo4j.helpers.collection.MapUtil.stringMap;
-import static org.neo4j.kernel.impl.store.StoreFactory.SF_CREATE;
+import static org.neo4j.io.ByteUnit.kibiBytes;
+import static org.neo4j.io.ByteUnit.mebiBytes;
+import static org.neo4j.kernel.impl.transaction.log.TransactionIdStore.BASE_TX_COMMIT_TIMESTAMP;
 
 /**
  * Creator and accessor of {@link NeoStores} with some logic to provide very batch friendly services to the
@@ -85,14 +89,21 @@ public class BatchingNeoStores implements AutoCloseable, NeoStoresSupplier
     private final IoTracer ioTracer;
 
     public BatchingNeoStores( FileSystemAbstraction fileSystem, File storeDir, Configuration config,
-            LogService logService, AdditionalInitialIds initialIds )
+            LogService logService, AdditionalInitialIds initialIds, Config dbConfig )
     {
         this.fileSystem = fileSystem;
         this.logProvider = logService.getInternalLogProvider();
         this.storeDir = storeDir;
-        this.neo4jConfig = new Config( stringMap(
+
+        long mappedMemory = config.pageCacheMemory();
+        // 30 is the minimum number of pages the page cache wants to keep free at all times.
+        // Having less than that might result in an evicted page will reading, which would mean
+        // unnecessary re-reading. Having slightly more leaves some leg room.
+        int pageSize = calculateOptimalPageSize( mappedMemory, 60 /*pages*/ );
+        this.neo4jConfig = new Config( stringMap( dbConfig.getParams(),
                 dense_node_threshold.name(), valueOf( config.denseNodeThreshold() ),
-                pagecache_memory.name(), valueOf( config.writeBufferSize() ) ),
+                pagecache_memory.name(), valueOf( mappedMemory ),
+                mapped_memory_page_size.name(), valueOf( pageSize ) ),
                 GraphDatabaseSettings.class );
         final PageCacheTracer tracer = new DefaultPageCacheTracer();
         this.pageCache = createPageCache( fileSystem, neo4jConfig, logProvider, tracer );
@@ -120,7 +131,8 @@ public class BatchingNeoStores implements AutoCloseable, NeoStoresSupplier
         }
         neoStores.getMetaDataStore().setLastCommittedAndClosedTransactionId(
                 initialIds.lastCommittedTransactionId(), initialIds.lastCommittedTransactionChecksum(),
-                initialIds.lastCommittedTransactionLogVersion(), initialIds.lastCommittedTransactionLogByteOffset() );
+                BASE_TX_COMMIT_TIMESTAMP, initialIds.lastCommittedTransactionLogByteOffset(),
+                initialIds.lastCommittedTransactionLogVersion() );
         this.propertyKeyRepository = new BatchingPropertyKeyTokenRepository(
                 neoStores.getPropertyKeyTokenStore(), initialIds.highPropertyKeyTokenId() );
         this.labelRepository = new BatchingLabelTokenRepository(
@@ -134,20 +146,8 @@ public class BatchingNeoStores implements AutoCloseable, NeoStoresSupplier
         dependencies.satisfyDependency( fileSystem );
         dependencies.satisfyDependency( this );
         dependencies.satisfyDependency( logService );
-        KernelContext kernelContext = new KernelContext()
-        {
-            @Override
-            public FileSystemAbstraction fileSystem()
-            {
-                return BatchingNeoStores.this.fileSystem;
-            }
-
-            @Override
-            public File storeDir()
-            {
-                return BatchingNeoStores.this.storeDir;
-            }
-        };
+        KernelContext kernelContext = new SimpleKernelContext( this.fileSystem, this.storeDir,
+                UsageDataKeys.OperationalMode.single  );
         @SuppressWarnings( { "unchecked", "rawtypes" } )
         KernelExtensions extensions = life.add( new KernelExtensions(
                 kernelContext, (Iterable) Service.load( KernelExtensionFactory.class ),
@@ -155,6 +155,21 @@ public class BatchingNeoStores implements AutoCloseable, NeoStoresSupplier
         life.start();
         labelScanStore = life.add( extensions.resolveDependency( LabelScanStoreProvider.class,
                 LabelScanStoreProvider.HIGHEST_PRIORITIZED ).getLabelScanStore() );
+    }
+
+    static int calculateOptimalPageSize( long memorySize, int numberOfPages )
+    {
+        int pageSize = (int) mebiBytes( 8 );
+        int lowest = (int) kibiBytes( 8 );
+        while ( pageSize > lowest )
+        {
+            if ( memorySize / pageSize >= numberOfPages )
+            {
+                return pageSize;
+            }
+            pageSize >>>= 1;
+        }
+        return lowest;
     }
 
     private static PageCache createPageCache( FileSystemAbstraction fileSystem, Config config, LogProvider log,
@@ -175,14 +190,15 @@ public class BatchingNeoStores implements AutoCloseable, NeoStoresSupplier
      * Useful for store migration where the {@link ParallelBatchImporter} is used as migrator and some of
      * its data need to be communicated by copying a store file.
      */
-    public static void createStore( FileSystemAbstraction fileSystem, String storeDir ) throws IOException
+    public static void createStore( FileSystemAbstraction fileSystem, String storeDir, Config dbConfig )
+            throws IOException
     {
-        try ( PageCache pageCache = createPageCache( fileSystem, new Config(), NullLogProvider.getInstance(),
+        try ( PageCache pageCache = createPageCache( fileSystem, dbConfig, NullLogProvider.getInstance(),
                 PageCacheTracer.NULL ) )
         {
             StoreFactory storeFactory =
                     new StoreFactory( fileSystem, new File( storeDir ), pageCache, NullLogProvider.getInstance() );
-            try ( NeoStores neoStores = storeFactory.openNeoStores( SF_CREATE ) )
+            try ( NeoStores neoStores = storeFactory.openAllNeoStores( true ) )
             {
                 neoStores.getMetaDataStore();
                 neoStores.getLabelTokenStore();
@@ -200,7 +216,7 @@ public class BatchingNeoStores implements AutoCloseable, NeoStoresSupplier
         BatchingIdGeneratorFactory idGeneratorFactory = new BatchingIdGeneratorFactory( fileSystem );
         StoreFactory storeFactory =
                 new StoreFactory( storeDir, neo4jConfig, idGeneratorFactory, pageCache, fileSystem, logProvider );
-        return storeFactory.openNeoStores( SF_CREATE );
+        return storeFactory.openAllNeoStores( true );
     }
 
     public IoTracer getIoTracer()

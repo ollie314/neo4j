@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -63,7 +63,14 @@ public class GraphDatabaseShellServer extends AbstractAppServer
     public GraphDatabaseShellServer( String path, boolean readOnly, String configFileOrNull )
             throws RemoteException
     {
-        this( instantiateGraphDb( path, readOnly, configFileOrNull ), readOnly );
+        this( instantiateGraphDb( new GraphDatabaseFactory(), path, readOnly, configFileOrNull ), readOnly );
+        this.graphDbCreatedHere = true;
+    }
+
+    public GraphDatabaseShellServer( GraphDatabaseFactory factory, String path, boolean readOnly, String configFileOrNull )
+            throws RemoteException
+    {
+        this( instantiateGraphDb(  factory, path, readOnly, configFileOrNull ), readOnly );
         this.graphDbCreatedHere = true;
     }
 
@@ -190,10 +197,10 @@ public class GraphDatabaseShellServer extends AbstractAppServer
         }
     }
 
-    private static GraphDatabaseAPI instantiateGraphDb( String path, boolean readOnly,
-                                                        String configFileOrNull )
+    private static GraphDatabaseAPI instantiateGraphDb( GraphDatabaseFactory factory, String path, boolean readOnly,
+            String configFileOrNull )
     {
-        GraphDatabaseBuilder builder = new GraphDatabaseFactory().
+        GraphDatabaseBuilder builder = factory.
                 newEmbeddedDatabaseBuilder( path ).
                 setConfig( GraphDatabaseSettings.read_only, Boolean.toString( readOnly ) );
         if ( configFileOrNull != null )

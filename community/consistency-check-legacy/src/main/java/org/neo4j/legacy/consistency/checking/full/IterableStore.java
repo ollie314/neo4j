@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,7 +26,6 @@ import org.neo4j.kernel.api.direct.BoundedIterable;
 import org.neo4j.kernel.impl.store.RecordStore;
 import org.neo4j.kernel.impl.store.record.AbstractBaseRecord;
 
-import static org.neo4j.kernel.impl.store.RecordStore.IN_USE;
 import static org.neo4j.kernel.impl.store.RecordStore.Scanner.scan;
 
 public class IterableStore<RECORD extends AbstractBaseRecord> implements BoundedIterable<RECORD>
@@ -52,6 +51,6 @@ public class IterableStore<RECORD extends AbstractBaseRecord> implements Bounded
     @Override
     public Iterator<RECORD> iterator()
     {
-        return scan( store, IN_USE ).iterator();
+        return scan( store ).iterator();
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -48,7 +48,11 @@ import static java.lang.String.format;
  * Version of CSV reporter that logs all metrics into a single file.
  * Restriction is that all metrics must be set up before starting it,
  * as it cannot handle changing sets of metrics at runtime.
+ *
+ * @deprecated please use {@code com.codahale.metrics.CsvReporter} instead. This reporter is incompatible with the
+ * event based reporting that will be introduced in the next major release, hence it will be removed.
  */
+@Deprecated
 public class CsvReporterSingle extends ScheduledReporter
 {
     // CSV separator

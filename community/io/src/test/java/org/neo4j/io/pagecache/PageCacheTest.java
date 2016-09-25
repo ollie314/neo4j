@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,6 @@
  */
 package org.neo4j.io.pagecache;
 
-import org.apache.commons.lang3.SystemUtils;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -35,14 +34,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
-import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.OpenOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import java.util.Set;
@@ -81,6 +78,8 @@ import org.neo4j.io.pagecache.tracing.PinEvent;
 import org.neo4j.test.LinearHistoryPageCacheTracer;
 import org.neo4j.test.RepeatRule;
 
+import static java.lang.Long.toHexString;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.hamcrest.Matchers.both;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
@@ -93,10 +92,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-
-import static java.lang.Long.toHexString;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
-
 import static org.neo4j.io.pagecache.PagedFile.PF_EXCLUSIVE_LOCK;
 import static org.neo4j.io.pagecache.PagedFile.PF_NO_FAULT;
 import static org.neo4j.io.pagecache.PagedFile.PF_NO_GROW;
@@ -108,7 +103,7 @@ import static org.neo4j.test.ThreadTestUtils.fork;
 public abstract class PageCacheTest<T extends PageCache>
 {
     protected static final long SHORT_TIMEOUT_MILLIS = 10_000;
-    protected static final long SEMI_LONG_TIMEOUT_MILLIS = 60_000;
+    protected static final long SEMI_LONG_TIMEOUT_MILLIS = 120_000;
     protected static final long LONG_TIMEOUT_MILLIS = 360_000;
 
     protected static ExecutorService executor;
@@ -1421,12 +1416,13 @@ public abstract class PageCacheTest<T extends PageCache>
             }
         }
 
+        final AtomicBoolean end = new AtomicBoolean( false );
         Runnable writer = new Runnable()
         {
             @Override
             public void run()
             {
-                while ( !Thread.currentThread().isInterrupted() )
+                while ( !end.get() )
                 {
                     try ( PageCursor cursor = pagedFile.io( 0, PF_EXCLUSIVE_LOCK ) )
                     {
@@ -1464,7 +1460,8 @@ public abstract class PageCacheTest<T extends PageCache>
             }
         }
 
-        writerFuture.cancel( true );
+        end.set( true );
+        writerFuture.get();
         pagedFile.close();
     }
 
@@ -2844,7 +2841,7 @@ public abstract class PageCacheTest<T extends PageCache>
             // The takeLockFuture got it first, so the closeFuture should
             // complete when we release the latch.
             secondThreadGotLockLatch.countDown();
-            closeFuture.get( 2000, TimeUnit.MILLISECONDS );
+            closeFuture.get( 20000, TimeUnit.MILLISECONDS );
         }
     }
 
@@ -3405,7 +3402,7 @@ public abstract class PageCacheTest<T extends PageCache>
         pagedFileB.close();
     }
 
-    @Test( timeout = SEMI_LONG_TIMEOUT_MILLIS )
+    @Test( timeout = LONG_TIMEOUT_MILLIS )
     public void concurrentPageFaultingMustNotPutInterleavedDataIntoPages() throws Exception
     {
         final int filePageCount = 11;
@@ -3442,10 +3439,10 @@ public abstract class PageCacheTest<T extends PageCache>
             }
         } );
 
-        harness.run( SEMI_LONG_TIMEOUT_MILLIS, MILLISECONDS );
+        harness.run( LONG_TIMEOUT_MILLIS, MILLISECONDS );
     }
 
-    @Test( timeout = SEMI_LONG_TIMEOUT_MILLIS )
+    @Test( timeout = LONG_TIMEOUT_MILLIS )
     public void concurrentFlushingMustNotPutInterleavedDataIntoFile() throws Exception
     {
         final RecordFormat recordFormat = new StandardRecordFormat();
@@ -3463,10 +3460,10 @@ public abstract class PageCacheTest<T extends PageCache>
         harness.disableCommands( Command.MapFile, Command.UnmapFile, Command.ReadRecord );
         harness.setVerification( filesAreCorrectlyWrittenVerification( recordFormat, filePageCount ) );
 
-        harness.run( SEMI_LONG_TIMEOUT_MILLIS, MILLISECONDS );
+        harness.run( LONG_TIMEOUT_MILLIS, MILLISECONDS );
     }
 
-    @Test( timeout = SEMI_LONG_TIMEOUT_MILLIS )
+    @Test( timeout = LONG_TIMEOUT_MILLIS )
     public void concurrentFlushingWithMischiefMustNotPutInterleavedDataIntoFile() throws Exception
     {
         final RecordFormat recordFormat = new StandardRecordFormat();
@@ -3487,10 +3484,10 @@ public abstract class PageCacheTest<T extends PageCache>
         harness.disableCommands( Command.MapFile, Command.UnmapFile, Command.ReadRecord );
         harness.setVerification( filesAreCorrectlyWrittenVerification( recordFormat, filePageCount ) );
 
-        harness.run( SEMI_LONG_TIMEOUT_MILLIS, MILLISECONDS );
+        harness.run( LONG_TIMEOUT_MILLIS, MILLISECONDS );
     }
 
-    @Test( timeout = SEMI_LONG_TIMEOUT_MILLIS )
+    @Test( timeout = LONG_TIMEOUT_MILLIS )
     public void concurrentFlushingWithFailuresMustNotPutInterleavedDataIntoFile() throws Exception
     {
         final RecordFormat recordFormat = new StandardRecordFormat();
@@ -3511,7 +3508,7 @@ public abstract class PageCacheTest<T extends PageCache>
         harness.disableCommands( Command.MapFile, Command.UnmapFile, Command.ReadRecord );
         harness.setVerification( filesAreCorrectlyWrittenVerification( recordFormat, filePageCount ) );
 
-        harness.run( SEMI_LONG_TIMEOUT_MILLIS, MILLISECONDS );
+        harness.run( LONG_TIMEOUT_MILLIS, MILLISECONDS );
     }
 
     private Phase filesAreCorrectlyWrittenVerification( final RecordFormat recordFormat, final int filePageCount )
@@ -3547,99 +3544,6 @@ public abstract class PageCacheTest<T extends PageCache>
                 }
             }
         };
-    }
-
-    @Test( timeout = SEMI_LONG_TIMEOUT_MILLIS )
-    public void backgroundThreadsMustGracefullyShutDown() throws Exception
-    {
-        assumeTrue( "For some reason, this test is very flaky on Windows", !SystemUtils.IS_OS_WINDOWS );
-
-        int iterations = 1000;
-        List<WeakReference<PageCache>> refs = new LinkedList<>();
-        final Queue<Throwable> caughtExceptions = new ConcurrentLinkedQueue<>();
-        final Thread.UncaughtExceptionHandler exceptionHandler = new Thread.UncaughtExceptionHandler()
-        {
-            @Override
-            public void uncaughtException( Thread t, Throwable e )
-            {
-                e.printStackTrace();
-                caughtExceptions.offer( e );
-            }
-        };
-        Thread.UncaughtExceptionHandler defaultUncaughtExceptionHandler = Thread.getDefaultUncaughtExceptionHandler();
-        Thread.setDefaultUncaughtExceptionHandler( exceptionHandler );
-
-        try
-        {
-            generateFileWithRecords( file( "a" ), recordCount, recordSize );
-            int filePagesInTotal = recordCount / recordsPerFilePage;
-
-            for ( int i = 0; i < iterations; i++ )
-            {
-                PageCache cache = createPageCache( fs, maxPages, pageCachePageSize, PageCacheTracer.NULL );
-
-                // Touch all the pages
-                PagedFile pagedFile = cache.map( file( "a" ), filePageSize );
-                try ( PageCursor cursor = pagedFile.io( 0, PF_SHARED_LOCK ) )
-                {
-                    for ( int j = 0; j < filePagesInTotal; j++ )
-                    {
-                        assertTrue( cursor.next() );
-                    }
-                }
-
-                // We're now likely racing with the eviction thread
-                pagedFile.close();
-                cache.close();
-                refs.add( new WeakReference<>( cache ) );
-
-                assertTrue( caughtExceptions.isEmpty() );
-            }
-        }
-        finally
-        {
-            Thread.setDefaultUncaughtExceptionHandler( defaultUncaughtExceptionHandler );
-        }
-
-        // Once the page caches has been closed and all references presumably set to null, then the only thing that
-        // could possibly strongly reference the cache is any lingering background thread. If we do a couple of
-        // GCs, then we should observe that the WeakReference has been cleared by the garbage collector. If it
-        // hasn't, then something must be keeping it alive, even though it has been closed.
-        int maxChecks = 100;
-        boolean passed;
-        do
-        {
-            System.gc();
-            Thread.sleep( 100 );
-            passed = true;
-
-            for ( WeakReference<PageCache> ref : refs )
-            {
-                if ( ref.get() != null )
-                {
-                    passed = false;
-                }
-            }
-        }
-        while ( !passed && maxChecks-- > 0 );
-
-        if ( !passed )
-        {
-            List<PageCache> nonNullPageCaches = new LinkedList<>();
-            for ( WeakReference<PageCache> ref : refs )
-            {
-                PageCache pageCache = ref.get();
-                if ( pageCache != null )
-                {
-                    nonNullPageCaches.add( pageCache );
-                }
-            }
-
-            if( !nonNullPageCaches.isEmpty() )
-            {
-                fail( "PageCaches should not be held live after close: " + nonNullPageCaches );
-            }
-        }
     }
 
     @Test( timeout = SHORT_TIMEOUT_MILLIS )

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,6 @@ import org.junit.Test;
 import org.mockito.Matchers;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 
@@ -59,6 +58,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
 import static org.neo4j.kernel.impl.api.TransactionApplicationMode.INTERNAL;
 import static org.neo4j.kernel.impl.util.function.Optionals.some;
 
@@ -174,7 +174,7 @@ public class TransactionRepresentationStoreApplierTest
         definitions.init(
                 MapUtil.<String,Integer>genericMap( "one", 1 ),
                 MapUtil.<String,Integer>genericMap( "two", 2 ) );
-        return Arrays.<Command>asList( definitions );
+        return Collections.<Command>singletonList( definitions );
     }
 
     private TransactionRepresentation createNodeTransaction( long nodeId )

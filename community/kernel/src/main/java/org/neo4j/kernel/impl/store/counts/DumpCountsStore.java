@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -66,7 +66,7 @@ public class DumpCountsStore implements CountsVisitor, MetadataVisitor, UnknownK
             {
                 StoreFactory factory = new StoreFactory( fs, path, pages, NullLogProvider.getInstance() );
 
-                NeoStores neoStores = factory.openNeoStoresEagerly();
+                NeoStores neoStores = factory.openAllNeoStores();
                 neoStores.getCounts().accept( new DumpCountsStore( out, neoStores ) );
             }
             else

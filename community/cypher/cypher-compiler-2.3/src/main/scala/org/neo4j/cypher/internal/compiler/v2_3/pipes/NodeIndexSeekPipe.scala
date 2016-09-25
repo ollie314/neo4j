@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -77,7 +77,7 @@ case class NodeIndexSeekPipe(ident: String,
           case _ =>
             throw new InternalException("This should never happen. Missing a case?")
         }
-      case IndexSeek | UniqueIndexSeek => Index(label.name, propertyKey.name)
+      case IndexSeek | LockingUniqueIndexSeek | UniqueIndexSeek => Index(label.name, propertyKey.name)
       case _ => throw new InternalException("This should never happen. Missing a case?")
     }
     new PlanDescriptionImpl(this.id, name, NoChildren, Seq(indexDesc), identifiers)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,6 +22,7 @@ package org.neo4j.backup;
 import java.io.File;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.net.ConnectException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -42,7 +43,7 @@ import org.neo4j.graphdb.factory.GraphDatabaseFactory;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.helpers.CancellationRequest;
 import org.neo4j.helpers.Service;
-import org.neo4j.helpers.Settings;
+import org.neo4j.kernel.configuration.Settings;
 import org.neo4j.helpers.progress.ProgressListener;
 import org.neo4j.helpers.progress.ProgressMonitorFactory;
 import org.neo4j.io.fs.FileSystemAbstraction;
@@ -126,9 +127,10 @@ class BackupService
     BackupOutcome doFullBackup( final String sourceHostNameOrIp, final int sourcePort, File targetDirectory,
             ConsistencyCheck consistencyCheck, Config tuningConfiguration, final long timeout, final boolean forensics )
     {
-        if ( directoryContainsDb( targetDirectory ) )
+        if ( !directoryIsEmpty( targetDirectory ) )
         {
-            throw new RuntimeException( targetDirectory + " already contains a database" );
+            throw new RuntimeException( "Can only perform a full backup into an empty directory but " +
+                    targetDirectory + " is not empty" );
         }
         long timestamp = System.currentTimeMillis();
         long lastCommittedTx = -1;
@@ -144,7 +146,7 @@ class BackupService
                 @Override
                 public Response<?> copyStore( StoreWriter writer )
                 {
-                    client = new BackupClient( sourceHostNameOrIp, sourcePort, NullLogProvider.getInstance(),
+                    client = new BackupClient( sourceHostNameOrIp, sourcePort, null, NullLogProvider.getInstance(),
                             StoreId.DEFAULT, timeout, ResponseUnpacker.NO_OP_RESPONSE_UNPACKER, monitors.newMonitor(
                             ByteCounterMonitor.class ), monitors.newMonitor( RequestMonitor.class ) );
                     client.start();
@@ -223,13 +225,15 @@ class BackupService
     BackupOutcome doIncrementalBackupOrFallbackToFull( String sourceHostNameOrIp, int sourcePort, File targetDirectory,
             ConsistencyCheck consistencyCheck, Config config, long timeout, boolean forensics )
     {
-        if ( !directoryContainsDb( targetDirectory ) )
+        if ( directoryIsEmpty( targetDirectory ) )
         {
+            log.info( "Previous backup not found, a new full backup will be performed." );
             return doFullBackup( sourceHostNameOrIp, sourcePort, targetDirectory, consistencyCheck, config, timeout,
                     forensics );
         }
         try
         {
+            log.info( "Previous backup found, trying incremental backup." );
             return doIncrementalBackup( sourceHostNameOrIp, sourcePort, targetDirectory, timeout, config );
         }
         catch ( IncrementalBackupNotPossibleException e )
@@ -268,6 +272,11 @@ class BackupService
         return fileSystem.fileExists( new File( targetDirectory, MetaDataStore.DEFAULT_NAME ) );
     }
 
+    boolean directoryIsEmpty( File targetDirectory )
+    {
+        return !fileSystem.isDirectory( targetDirectory ) || 0 == fileSystem.listFiles( targetDirectory ).length;
+    }
+
     static GraphDatabaseAPI startTemporaryDb( File targetDirectory, PageCache pageCache, Map<String,String> config )
     {
         GraphDatabaseFactory factory = ExternallyManagedPageCache.graphDatabaseFactoryWithPageCache( pageCache );
@@ -292,11 +301,11 @@ class BackupService
 
         ProgressTxHandler handler = new ProgressTxHandler();
         TransactionCommittingResponseUnpacker unpacker = new TransactionCommittingResponseUnpacker(
-                new DefaultUnpackerDependencies( resolver ) );
+                new DefaultUnpackerDependencies( resolver, 0 ) );
 
         Monitors monitors = resolver.resolveDependency( Monitors.class );
         LogProvider logProvider = resolver.resolveDependency( LogService.class ).getInternalLogProvider();
-        BackupClient client = new BackupClient( sourceHostNameOrIp, sourcePort, logProvider, targetDb.storeId(),
+        BackupClient client = new BackupClient( sourceHostNameOrIp, sourcePort, null, logProvider, targetDb.storeId(),
                 timeout, unpacker, monitors.newMonitor( ByteCounterMonitor.class, BackupClient.class ),
                 monitors.newMonitor( RequestMonitor.class, BackupClient.class ) );
 
@@ -322,6 +331,10 @@ class BackupService
             if ( e.getCause() != null && e.getCause() instanceof MissingLogDataException )
             {
                 throw new IncrementalBackupNotPossibleException( TOO_OLD_BACKUP, e.getCause() );
+            }
+            if ( e.getCause() != null && e.getCause() instanceof ConnectException )
+            {
+                throw new RuntimeException( e.getMessage(), e.getCause() );
             }
             throw new RuntimeException( "Failed to perform incremental backup.", e );
         }

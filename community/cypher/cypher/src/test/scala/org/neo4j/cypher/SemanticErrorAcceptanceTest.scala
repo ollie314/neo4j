@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -29,6 +29,34 @@ class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
     executeAndEnsureError(
       "match (n) where id(n) = 0 return bar",
       "bar not defined (line 1, column 34 (offset: 33))"
+    )
+  }
+
+  test("don't allow a string after IN") {
+    executeAndEnsureError(
+      "MATCH (n) where id(n) IN '' return 1",
+      "Type mismatch: expected Collection<T> but was String (line 1, column 26 (offset: 25))"
+    )
+  }
+
+  test("don't allow a integer after IN") {
+    executeAndEnsureError(
+      "MATCH (n) WHERE id(n) IN 1 RETURN 1",
+      "Type mismatch: expected Collection<T> but was Integer (line 1, column 26 (offset: 25))"
+    )
+  }
+
+  test("don't allow a float after IN") {
+    executeAndEnsureError(
+      "MATCH (n) WHERE id(n) IN 1.0 RETURN 1",
+      "Type mismatch: expected Collection<T> but was Float (line 1, column 26 (offset: 25))"
+    )
+  }
+
+  test("don't allow a boolean after IN") {
+    executeAndEnsureError(
+      "MATCH (n) WHERE id(n) IN true RETURN 1",
+      "Type mismatch: expected Collection<T> but was Boolean (line 1, column 26 (offset: 25))"
     )
   }
 

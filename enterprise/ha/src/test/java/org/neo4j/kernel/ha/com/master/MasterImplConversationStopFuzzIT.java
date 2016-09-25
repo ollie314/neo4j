@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -39,8 +39,6 @@ import org.neo4j.com.Response;
 import org.neo4j.com.TransactionNotPresentOnMasterException;
 import org.neo4j.com.TransactionObligationResponse;
 import org.neo4j.com.storecopy.StoreWriter;
-import org.neo4j.function.Consumer;
-import org.neo4j.function.Factory;
 import org.neo4j.helpers.Clock;
 import org.neo4j.kernel.IdType;
 import org.neo4j.kernel.api.exceptions.TransactionFailureException;
@@ -101,7 +99,7 @@ public class MasterImplConversationStopFuzzIT
         final ExposedConversationManager
                 conversationManager = new ExposedConversationManager( conversationSPI, config, 100, 0 );
 
-        ConversationTestMasterSPI conversationTestMasterSPI = new ConversationTestMasterSPI( conversationManager );
+        ConversationTestMasterSPI conversationTestMasterSPI = new ConversationTestMasterSPI();
         MasterImpl master = new MasterImpl( conversationTestMasterSPI, conversationManager,
                 new Monitors().newMonitor( MasterImpl.Monitor.class ), config );
         life.add( conversationManager);
@@ -146,7 +144,7 @@ public class MasterImplConversationStopFuzzIT
         private final int machineId;
 
         private State state = State.UNINITIALIZED;
-        private long lastTx = 0;
+        private final long lastTx = 0;
         private long epoch;
         private RequestContext requestContext;
 
@@ -227,7 +225,7 @@ public class MasterImplConversationStopFuzzIT
                                 }
                                 else
                                 {
-                                    worker.master.endLockSession( worker.requestContext, true );
+                                    endLockSession( worker );
                                     return IDLE;
                                 }
                             }
@@ -244,7 +242,7 @@ public class MasterImplConversationStopFuzzIT
                             }
                             else
                             {
-                                worker.master.endLockSession( worker.requestContext, true );
+                                endLockSession( worker );
                                 return IDLE;
                             }
                         }
@@ -290,7 +288,7 @@ public class MasterImplConversationStopFuzzIT
         public Void call() throws Exception
         {
             for ( int i = 0; i < numberOfOperations; i++ )
-            { 
+            {
                 state = state.next( this );
             }
             return null;
@@ -305,17 +303,16 @@ public class MasterImplConversationStopFuzzIT
         {
             return random.nextInt();
         }
+
+        private static void endLockSession( SlaveEmulatorWorker worker )
+        {
+            boolean successfulSession = worker.random.nextBoolean();
+            worker.master.endLockSession( worker.requestContext, successfulSession );
+        }
     }
 
     static class ConversationTestMasterSPI implements MasterImpl.SPI
     {
-        private ExposedConversationManager conversationManager;
-
-        public ConversationTestMasterSPI( ExposedConversationManager conversationManager )
-        {
-            this.conversationManager = conversationManager;
-        }
-
         @Override
         public boolean isAccessible()
         {
@@ -365,11 +362,6 @@ public class MasterImplConversationStopFuzzIT
         @Override
         public <T> Response<T> packTransactionObligationResponse( RequestContext context, T response )
         {
-            Conversation conversation = conversationManager.conversationStore.getValue( context );
-            if ( conversation != null )
-            {
-                assertTrue( conversation.isActive() );
-            }
             return packEmptyResponse( response );
         }
 
@@ -461,7 +453,7 @@ public class MasterImplConversationStopFuzzIT
 
     private class ExposedConversationManager extends ConversationManager {
 
-        private ExposedTimedRepository<RequestContext,Conversation> conversationStore;
+        private TimedRepository<RequestContext,Conversation> conversationStore;
 
         public ExposedConversationManager( ConversationSPI spi, Config config, int activityCheckInterval,
                 int lockTimeoutAddition )
@@ -472,26 +464,9 @@ public class MasterImplConversationStopFuzzIT
         @Override
         protected TimedRepository<RequestContext,Conversation> createConversationStore()
         {
-            conversationStore = new ExposedTimedRepository<>( getConversationFactory(), getConversationReaper(),
+            conversationStore = new TimedRepository<>( getConversationFactory(), getConversationReaper(),
                     1, Clock.SYSTEM_CLOCK );
             return conversationStore;
-        }
-
-    }
-
-    private class ExposedTimedRepository<KEY, VALUE> extends TimedRepository<KEY, VALUE>
-    {
-
-        private ExposedTimedRepository(  Factory<VALUE> provider, Consumer<VALUE> reaper, long timeout,
-                Clock clock)
-        {
-            super(provider, reaper, timeout, clock);
-        }
-
-        @Override
-        public VALUE getValue( KEY key )
-        {
-            return super.getValue( key );
         }
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -195,13 +195,14 @@ public class DataSourceModule
                 new NonTransactionalTokenNameLookup( editionModule.labelTokenHolder,
                         editionModule.relationshipTypeTokenHolder, editionModule.propertyKeyTokenHolder ),
                 deps, editionModule.propertyKeyTokenHolder, editionModule.labelTokenHolder, relationshipTypeTokenHolder,
-                editionModule.lockManager, schemaWriteGuard, transactionEventHandlers,
+                editionModule.statementLocksFactory, schemaWriteGuard, transactionEventHandlers,
                 platformModule.monitors.newMonitor( IndexingService.Monitor.class ), fileSystem,
                 storeMigrationProcess, platformModule.transactionMonitor, kernelHealth,
                 platformModule.monitors.newMonitor( PhysicalLogFile.Monitor.class ),
                 editionModule.headerInformationFactory, startupStatistics, nodeManager, guard, indexStore,
                 editionModule.commitProcessFactory, pageCache, editionModule.constraintSemantics,
-                platformModule.monitors, platformModule.tracers ) );
+                platformModule.monitors, platformModule.tracers, editionModule.idGeneratorFactory,
+                editionModule.eligibleForIdReuse, editionModule.idTypeConfigurationProvider ) );
         dataSourceManager.register( neoStoreDataSource );
 
         life.add( new MonitorGc( config, logging.getInternalLog( MonitorGc.class ) ) );
@@ -375,7 +376,6 @@ public class DataSourceModule
             }
         };
     }
-
 
     /**
      * At end of startup, wait for instance to become available for transactions.

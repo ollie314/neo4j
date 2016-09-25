@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,13 +21,15 @@ package org.neo4j.kernel.impl.locking;
 
 public class NoOpClient implements Locks.Client
 {
+    public static final Locks.Client NO_LOCKS = new NoOpClient();
+
     @Override
-    public void acquireShared( Locks.ResourceType resourceType, long resourceId ) throws AcquireLockTimeoutException
+    public void acquireShared( Locks.ResourceType resourceType, long... resourceIds ) throws AcquireLockTimeoutException
     {
     }
 
     @Override
-    public void acquireExclusive( Locks.ResourceType resourceType, long resourceId ) throws AcquireLockTimeoutException
+    public void acquireExclusive( Locks.ResourceType resourceType, long... resourceIds ) throws AcquireLockTimeoutException
     {
     }
 
@@ -50,11 +52,6 @@ public class NoOpClient implements Locks.Client
 
     @Override
     public void releaseExclusive( Locks.ResourceType resourceType, long resourceId )
-    {
-    }
-
-    @Override
-    public void releaseAll()
     {
     }
 

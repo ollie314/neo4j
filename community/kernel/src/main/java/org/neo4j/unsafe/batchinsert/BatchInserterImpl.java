@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -101,6 +101,7 @@ import org.neo4j.kernel.impl.logging.StoreLogService;
 import org.neo4j.kernel.impl.pagecache.ConfiguringPageCacheFactory;
 import org.neo4j.kernel.impl.pagecache.PageCacheLifecycle;
 import org.neo4j.kernel.impl.spi.KernelContext;
+import org.neo4j.kernel.impl.spi.SimpleKernelContext;
 import org.neo4j.kernel.impl.store.CountsComputer;
 import org.neo4j.kernel.impl.store.LabelTokenStore;
 import org.neo4j.kernel.impl.store.NeoStores;
@@ -146,6 +147,7 @@ import org.neo4j.kernel.impl.util.Listener;
 import org.neo4j.kernel.lifecycle.LifeSupport;
 import org.neo4j.logging.Log;
 import org.neo4j.logging.NullLog;
+import org.neo4j.udc.UsageDataKeys;
 
 import static java.lang.Boolean.parseBoolean;
 import static org.neo4j.collection.primitive.PrimitiveLongCollections.map;
@@ -153,7 +155,6 @@ import static org.neo4j.graphdb.DynamicLabel.label;
 import static org.neo4j.helpers.collection.IteratorUtil.first;
 import static org.neo4j.kernel.impl.store.NodeLabelsField.parseLabelsField;
 import static org.neo4j.kernel.impl.store.PropertyStore.encodeString;
-import static org.neo4j.kernel.impl.store.StoreFactory.SF_CREATE;
 import static org.neo4j.kernel.impl.util.IoPrimitiveUtils.safeCastLongToInt;
 
 /**
@@ -276,7 +277,7 @@ public class BatchInserterImpl implements BatchInserter
         }
         msgLog.info( Thread.currentThread() + " Starting BatchInserter(" + this + ")" );
         life.start();
-        neoStores = sf.openNeoStores( SF_CREATE );
+        neoStores = sf.openAllNeoStores( true );
         neoStores.verifyStoreOk();
 
         nodeStore = neoStores.getNodeStore();
@@ -306,20 +307,7 @@ public class BatchInserterImpl implements BatchInserter
                             }
                         } );
 
-        KernelContext kernelContext = new KernelContext()
-        {
-            @Override
-            public FileSystemAbstraction fileSystem()
-            {
-                return fileSystem;
-            }
-
-            @Override
-            public File storeDir()
-            {
-                return storeDir;
-            }
-        };
+        KernelContext kernelContext = new SimpleKernelContext( fileSystem, storeDir, UsageDataKeys.OperationalMode.single );
         KernelExtensions extensions = life
                 .add( new KernelExtensions( kernelContext, kernelExtensions, deps,
                                             UnsatisfiedDependencyStrategies.ignore() ) );
@@ -405,24 +393,13 @@ public class BatchInserterImpl implements BatchInserter
         return new IndexCreatorImpl( actions, label );
     }
 
-    private void removePropertyIfExist( RecordProxy<Long, ? extends PrimitiveRecord,Void> recordProxy,
-            int propertyKey, RecordAccess<Long,PropertyRecord,PrimitiveRecord> propertyRecords )
-    {
-        if ( propertyTraverser.findPropertyRecordContaining( recordProxy.forReadingData(),
-                propertyKey, propertyRecords, false ) != Record.NO_NEXT_PROPERTY.intValue() )
-        {
-            propertyDeletor.removeProperty( recordProxy, propertyKey, propertyRecords );
-        }
-    }
-
     private void setPrimitiveProperty( RecordProxy<Long,? extends PrimitiveRecord,Void> primitiveRecord,
             String propertyName, Object propertyValue )
     {
         int propertyKey = getOrCreatePropertyKeyId( propertyName );
         RecordAccess<Long,PropertyRecord,PrimitiveRecord> propertyRecords = recordAccess.getPropertyRecords();
 
-        removePropertyIfExist( primitiveRecord, propertyKey, propertyRecords );
-        propertyCreator.primitiveAddProperty( primitiveRecord, propertyKey, propertyValue, propertyRecords );
+        propertyCreator.primitiveSetProperty( primitiveRecord, propertyKey, propertyValue, propertyRecords );
     }
 
     private void validateIndexCanBeCreated( int labelId, int propertyKeyId )

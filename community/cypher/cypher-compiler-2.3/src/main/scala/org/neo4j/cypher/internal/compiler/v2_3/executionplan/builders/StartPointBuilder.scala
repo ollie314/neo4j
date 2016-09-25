@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -55,7 +55,7 @@ class StartPointBuilder extends PlanBuilder {
   private def genNodeStart(entityFactory: EntityProducerFactory): PartialFunction[(PlanContext, StartItem), EntityProducer[Node]] =
     entityFactory.nodeByIndex orElse
       entityFactory.nodeByIndexQuery orElse
-      entityFactory.nodeByIndexHint orElse
+      entityFactory.nodeByIndexHint(readOnly = true) orElse
       entityFactory.nodeById orElse
       entityFactory.nodesAll orElse
       entityFactory.nodeByLabel

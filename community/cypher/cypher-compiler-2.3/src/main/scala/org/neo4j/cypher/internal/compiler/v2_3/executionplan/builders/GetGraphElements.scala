@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,6 @@
  */
 package org.neo4j.cypher.internal.compiler.v2_3.executionplan.builders
 
-import org.neo4j.cypher.internal.frontend.v2_3.CypherTypeException
 import org.neo4j.graphdb.PropertyContainer
 
 import scala.collection.JavaConverters._
@@ -43,7 +42,7 @@ object GetGraphElements {
       case result: java.lang.Iterable[_] => result.asScala.view.map(castElement).iterator
       case result: Seq[_]                => result.view.map(castElement).iterator
       case element: PropertyContainer    => Iterator.single(element.asInstanceOf[T])
-      case x                             => throw new CypherTypeException("Expected a propertycontainer or number here, but got: " + x.toString)
+      case x                             => Iterator.empty
     }
   }
 }

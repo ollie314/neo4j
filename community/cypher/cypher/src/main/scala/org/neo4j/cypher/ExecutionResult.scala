@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,6 +23,11 @@ import java.io.PrintWriter
 
 import org.neo4j.graphdb.ResourceIterator
 
+/**
+  * @deprecated See { @link org.neo4j.graphdb.Result}, and use
+  * { @link org.neo4j.graphdb.GraphDatabaseService#execute(String, Map)} instead.
+  */
+@Deprecated
 trait ExecutionResult extends Iterator[Map[String, Any]] {
   def columns: List[String]
   def javaColumns: java.util.List[String]
@@ -69,7 +74,7 @@ case class QueryStatistics(nodesCreated: Int = 0,
       constraintsRemoved > 0
 
   override def toString = {
-    val builder = new StringBuilder("\n")
+    val builder = new StringBuilder
 
     includeIfNonZero(builder, "Nodes created: ", nodesCreated)
     includeIfNonZero(builder, "Relationships created: ", relationshipsCreated)

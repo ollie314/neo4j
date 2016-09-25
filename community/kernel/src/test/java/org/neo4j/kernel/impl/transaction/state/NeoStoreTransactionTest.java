@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -49,6 +49,7 @@ import org.neo4j.helpers.collection.Visitor;
 import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.kernel.DefaultIdGeneratorFactory;
 import org.neo4j.kernel.IdType;
+import org.neo4j.kernel.KernelHealth;
 import org.neo4j.kernel.api.TokenNameLookup;
 import org.neo4j.kernel.api.exceptions.TransactionFailureException;
 import org.neo4j.kernel.api.index.NodePropertyUpdate;
@@ -144,7 +145,6 @@ import static org.neo4j.kernel.api.index.NodePropertyUpdate.remove;
 import static org.neo4j.kernel.api.index.SchemaIndexProvider.NO_INDEX_PROVIDER;
 import static org.neo4j.kernel.impl.api.TransactionApplicationMode.INTERNAL;
 import static org.neo4j.kernel.impl.api.index.TestSchemaIndexProviderDescriptor.PROVIDER_DESCRIPTOR;
-import static org.neo4j.kernel.impl.store.StoreFactory.SF_CREATE;
 import static org.neo4j.kernel.impl.store.record.IndexRule.indexRule;
 import static org.neo4j.kernel.impl.store.record.UniquePropertyConstraintRule.uniquenessConstraintRule;
 import static org.neo4j.kernel.impl.transaction.log.TransactionIdStore.BASE_TX_ID;
@@ -1295,7 +1295,7 @@ public class NeoStoreTransactionTest
 
         // WHEN
         neoStores.close();
-        neoStores = storeFactory.openNeoStoresEagerly();
+        neoStores = storeFactory.openAllNeoStores();
 
         // EXPECT
         long[] lastClosedTransactionFlags = neoStores.getMetaDataStore().getLastClosedTransaction();
@@ -1435,7 +1435,7 @@ public class NeoStoreTransactionTest
         File storeDir = new File( "dir" );
         fs.mkdir( storeDir );
         storeFactory = new StoreFactory( storeDir, config, idGeneratorFactory, pageCache, fs, NULL_LOG_PROVIDER );
-        neoStores = storeFactory.openNeoStores( SF_CREATE );
+        neoStores = storeFactory.openAllNeoStores( true );
         neoStores.rebuildCountStoreIfNeeded();
         lockMocks.clear();
         locks = mock( LockService.class, new Answer()
@@ -1478,7 +1478,8 @@ public class NeoStoreTransactionTest
 
     private TransactionRepresentationCommitProcess commitProcess( IndexingService indexing ) throws IOException
     {
-        return commitProcess( indexing, new OnlineIndexUpdatesValidator( neoStores, null,
+        KernelHealth kernelHealth = mock( KernelHealth.class );
+        return commitProcess( indexing, new OnlineIndexUpdatesValidator( neoStores, kernelHealth,
                 new PropertyLoader( neoStores ), indexing, IndexUpdateMode.ONLINE ) );
     }
 
@@ -1532,7 +1533,8 @@ public class NeoStoreTransactionTest
 
     private Pair<TransactionRecordState, NeoStoreTransactionContext> newWriteTransaction( IndexingService indexing )
     {
-        NeoStoreTransactionContext context = new NeoStoreTransactionContext( neoStores, mock( Locks.Client.class ) );
+        NeoStoreTransactionContext context = new NeoStoreTransactionContext( neoStores );
+        context.init( mock( Locks.Client.class ) );
         TransactionRecordState result = new TransactionRecordState( neoStores,
                 new IntegrityValidator( neoStores, indexing ), context );
 

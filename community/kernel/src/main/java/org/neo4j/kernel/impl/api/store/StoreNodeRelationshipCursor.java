@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -84,7 +84,7 @@ public class StoreNodeRelationshipCursor extends StoreAbstractRelationshipCursor
         this.relTypes = relTypes;
         this.end = false;
 
-        if ( isDense )
+        if ( isDense && relationshipId != Record.NO_NEXT_RELATIONSHIP.intValue() )
         {
             groupStore.forceGetRecord( relationshipId, groupRecord );
             relationshipId = nextChainStart();
@@ -107,7 +107,7 @@ public class StoreNodeRelationshipCursor extends StoreAbstractRelationshipCursor
             relationshipStore.fillRecord( relationshipId, relationshipRecord, RecordLoad.FORCE );
 
             // If we end up on a relationship record that isn't in use there's a good chance there
-            // have been a concurrent transaction deleting this record under or feet. Since we don't
+            // have been a concurrent transaction deleting this record under our feet. Since we don't
             // reuse relationship ids we can still trust the pointers in this unused record and try
             // to chase a used record down the line.
             try
@@ -244,7 +244,7 @@ public class StoreNodeRelationshipCursor extends StoreAbstractRelationshipCursor
         return true;
     }
 
-    private static enum GroupChain
+    private enum GroupChain
     {
         OUT
                 {

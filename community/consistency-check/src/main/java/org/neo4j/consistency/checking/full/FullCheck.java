@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -122,7 +122,7 @@ public class FullCheck
         return summary;
     }
 
-    void execute( final DirectStoreAccess directStoreAccess, CheckDecorator decorator,
+    void execute( final DirectStoreAccess directStoreAccess, final CheckDecorator decorator,
                   final RecordAccess recordAccess, final InconsistencyReport report,
                   CacheAccess cacheAccess, Monitor reportMonitor )
             throws ConsistencyCheckIncompleteException
@@ -142,7 +142,14 @@ public class FullCheck
                     multiPass, reporter, threads );
             List<ConsistencyCheckerTask> tasks =
                     taskCreator.createTasksForFullCheck( checkLabelScanStore, checkIndexes, checkGraph );
-            TaskExecutor.execute( tasks, progress.build() );
+            TaskExecutor.execute( tasks, new Runnable()
+            {
+                @Override
+                public void run()
+                {
+                    decorator.prepare();
+                }
+            } );
         }
         catch ( Exception e )
         {

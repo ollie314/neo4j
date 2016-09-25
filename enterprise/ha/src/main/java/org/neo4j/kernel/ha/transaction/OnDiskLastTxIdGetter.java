@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -33,11 +33,22 @@ public class OnDiskLastTxIdGetter implements LastTxIdGetter
         this.neoStoresSupplier = neoStoresSupplier;
     }
 
+    /* This method is used to construct credentials for election process.
+     And can be invoked at any moment of instance lifecycle.
+     It mean that its possible that we will be invoked when neo stores are stopped
+     (for example while we copy store) in that case we will return TransactionIdStore.BASE_TX_ID */
     @Override
     public long getLastTxId()
     {
-        TransactionIdStore neoStore = getNeoStores().getMetaDataStore();
-        return neoStore.getLastCommittedTransactionId();
+        try
+        {
+            TransactionIdStore neoStore = getNeoStores().getMetaDataStore();
+            return neoStore.getLastCommittedTransactionId();
+        }
+        catch ( Throwable e )
+        {
+            return TransactionIdStore.BASE_TX_ID;
+        }
     }
 
     private NeoStores getNeoStores()

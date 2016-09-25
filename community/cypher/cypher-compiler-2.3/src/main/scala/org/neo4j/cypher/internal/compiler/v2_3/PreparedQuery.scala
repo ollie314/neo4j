@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,9 +30,10 @@ case class PreparedQuery(statement: Statement,
                          extractedParams: Map[String, Any])(val semanticTable: SemanticTable,
                                                             val conditions: Set[RewriterCondition],
                                                             val scopeTree: Scope,
-                                                            val notificationLogger: InternalNotificationLogger) {
+                                                            val notificationLogger: InternalNotificationLogger,
+                                                            val plannerName: String = "") {
 
-  def abstractQuery: AbstractQuery = statement.asQuery(notificationLogger).setQueryText(queryText)
+  def abstractQuery: AbstractQuery = statement.asQuery(notificationLogger, plannerName).setQueryText(queryText)
 
   def isPeriodicCommit = statement match {
     case Query(Some(_), _) => true
@@ -40,5 +41,5 @@ case class PreparedQuery(statement: Statement,
   }
 
   def rewrite(rewriter: Rewriter): PreparedQuery =
-    copy(statement = statement.endoRewrite(rewriter))(semanticTable, conditions, scopeTree, notificationLogger)
+    copy(statement = statement.endoRewrite(rewriter))(semanticTable, conditions, scopeTree, notificationLogger, plannerName)
 }

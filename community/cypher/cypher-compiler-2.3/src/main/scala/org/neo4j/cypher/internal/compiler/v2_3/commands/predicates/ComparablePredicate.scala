@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -48,6 +48,13 @@ abstract sealed class ComparablePredicate(val left: Expression, val right: Expre
   def arguments = Seq(left, right)
 
   def symbolTableDependencies = left.symbolTableDependencies ++ right.symbolTableDependencies
+
+  def other(e: Expression): Expression = if (e != left) {
+    assert(e == right, "This expression is neither LHS nor RHS")
+    left
+  } else {
+    right
+  }
 }
 
 case class Equals(a: Expression, b: Expression) extends Predicate with Comparer {
@@ -69,6 +76,8 @@ case class Equals(a: Expression, b: Expression) extends Predicate with Comparer 
       case (l, r: Node) if !l.isInstanceOf[Node]                 => incomparable(l, r)
       case (l: Relationship, r) if !r.isInstanceOf[Relationship] => incomparable(l, r)
       case (l, r: Relationship) if !l.isInstanceOf[Relationship] => incomparable(l, r)
+      case (l: String, r: Character)                             => Some(l == r.toString)
+      case (l: Character, r: String)                             => Some(l.toString == r)
       case _                                                     => Some(a1 == b1)
     }
   }

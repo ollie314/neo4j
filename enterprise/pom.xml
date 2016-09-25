@@ -3,14 +3,14 @@
   <parent>
     <groupId>org.neo4j</groupId>
     <artifactId>parent</artifactId>
-    <version>2.3.1-SNAPSHOT</version>
+    <version>2.3.8-SNAPSHOT</version>
     <relativePath>..</relativePath>
   </parent>
 
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.neo4j.build</groupId>
   <artifactId>enterprise-build</artifactId>
-  <version>2.3.1-SNAPSHOT</version>
+  <version>2.3.8-SNAPSHOT</version>
 
   <name>Neo4j - Enterprise Build</name>
   <packaging>pom</packaging>
@@ -39,6 +39,7 @@
     <module>neo4j-enterprise</module>
     <module>server-enterprise</module>
     <module>enterprise-performance-tests</module>
+    <module>deferred-locks</module>
   </modules>
 
   <licenses>
@@ -109,6 +110,11 @@ terms of the relevant Commercial Agreement.
         <dependency>
           <groupId>org.neo4j.app</groupId>
           <artifactId>neo4j-server-enterprise</artifactId>
+          <version>${project.version}</version>
+        </dependency>
+        <dependency>
+          <groupId>org.neo4j</groupId>
+          <artifactId>neo4j-deferred-locks</artifactId>
           <version>${project.version}</version>
         </dependency>
       </dependencies>

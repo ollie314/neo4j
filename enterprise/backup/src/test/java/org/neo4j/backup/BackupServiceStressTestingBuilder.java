@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -49,13 +49,15 @@ import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.impl.transaction.log.checkpoint.CheckPointer;
 import org.neo4j.kernel.impl.transaction.log.checkpoint.SimpleTriggerInfo;
 import org.neo4j.kernel.impl.transaction.log.rotation.LogRotation;
+import org.neo4j.kernel.impl.util.DebugUtil;
 import org.neo4j.kernel.impl.util.Dependencies;
 import org.neo4j.kernel.impl.util.DependenciesProxy;
 import org.neo4j.kernel.monitoring.Monitors;
 import org.neo4j.logging.NullLogProvider;
 
 import static java.lang.System.currentTimeMillis;
-import static org.junit.Assert.assertTrue;
+
+import static org.junit.Assert.fail;
 
 public class BackupServiceStressTestingBuilder
 {
@@ -269,7 +271,11 @@ public class BackupServiceStressTestingBuilder
                 }
 
                 executor.shutdown();
-                assertTrue( executor.awaitTermination( 30, TimeUnit.SECONDS ) );
+                if ( !executor.awaitTermination( 30, TimeUnit.SECONDS ) )
+                {
+                    DebugUtil.dumpThreads( System.err );
+                    fail( "Didn't manage to shut down the workers correctly, dumped threads for forensic purposes" );
+                }
 
                 try
                 {

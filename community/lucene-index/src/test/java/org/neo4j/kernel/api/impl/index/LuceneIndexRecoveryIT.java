@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -46,18 +46,21 @@ import org.neo4j.kernel.impl.transaction.log.checkpoint.CheckPointer;
 import org.neo4j.kernel.impl.transaction.log.checkpoint.SimpleTriggerInfo;
 import org.neo4j.kernel.impl.transaction.log.rotation.LogRotation;
 import org.neo4j.kernel.lifecycle.Lifecycle;
+import org.neo4j.logging.AssertableLogProvider;
 import org.neo4j.test.EphemeralFileSystemRule;
 import org.neo4j.test.TestGraphDatabaseFactory;
+import org.neo4j.udc.UsageDataKeys.OperationalMode;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-
 import static org.neo4j.graphdb.DynamicLabel.label;
 import static org.neo4j.helpers.collection.IteratorUtil.asUniqueSet;
 
 public class LuceneIndexRecoveryIT
 {
     private final static Label myLabel = label( "MyLabel" );
+    @Rule
+    public final AssertableLogProvider log = new AssertableLogProvider( true );
 
     @Test
     public void addShouldBeIdempotentWhenDoingRecovery() throws Exception
@@ -242,6 +245,7 @@ public class LuceneIndexRecoveryIT
 
        TestGraphDatabaseFactory factory = new TestGraphDatabaseFactory();
        factory.setFileSystem( fs.get() );
+       factory.setInternalLogProvider( log );
        factory.addKernelExtensions( Arrays.<KernelExtensionFactory<?>>asList( indexProviderFactory ) );
        db = (GraphDatabaseAPI) factory.newImpermanentDatabase();
     }
@@ -342,7 +346,8 @@ public class LuceneIndexRecoveryIT
             public Lifecycle newInstance( KernelContext context, LuceneSchemaIndexProviderFactory.Dependencies dependencies )
                     throws Throwable
             {
-                return new LuceneSchemaIndexProvider( fs.get(), ignoreCloseDirectoryFactory, context.storeDir() )
+                return new LuceneSchemaIndexProvider( fs.get(), ignoreCloseDirectoryFactory, context.storeDir(),
+                        dependencies.getLogging().getInternalLogProvider(), dependencies.getConfig(), OperationalMode.single )
                 {
                     @Override
                     public InternalIndexState getInitialState( long indexId )
@@ -364,7 +369,8 @@ public class LuceneIndexRecoveryIT
             public Lifecycle newInstance( KernelContext context, LuceneSchemaIndexProviderFactory.Dependencies dependencies )
                     throws Throwable
             {
-                return new LuceneSchemaIndexProvider( fs.get(), ignoreCloseDirectoryFactory, context.storeDir() )
+                return new LuceneSchemaIndexProvider( fs.get(), ignoreCloseDirectoryFactory, context.storeDir(),
+                        dependencies.getLogging().getInternalLogProvider(), dependencies.getConfig(), OperationalMode.single )
                 {
                     @Override
                     public int compareTo( SchemaIndexProvider o )

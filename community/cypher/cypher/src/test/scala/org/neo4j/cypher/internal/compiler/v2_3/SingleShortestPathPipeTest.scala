@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,7 +24,7 @@ import org.neo4j.cypher.internal.compiler.v2_3.commands._
 import org.neo4j.cypher.internal.compiler.v2_3.pipes.{FakePipe, PipeMonitor, ShortestPathPipe}
 import org.neo4j.cypher.internal.frontend.v2_3.SemanticDirection
 import org.neo4j.cypher.internal.frontend.v2_3.symbols._
-import org.neo4j.graphdb.{Direction, Node, Path}
+import org.neo4j.graphdb.{Node, Path}
 
 class SingleShortestPathPipeTest extends GraphDatabaseFunSuite {
   private implicit val monitor = mock[PipeMonitor]
@@ -50,6 +50,6 @@ class SingleShortestPathPipeTest extends GraphDatabaseFunSuite {
     val source = new FakePipe(List(Map("a" -> a, "b" -> b)), "a"->CTNode, "b"->CTNode)
 
     val pipe = new ShortestPathPipe(source, path)()
-    graph.inTx(pipe.createResults(QueryStateHelper.empty).next()("p").asInstanceOf[Path])
+    graph.withTx(tx => pipe.createResults(QueryStateHelper.queryStateFrom(graph, tx)).next()("p").asInstanceOf[Path])
   }
 }

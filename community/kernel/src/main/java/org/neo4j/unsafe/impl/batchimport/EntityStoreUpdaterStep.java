@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -138,10 +138,6 @@ public class EntityStoreUpdaterStep<RECORD extends PrimitiveRecord,INPUT extends
             propertyStore.updateRecord( propertyRecord );
         }
 
-        // Flush after each batch.
-        // We get vectored, sequential IO when we write with flush, plus it makes future page faulting faster.
-        propertyStore.flush();
-        entityStore.flush();
         monitor.entitiesWritten( records[0].getClass(), records.length-skipped );
         monitor.propertiesWritten( propertyBlockCursor );
     }

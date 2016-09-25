@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -118,6 +118,7 @@ public class DirectRecordAccess<KEY extends Comparable<KEY>,RECORD extends Abstr
         private RECORD record;
         private ADDITIONAL additionalData;
         private boolean changed = false;
+        private final boolean created;
 
         public DirectRecordProxy( KEY key, RECORD record, ADDITIONAL additionalData, boolean created )
         {
@@ -128,6 +129,7 @@ public class DirectRecordAccess<KEY extends Comparable<KEY>,RECORD extends Abstr
             {
                 prepareChange();
             }
+            this.created = created;
         }
 
         @Override
@@ -203,6 +205,12 @@ public class DirectRecordAccess<KEY extends Comparable<KEY>,RECORD extends Abstr
         public boolean isChanged()
         {
             return changed;
+        }
+
+        @Override
+        public boolean isCreated()
+        {
+            return created;
         }
     }
 
