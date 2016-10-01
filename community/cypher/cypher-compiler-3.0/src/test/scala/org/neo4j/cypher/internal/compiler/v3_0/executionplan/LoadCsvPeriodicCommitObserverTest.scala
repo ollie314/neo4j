@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,15 +23,14 @@ import java.net.URL
 
 import org.mockito.Matchers
 import org.mockito.Mockito._
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.ExternalResource
-import org.neo4j.cypher.internal.compiler.v3_0.spi.QueryContext
+import org.neo4j.cypher.internal.compiler.v3_0.pipes.ExternalCSVResource
+import org.neo4j.cypher.internal.compiler.v3_0.spi.{QueryTransactionalContext, QueryContext}
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
-
 class LoadCsvPeriodicCommitObserverTest extends CypherFunSuite {
 
   var resourceUnderTest: LoadCsvPeriodicCommitObserver = _
-  var queryContext: QueryContext = _
-  var resource: ExternalResource = _
+  var transactionalContext: QueryTransactionalContext = _
+  var resource: ExternalCSVResource = _
   val url: URL = new URL("file:///tmp/something.csv")
 
   test("writing should not trigger tx restart until next csv line is fetched") {
@@ -40,11 +39,11 @@ class LoadCsvPeriodicCommitObserverTest extends CypherFunSuite {
 
     // When
     val iterator = resourceUnderTest.getCsvIterator(url)
-    verify(queryContext, never()).commitAndRestartTx()
+    verify(transactionalContext, never()).commitAndRestartTx()
 
     iterator.next()
 
-    verify(queryContext, times(1)).commitAndRestartTx()
+    verify(transactionalContext, times(1)).commitAndRestartTx()
   }
 
   test("multiple iterators are still handled correctly only commit when the first iterator advances") {
@@ -58,10 +57,10 @@ class LoadCsvPeriodicCommitObserverTest extends CypherFunSuite {
     // When
     iterator2.next()
 
-    verify(queryContext, never()).commitAndRestartTx()
+    verify(transactionalContext, never()).commitAndRestartTx()
 
     iterator1.next()
-    verify(queryContext, times(1)).commitAndRestartTx()
+    verify(transactionalContext, times(1)).commitAndRestartTx()
   }
 
   test("if a custom iterator is specified should be passed to the wrapped resource") {
@@ -73,8 +72,10 @@ class LoadCsvPeriodicCommitObserverTest extends CypherFunSuite {
   }
 
   override protected def beforeEach() {
-    queryContext = mock[QueryContext]
-    resource = mock[ExternalResource]
+    val queryContext = mock[QueryContext]
+    transactionalContext = mock[QueryTransactionalContext]
+    when(queryContext.transactionalContext).thenReturn(transactionalContext)
+    resource = mock[ExternalCSVResource]
     resourceUnderTest = new LoadCsvPeriodicCommitObserver(1, resource, queryContext)
   }
 }

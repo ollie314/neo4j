@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -31,12 +31,12 @@ import scala.language.reflectiveCalls
 class IndexSeekLeafPlannerTest extends CypherFunSuite with LogicalPlanningTestSupport2 {
 
   val idName = IdName("n")
-  val hasLabels: Expression = HasLabels(ident("n"), Seq(LabelName("Awesome") _)) _
-  val property: Expression = Property(ident("n"), PropertyKeyName("prop") _)_
+  val hasLabels: Expression = HasLabels(varFor("n"), Seq(LabelName("Awesome") _)) _
+  val property: Expression = Property(varFor("n"), PropertyKeyName("prop") _)_
   val lit42: Expression = SignedDecimalIntegerLiteral("42") _
   val lit6: Expression = SignedDecimalIntegerLiteral("6") _
 
-  val inCollectionValue = In(property, Collection(Seq(lit42))_)_
+  val inCollectionValue = In(property, ListLiteral(Seq(lit42))_)_
 
   test("does not plan index seek when no index exist") {
     new given {
@@ -92,11 +92,11 @@ class IndexSeekLeafPlannerTest extends CypherFunSuite with LogicalPlanningTestSu
     }
   }
 
-  test("plans index seeks when identifier exists as an argument") {
+  test("plans index seeks when variable exists as an argument") {
     new given {
       // GIVEN 42 as x MATCH a WHERE a.prop IN [x]
-      val x = ident("x")
-      qg = queryGraph(In(property, Collection(Seq(x)) _) _, hasLabels).addArgumentIds(Seq(IdName("x")))
+      val x = varFor("x")
+      qg = queryGraph(In(property, ListLiteral(Seq(x)) _) _, hasLabels).addArgumentIds(Seq(IdName("x")))
 
       indexOn("Awesome", "prop")
     }.withLogicalPlanningContext { (cfg, ctx) =>
@@ -113,8 +113,8 @@ class IndexSeekLeafPlannerTest extends CypherFunSuite with LogicalPlanningTestSu
 
   test("does not plan an index seek when the RHS expression does not have its dependencies in scope") {
     new given { // MATCH a, x WHERE a.prop IN [x]
-       val x = ident("x")
-      qg = queryGraph(In(property, Collection(Seq(x))_)_, hasLabels)
+       val x = varFor("x")
+      qg = queryGraph(In(property, ListLiteral(Seq(x))_)_, hasLabels)
 
       indexOn("Awesome", "prop")
     }.withLogicalPlanningContext { (cfg, ctx) =>
@@ -143,7 +143,7 @@ class IndexSeekLeafPlannerTest extends CypherFunSuite with LogicalPlanningTestSu
   }
 
   test("plans index scans such that it solves hints") {
-    val hint: UsingIndexHint = UsingIndexHint(ident("n"), LabelName("Awesome")_, PropertyKeyName("prop")(pos))_
+    val hint: UsingIndexHint = UsingIndexHint(varFor("n"), LabelName("Awesome")_, PropertyKeyName("prop")(pos))_
 
     new given {
       qg = queryGraph(inCollectionValue, hasLabels).addHints(Some(hint))
@@ -165,7 +165,7 @@ class IndexSeekLeafPlannerTest extends CypherFunSuite with LogicalPlanningTestSu
   }
 
   test("plans unique index scans such that it solves hints") {
-    val hint: UsingIndexHint = UsingIndexHint(ident("n"), LabelName("Awesome")_, PropertyKeyName("prop")(pos))_
+    val hint: UsingIndexHint = UsingIndexHint(varFor("n"), LabelName("Awesome")_, PropertyKeyName("prop")(pos))_
 
     new given {
       qg = queryGraph(inCollectionValue, hasLabels).addHints(Some(hint))

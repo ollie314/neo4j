@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,14 +22,8 @@ package org.neo4j.test;
 import org.junit.Ignore;
 import org.junit.Test;
 
-import java.io.File;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-import org.neo4j.function.Consumers;
-import org.neo4j.io.fs.FileSystemAbstraction;
-import org.neo4j.io.pagecache.PageCache;
-import org.neo4j.io.pagecache.randomharness.Phase;
 import org.neo4j.io.pagecache.randomharness.RandomPageCacheTestHarness;
 
 public class LinearHistoryPageCacheTracerTest
@@ -46,14 +40,7 @@ public class LinearHistoryPageCacheTracerTest
         harness.setTracer( tracer );
         harness.setCommandCount( 100 );
         harness.setConcurrencyLevel( 2 );
-        harness.setPreparation( new Phase()
-        {
-            @Override
-            public void run( PageCache pageCache, FileSystemAbstraction fs, Set<File> files )
-            {
-                tracer.processHistory( Consumers.<LinearHistoryPageCacheTracer.HEvent>noop() );
-            }
-        } );
+        harness.setPreparation( ( pageCache, fs, files ) -> tracer.processHistory( hEvent -> {} ) );
 
         harness.run( 1, TimeUnit.MINUTES );
 

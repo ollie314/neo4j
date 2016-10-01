@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,8 +21,7 @@ package org.neo4j.kernel.impl.event;
 
 import org.neo4j.graphdb.event.TransactionData;
 import org.neo4j.graphdb.event.TransactionEventHandler;
-
-import static org.neo4j.helpers.collection.IteratorUtil.count;
+import org.neo4j.helpers.collection.Iterables;
 
 public class VerifyingTransactionEventHandler implements
         TransactionEventHandler<Object>
@@ -57,7 +56,7 @@ public class VerifyingTransactionEventHandler implements
     {
         // TODO Hmm, makes me think... should we really call transaction event handlers
         // for these relationship type / property index transactions?
-        if ( count( data.createdNodes() ) == 0 )
+        if ( Iterables.count( data.createdNodes() ) == 0 )
         {
             return null;
         }

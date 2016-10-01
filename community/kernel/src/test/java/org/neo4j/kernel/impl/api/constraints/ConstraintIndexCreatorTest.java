@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,16 +24,18 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.neo4j.function.Suppliers;
 import org.neo4j.kernel.api.KernelAPI;
 import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.api.Statement;
 import org.neo4j.kernel.api.TransactionHook;
+import org.neo4j.kernel.api.exceptions.Status;
 import org.neo4j.kernel.api.exceptions.TransactionFailureException;
 import org.neo4j.kernel.api.exceptions.index.IndexPopulationFailedKernelException;
 import org.neo4j.kernel.api.exceptions.schema.ConstraintVerificationFailedKernelException;
 import org.neo4j.kernel.api.index.IndexDescriptor;
 import org.neo4j.kernel.api.index.PreexistingIndexEntryConflictException;
+import org.neo4j.kernel.api.proc.CallableProcedure;
+import org.neo4j.kernel.api.security.AccessMode;
 import org.neo4j.kernel.api.txstate.TransactionState;
 import org.neo4j.kernel.impl.api.KernelStatement;
 import org.neo4j.kernel.impl.api.StatementOperationParts;
@@ -49,7 +51,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.verifyZeroInteractions;
 import static org.mockito.Mockito.when;
-
 import static org.neo4j.kernel.impl.api.StatementOperationsTestHelper.mockedParts;
 import static org.neo4j.kernel.impl.api.StatementOperationsTestHelper.mockedState;
 import static org.neo4j.kernel.impl.store.SchemaStorage.IndexRuleKind.CONSTRAINT;
@@ -70,17 +71,17 @@ public class ConstraintIndexCreatorTest
         StubKernel kernel = new StubKernel();
 
         when( constraintCreationContext.schemaReadOperations().indexGetCommittedId( state, descriptor, CONSTRAINT ) )
-                .thenReturn( 2468l );
+                .thenReturn( 2468L );
         IndexProxy indexProxy = mock( IndexProxy.class );
-        when( indexingService.getIndexProxy( 2468l ) ).thenReturn( indexProxy );
+        when( indexingService.getIndexProxy( 2468L ) ).thenReturn( indexProxy );
 
-        ConstraintIndexCreator creator = new ConstraintIndexCreator( Suppliers.<KernelAPI>singleton( kernel ), indexingService );
+        ConstraintIndexCreator creator = new ConstraintIndexCreator( () -> kernel, indexingService );
 
         // when
         long indexId = creator.createUniquenessConstraintIndex( state, constraintCreationContext.schemaReadOperations(), 123, 456 );
 
         // then
-        assertEquals( 2468l, indexId );
+        assertEquals( 2468L, indexId );
         assertEquals( 1, kernel.statements.size() );
         verify( kernel.statements.get( 0 ).txState() ).constraintIndexRuleDoAdd( descriptor );
         verifyNoMoreInteractions( indexCreationContext.schemaWriteOperations() );
@@ -102,14 +103,14 @@ public class ConstraintIndexCreatorTest
         StubKernel kernel = new StubKernel();
 
         when( constraintCreationContext.schemaReadOperations().indexGetCommittedId( state, descriptor, CONSTRAINT ) )
-                .thenReturn( 2468l );
+                .thenReturn( 2468L );
         IndexProxy indexProxy = mock( IndexProxy.class );
-        when( indexingService.getIndexProxy( 2468l ) ).thenReturn( indexProxy );
+        when( indexingService.getIndexProxy( 2468L ) ).thenReturn( indexProxy );
         PreexistingIndexEntryConflictException cause = new PreexistingIndexEntryConflictException("a", 2, 1);
         doThrow( new IndexPopulationFailedKernelException( descriptor, "some index", cause) )
                 .when(indexProxy).awaitStoreScanCompleted();
 
-        ConstraintIndexCreator creator = new ConstraintIndexCreator( Suppliers.<KernelAPI>singleton( kernel ), indexingService );
+        ConstraintIndexCreator creator = new ConstraintIndexCreator( () -> kernel, indexingService );
 
         // when
         try
@@ -144,7 +145,7 @@ public class ConstraintIndexCreatorTest
 
         IndexDescriptor descriptor = new IndexDescriptor( 123, 456 );
 
-        ConstraintIndexCreator creator = new ConstraintIndexCreator( Suppliers.<KernelAPI>singleton( kernel ), indexingService );
+        ConstraintIndexCreator creator = new ConstraintIndexCreator( () -> kernel, indexingService );
 
         // when
         creator.dropUniquenessConstraintIndex( descriptor );
@@ -160,59 +161,17 @@ public class ConstraintIndexCreatorTest
         private final List<KernelStatement> statements = new ArrayList<>();
 
         @Override
-        public KernelTransaction newTransaction()
+        public KernelTransaction newTransaction( KernelTransaction.Type type, AccessMode accessMode )
         {
-            return new KernelTransaction()
-            {
-                @Override
-                public void success()
-                {
-                }
+            return new StubKernelTransaction();
+        }
 
-                @Override
-                public void failure()
-                {
-                }
-
-                @Override
-                public void close() throws TransactionFailureException
-                {
-                }
-
-                @Override
-                public Statement acquireStatement()
-                {
-                    return remember( mockedState() );
-                }
-
-                private Statement remember( KernelStatement mockedState )
-                {
-                    statements.add( mockedState );
-                    return mockedState;
-                }
-
-                @Override
-                public boolean isOpen()
-                {
-                    return true;
-                }
-
-                @Override
-                public boolean shouldBeTerminated()
-                {
-                    return false;
-                }
-
-                @Override
-                public void markForTermination()
-                {
-                }
-
-                @Override
-                public void registerCloseListener( CloseListener listener )
-                {
-                }
-            };
+        @Override
+        public KernelTransaction newTransaction( KernelTransaction.Type type, AccessMode accessMode,
+                long timeout )
+                throws TransactionFailureException
+        {
+            return new StubKernelTransaction(timeout);
         }
 
         @Override
@@ -225,6 +184,129 @@ public class ConstraintIndexCreatorTest
         public void unregisterTransactionHook( TransactionHook hook )
         {
             throw new UnsupportedOperationException( "Please implement" );
+        }
+
+        @Override
+        public void registerProcedure( CallableProcedure signature )
+        {
+            throw new UnsupportedOperationException();
+        }
+
+        private class StubKernelTransaction implements KernelTransaction
+        {
+            private long timeout = 0;
+
+            public StubKernelTransaction()
+            {
+            }
+
+            public StubKernelTransaction( long timeout )
+            {
+                this.timeout = timeout;
+            }
+
+            @Override
+            public void success()
+            {
+            }
+
+            @Override
+            public void failure()
+            {
+            }
+
+            @Override
+            public void close() throws TransactionFailureException
+            {
+            }
+
+            @Override
+            public Statement acquireStatement()
+            {
+                return remember( mockedState() );
+            }
+
+            private Statement remember( KernelStatement mockedState )
+            {
+                statements.add( mockedState );
+                return mockedState;
+            }
+
+            @Override
+            public boolean isOpen()
+            {
+                return true;
+            }
+
+            @Override
+            public AccessMode mode()
+            {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public Status getReasonIfTerminated()
+            {
+                return null;
+            }
+
+            @Override
+            public void markForTermination( Status reason )
+            {
+            }
+
+            @Override
+            public long lastTransactionTimestampWhenStarted()
+            {
+                return 0;
+            }
+
+            @Override
+            public void registerCloseListener( CloseListener listener )
+            {
+            }
+
+            @Override
+            public Type transactionType()
+            {
+                return null;
+            }
+
+            @Override
+            public long getTransactionId()
+            {
+                return -1;
+            }
+
+            @Override
+            public long getCommitTime()
+            {
+                return -1;
+            }
+
+            @Override
+            public Revertable restrict( AccessMode read )
+            {
+                return null;
+            }
+
+            @Override
+            public long lastTransactionIdWhenStarted()
+            {
+                return 0;
+            }
+
+            @Override
+            public long startTime()
+            {
+                return 0;
+            }
+
+            @Override
+            public long timeout()
+            {
+                return timeout;
+            }
         }
     }
 }

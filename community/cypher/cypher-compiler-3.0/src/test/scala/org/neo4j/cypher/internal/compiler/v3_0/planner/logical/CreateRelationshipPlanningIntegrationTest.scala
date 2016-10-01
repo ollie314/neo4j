@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -34,7 +34,7 @@ class CreateRelationshipPlanningIntegrationTest extends CypherFunSuite with Logi
           CreateNode(
             CreateNode(SingleRow()(solved), IdName("a"), Seq.empty, None)(solved),
             IdName("b"), Seq.empty, None)(solved),
-          IdName("r"), IdName("a"), LazyType("R"), IdName("b"), None)(solved)
+          IdName("r"), IdName("a"), relType("R"), IdName("b"), None)(solved)
       )(solved)
     )
   }
@@ -52,9 +52,9 @@ class CreateRelationshipPlanningIntegrationTest extends CypherFunSuite with Logi
                     IdName("b"),Seq.empty,None)(solved),
                   IdName("c"),Seq.empty,None)(solved),
                 IdName("d"),Seq.empty,None)(solved),
-              IdName("r1"),IdName("a"),LazyType("R1"),IdName("b"),None)(solved),
-            IdName("r2"),IdName("c"),LazyType("R2"),IdName("b"),None)(solved),
-          IdName("r3"),IdName("c"),LazyType("R3"),IdName("d"),None)(solved)
+              IdName("r1"),IdName("a"),relType("R1"),IdName("b"),None)(solved),
+            IdName("r2"),IdName("c"),relType("R2"),IdName("b"),None)(solved),
+          IdName("r3"),IdName("c"),relType("R3"),IdName("d"),None)(solved)
       )(solved)
     )
   }
@@ -69,9 +69,64 @@ class CreateRelationshipPlanningIntegrationTest extends CypherFunSuite with Logi
                 CreateNode(SingleRow()(solved),IdName("a"),Seq.empty,None)(solved),
                 IdName("b"),Seq.empty,None)(solved),
               IdName("c"),Seq.empty,None)(solved),
-            IdName("r1"),IdName("b"),LazyType("R1"),IdName("a"),None)(solved),
-          IdName("r2"),IdName("c"),LazyType("R2"),IdName("b"),None)(solved)
+            IdName("r1"),IdName("b"),relType("R1"),IdName("a"),None)(solved),
+          IdName("r2"),IdName("c"),relType("R2"),IdName("b"),None)(solved)
       )(solved)
     )
   }
+
+  test("should plan only one create node when the other node is already in scope when creating a relationship") {
+    planFor("MATCH (n) CREATE (n)-[r:T]->(b)").plan should equal(
+      EmptyResult(
+        CreateRelationship(
+          CreateNode(
+            AllNodesScan(IdName("n"), Set())(solved),
+            IdName("b"), Seq.empty, None)(solved),
+          IdName("r"), IdName("n"), RelTypeName("T")(pos), IdName("b"), None)(solved)
+      )(solved)
+    )
+  }
+
+  test("should not plan two create nodes when they are already in scope when creating a relationship") {
+    planFor("MATCH (n) MATCH (m) CREATE (n)-[r:T]->(m)").plan should equal(
+      EmptyResult(
+        CreateRelationship(
+          CartesianProduct(
+            AllNodesScan(IdName("n"), Set())(solved),
+            AllNodesScan(IdName("m"), Set())(solved)
+          )(solved),
+          IdName("r"), IdName("n"), RelTypeName("T")(pos), IdName("m"), None)(solved)
+      )(solved)
+    )
+  }
+
+  test("should not plan two create nodes when they are already in scope and aliased when creating a relationship") {
+    planFor("MATCH (n) MATCH (m) WITH n AS a, m AS b CREATE (a)-[r:T]->(b)").plan should equal(
+      EmptyResult(
+        CreateRelationship(
+          Projection(
+            CartesianProduct(
+              AllNodesScan(IdName("n"), Set())(solved),
+              AllNodesScan(IdName("m"), Set())(solved)
+            )(solved), Map("a" -> Variable("n")(pos), "b" -> Variable("m")(pos)))(solved),
+          IdName("r"), IdName("a"), RelTypeName("T")(pos), IdName("b"), None)(solved)
+      )(solved)
+    )
+  }
+
+  test("should plan only one create node when the other node is already in scope and aliased when creating a relationship") {
+    planFor("MATCH (n) WITH n AS a CREATE (a)-[r:T]->(b)").plan should equal(
+      EmptyResult(
+        CreateRelationship(
+          CreateNode(
+            Projection(
+              AllNodesScan(IdName("n"), Set())(solved),
+              Map("a" -> Variable("n")(pos)))(solved),
+            IdName("b"), Seq.empty, None)(solved),
+          IdName("r"), IdName("a"), RelTypeName("T")(pos), IdName("b"), None)(solved)
+      )(solved)
+    )
+  }
+
+  private def relType(name: String): RelTypeName = RelTypeName(name)(pos)
 }

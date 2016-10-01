@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,16 +19,16 @@
  */
 package org.neo4j.kernel.impl.storemigration.legacylogs;
 
+import org.junit.Test;
+
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
-import org.junit.Test;
-
 import org.neo4j.kernel.impl.store.record.NodeRecord;
 import org.neo4j.kernel.impl.transaction.command.Command;
-import org.neo4j.kernel.impl.transaction.log.ReadableVersionableLogChannel;
+import org.neo4j.kernel.impl.transaction.log.ReadableLogChannel;
 import org.neo4j.kernel.impl.transaction.log.entry.IdentifiableLogEntry;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntry;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntryCommand;
@@ -48,9 +48,9 @@ import static org.neo4j.kernel.impl.transaction.log.entry.LogEntryStart.EMPTY_AD
 public class LogEntrySortingCursorTest
 {
     private static final Random random = new Random( 42l );
-    private final ReadableVersionableLogChannel channel = mock( ReadableVersionableLogChannel.class );
+    private final ReadableLogChannel channel = mock( ReadableLogChannel.class );
     @SuppressWarnings("unchecked")
-    private final LogEntryReader<ReadableVersionableLogChannel> reader = mock( LogEntryReader.class );
+    private final LogEntryReader<ReadableLogChannel> reader = mock( LogEntryReader.class );
 
     @Test
     public void shouldDoNothingIfTheListIsOrdered() throws IOException
@@ -181,9 +181,9 @@ public class LogEntrySortingCursorTest
 
     private LogEntry command()
     {
-        final Command.NodeCommand command = new Command.NodeCommand();
-        command.init( new NodeRecord( random.nextInt() ), new NodeRecord( random.nextInt() ) );
-        return new LogEntryCommand( command );
+        NodeRecord before = new NodeRecord( random.nextInt() );
+        NodeRecord after = new NodeRecord( random.nextInt() );
+        return new LogEntryCommand( new Command.NodeCommand( before, after ) );
     }
 
     private LogEntry commit( long txId )

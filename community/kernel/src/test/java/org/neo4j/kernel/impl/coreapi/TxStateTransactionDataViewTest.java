@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,39 +19,36 @@
  */
 package org.neo4j.kernel.impl.coreapi;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.event.LabelEntry;
 import org.neo4j.graphdb.event.PropertyEntry;
+import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.api.Statement;
 import org.neo4j.kernel.api.properties.DefinedProperty;
 import org.neo4j.kernel.api.properties.Property;
 import org.neo4j.kernel.api.txstate.TransactionState;
 import org.neo4j.kernel.impl.api.state.StubCursors;
 import org.neo4j.kernel.impl.api.state.TxState;
-import org.neo4j.kernel.impl.api.store.StoreReadLayer;
 import org.neo4j.kernel.impl.api.store.StoreStatement;
 import org.neo4j.kernel.impl.core.NodeProxy;
 import org.neo4j.kernel.impl.core.RelationshipProxy;
 import org.neo4j.kernel.impl.core.ThreadToStatementContextBridge;
+import org.neo4j.storageengine.api.StoreReadLayer;
 
 import static java.util.Arrays.asList;
-
 import static org.hamcrest.CoreMatchers.equalTo;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-
 import static org.neo4j.helpers.collection.Iterables.single;
 import static org.neo4j.kernel.api.properties.Property.stringProperty;
 import static org.neo4j.kernel.impl.api.state.StubCursors.asLabelCursor;
@@ -65,6 +62,7 @@ public class TxStateTransactionDataViewTest
     private final Statement stmt = mock( Statement.class );
     private final StoreReadLayer ops = mock( StoreReadLayer.class );
     private final StoreStatement storeStatement = mock( StoreStatement.class );
+    private final KernelTransaction transaction = mock( KernelTransaction.class );
 
     private final TransactionState state = new TxState();
 
@@ -73,7 +71,7 @@ public class TxStateTransactionDataViewTest
     public void setup()
     {
         when( bridge.get() ).thenReturn( stmt );
-        when( ops.acquireStatement() ).thenReturn( storeStatement );
+        when( ops.newStatement() ).thenReturn( storeStatement );
     }
 
     @Test
@@ -288,6 +286,19 @@ public class TxStateTransactionDataViewTest
         assertThat( entry.node().getId(), equalTo( 1l ) );
     }
 
+    @Test
+    public void accessTransactionIdAndCommitTime()
+    {
+        long committedTransactionId = 7L;
+        long commitTime = 10L;
+        when( transaction.getTransactionId() ).thenReturn( committedTransactionId );
+        when( transaction.getCommitTime() ).thenReturn( commitTime );
+
+        TxStateTransactionDataSnapshot transactionDataSnapshot = snapshot();
+        assertEquals( committedTransactionId, transactionDataSnapshot.getTransactionId() );
+        assertEquals( commitTime, transactionDataSnapshot.getCommitTime() );
+    }
+
     private List<Long> idList( Iterable<? extends PropertyContainer> entities )
     {
         List<Long> out = new ArrayList<>();
@@ -302,14 +313,6 @@ public class TxStateTransactionDataViewTest
     {
         NodeProxy.NodeActions nodeActions = mock( NodeProxy.NodeActions.class );
         final RelationshipProxy.RelationshipActions relActions = mock( RelationshipProxy.RelationshipActions.class );
-        when( nodeActions.lazyRelationshipProxy( anyLong() ) ).thenAnswer( new Answer<RelationshipProxy>()
-        {
-            @Override
-            public RelationshipProxy answer( InvocationOnMock invocation ) throws Throwable
-            {
-                return new RelationshipProxy( relActions, (Long) invocation.getArguments()[0] );
-            }
-        } );
-        return new TxStateTransactionDataSnapshot( state, nodeActions, relActions, ops );
+        return new TxStateTransactionDataSnapshot( state, nodeActions, relActions, ops, storeStatement, transaction );
     }
 }

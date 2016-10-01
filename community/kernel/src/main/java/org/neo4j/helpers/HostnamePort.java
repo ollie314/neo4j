@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,7 +20,10 @@
 package org.neo4j.helpers;
 
 import java.net.URI;
+import java.util.Arrays;
 import java.util.Objects;
+
+import org.apache.commons.lang3.StringUtils;
 
 import static java.lang.String.format;
 
@@ -40,12 +43,12 @@ public class HostnamePort
         String[] parts = splitHostAndPort( hostnamePort );
         if ( parts.length == 1 )
         {
-            host = Strings.defaultIfBlank( parts[0], null );
+            host = StringUtils.defaultIfBlank( parts[0], null );
             ports = new int[]{0, 0};
         }
         else if ( parts.length == 2 )
         {
-            host = Strings.defaultIfBlank( parts[0], null );
+            host = StringUtils.defaultIfBlank( parts[0], null );
 
             String[] portStrings = parts[1].split( "-" );
             ports = new int[2];
@@ -208,7 +211,7 @@ public class HostnamePort
 
             String host = hostnamePort.substring( 0, splitIndex );
             String port = hostnamePort.substring( splitIndex );
-            if ( !Strings.isBlank( port ) )
+            if ( StringUtils.isNotBlank( port ) )
             {
                 port = port.substring( 1 ); // remove ':'
                 return new String[]{host, port};
@@ -216,5 +219,27 @@ public class HostnamePort
             return new String[]{host};
         }
         return hostnamePort.split( ":" );
+    }
+
+    @Override
+    public boolean equals( Object o )
+    {
+        if ( this == o )
+        {
+            return true;
+        }
+        if ( o == null || getClass() != o.getClass() )
+        {
+            return false;
+        }
+        HostnamePort that = (HostnamePort) o;
+        return Objects.equals( host, that.host ) &&
+                Arrays.equals( ports, that.ports );
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return Objects.hash( host, ports );
     }
 }

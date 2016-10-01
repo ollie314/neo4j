@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,7 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.executionplan
 
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Identifier}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Variable}
 import org.neo4j.cypher.internal.compiler.v3_0.commands.{ReturnItem, SortItem}
 import org.neo4j.cypher.internal.compiler.v3_0.mutation.UpdateAction
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.Effectful
@@ -38,6 +38,17 @@ case class Effects(effectsSet: Set[Effect] = Set.empty) {
 
   def containsWrites = effectsSet.exists {
     case write: WriteEffect => true
+    case _ => false
+  }
+
+  def containsNodeReads = effectsSet.exists {
+    case _: ReadsNodes => true
+    case _ => false
+  }
+
+  def containsRelationshipReads = effectsSet.exists {
+    case _: ReadsRelationships => true
+    case ReadsRelationshipBoundNodes => true
     case _ => false
   }
 
@@ -61,7 +72,7 @@ case class Effects(effectsSet: Set[Effect] = Set.empty) {
   })
 }
 
-object AllWriteEffects extends Effects(Set(CreatesAnyNode, SetAnyNodeProperty, WritesAnyRelationshipProperty))
+object AllWriteEffects extends Effects(Set(CreatesAnyNode, WriteAnyNodeProperty, WriteAnyRelationshipProperty))
 
 object AllReadEffects extends Effects(Set(ReadsAllNodes, ReadsAllRelationships, ReadsAnyNodeProperty, ReadsAnyRelationshipProperty))
 
@@ -73,7 +84,7 @@ object Effects {
 
   def propertyRead(expression: Expression, symbols: SymbolTable)(propertyKey: String) = {
     (expression match {
-      case i: Identifier => symbols.identifiers.get(i.entityName).map {
+      case i: Variable => symbols.variables.get(i.entityName).map {
         case _: NodeType => Effects(ReadsGivenNodeProperty(propertyKey))
         case _: RelationshipType => Effects(ReadsGivenRelationshipProperty(propertyKey))
         case _ => Effects()
@@ -84,9 +95,9 @@ object Effects {
 
   def propertyWrite(expression: Expression, symbols: SymbolTable)(propertyKey: String) =
     (expression match {
-      case i: Identifier => symbols.identifiers.get(i.entityName).map {
+      case i: Variable => symbols.variables.get(i.entityName).map {
         case _: NodeType => Effects(SetGivenNodeProperty(propertyKey))
-        case _: RelationshipType => Effects(WritesGivenRelationshipProperty(propertyKey))
+        case _: RelationshipType => Effects(SetGivenRelationshipProperty(propertyKey))
         case _ => Effects()
       }
       case _ => None
@@ -192,11 +203,11 @@ object CreatesNodesWithLabels {
   def apply(labels: String*): CreatesNodesWithLabels = CreatesNodesWithLabels(labels.toSet)
 }
 
-sealed trait SetNodeProperty extends WriteEffect
+sealed trait WriteNodeProperty extends WriteEffect
 
-case class SetGivenNodeProperty(propertyName: String) extends SetNodeProperty
+case class SetGivenNodeProperty(propertyName: String) extends WriteNodeProperty
 
-case object SetAnyNodeProperty extends SetNodeProperty
+case object WriteAnyNodeProperty extends WriteNodeProperty // Set, Remove
 
 case object DeletesRelationship extends WriteEffect
 
@@ -204,8 +215,8 @@ sealed trait CreatesRelationships extends WriteEffect
 
 case class CreatesRelationship(typ: String) extends CreatesRelationships
 
-sealed trait WritesRelationshipProperty extends WriteEffect
+sealed trait WriteRelationshipProperty extends WriteEffect
 
-case class WritesGivenRelationshipProperty(propertyName: String) extends WritesRelationshipProperty
+case class SetGivenRelationshipProperty(propertyName: String) extends WriteRelationshipProperty
 
-case object WritesAnyRelationshipProperty extends WritesRelationshipProperty
+case object WriteAnyRelationshipProperty extends WriteRelationshipProperty // Set, Remove

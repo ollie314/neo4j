@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,14 +19,13 @@
  */
 package org.neo4j.kernel.counts;
 
-import java.util.concurrent.Future;
-
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 
-import org.neo4j.function.Supplier;
+import java.util.concurrent.Future;
+import java.util.function.Supplier;
+
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Transaction;
@@ -60,7 +59,7 @@ public class NodeCountsTest
     public void shouldReportNumberOfNodes() throws Exception
     {
         // given
-        GraphDatabaseService graphDb = db.getGraphDatabaseService();
+        GraphDatabaseService graphDb = db.getGraphDatabaseAPI();
         try ( Transaction tx = graphDb.beginTx() )
         {
             graphDb.createNode();
@@ -79,7 +78,7 @@ public class NodeCountsTest
     public void shouldReportAccurateNumberOfNodesAfterDeletion() throws Exception
     {
         // given
-        GraphDatabaseService graphDb = db.getGraphDatabaseService();
+        GraphDatabaseService graphDb = db.getGraphDatabaseAPI();
         Node one;
         try ( Transaction tx = graphDb.beginTx() )
         {
@@ -104,7 +103,7 @@ public class NodeCountsTest
     public void shouldIncludeNumberOfNodesAddedInTransaction() throws Exception
     {
         // given
-        GraphDatabaseService graphDb = db.getGraphDatabaseService();
+        GraphDatabaseService graphDb = db.getGraphDatabaseAPI();
         try ( Transaction tx = graphDb.beginTx() )
         {
             graphDb.createNode();
@@ -129,7 +128,7 @@ public class NodeCountsTest
     public void shouldIncludeNumberOfNodesDeletedInTransaction() throws Exception
     {
         // given
-        GraphDatabaseService graphDb = db.getGraphDatabaseService();
+        GraphDatabaseService graphDb = db.getGraphDatabaseAPI();
         Node one;
         try ( Transaction tx = graphDb.beginTx() )
         {
@@ -155,7 +154,7 @@ public class NodeCountsTest
     public void shouldNotSeeNodeCountsOfOtherTransaction() throws Exception
     {
         // given
-        GraphDatabaseService graphDb = db.getGraphDatabaseService();
+        GraphDatabaseService graphDb = db.getGraphDatabaseAPI();
         final Barrier.Control barrier = new Barrier.Control();
         long before = numberOfNodes();
         Future<Long> done = threading.execute( new NamedFunction<GraphDatabaseService, Long>( "create-nodes" )
@@ -192,7 +191,7 @@ public class NodeCountsTest
     /** Transactional version of {@link #countsForNode()} */
     private long numberOfNodes()
     {
-        try ( Transaction tx = db.getGraphDatabaseService().beginTx() )
+        try ( Transaction tx = db.getGraphDatabaseAPI().beginTx() )
         {
             long nodeCount = countsForNode();
             tx.success();

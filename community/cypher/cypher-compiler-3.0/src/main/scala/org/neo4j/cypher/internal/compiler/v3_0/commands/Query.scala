@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -103,7 +103,7 @@ case class Query(returns: Return,
   }
 
   private def compactableStart =
-    compactable && returns == Return(List("*"), AllIdentifiers())
+    compactable && returns == Return(List("*"), AllVariables())
 
   private def compactableTail =
     compactable && aggregation.isEmpty && !updatedCommands.exists(containsMergeForPattern)

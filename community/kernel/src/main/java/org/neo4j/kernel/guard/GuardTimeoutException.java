@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,9 +24,9 @@ public class GuardTimeoutException extends GuardException
 
     private final long overtime;
 
-    public GuardTimeoutException( final long overtime )
+    public GuardTimeoutException(String message, final long overtime )
     {
-        super( String.format( "timeout occured (overtime=%d)", overtime ) );
+        super( message );
         this.overtime = overtime;
     }
 

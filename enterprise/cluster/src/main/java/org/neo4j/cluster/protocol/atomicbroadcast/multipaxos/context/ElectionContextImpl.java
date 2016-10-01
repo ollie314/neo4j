@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -18,11 +18,6 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 package org.neo4j.cluster.protocol.atomicbroadcast.multipaxos.context;
-
-import static org.neo4j.cluster.util.Quorums.isQuorum;
-import static org.neo4j.helpers.collection.Iterables.filter;
-import static org.neo4j.helpers.collection.Iterables.map;
-import static org.neo4j.helpers.collection.Iterables.toList;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -45,9 +40,12 @@ import org.neo4j.cluster.protocol.election.NotElectableElectionCredentials;
 import org.neo4j.cluster.protocol.heartbeat.HeartbeatContext;
 import org.neo4j.cluster.protocol.heartbeat.HeartbeatListener;
 import org.neo4j.cluster.timeout.Timeouts;
-import org.neo4j.function.Function;
-import org.neo4j.function.Predicate;
-import org.neo4j.kernel.impl.logging.LogService;
+import org.neo4j.logging.LogProvider;
+
+import static org.neo4j.cluster.util.Quorums.isQuorum;
+import static org.neo4j.helpers.collection.Iterables.asList;
+import static org.neo4j.helpers.collection.Iterables.filter;
+import static org.neo4j.helpers.collection.Iterables.map;
 
 public class ElectionContextImpl
         extends AbstractContextImpl
@@ -61,13 +59,13 @@ public class ElectionContextImpl
     private final ElectionCredentialsProvider electionCredentialsProvider;
 
     ElectionContextImpl( org.neo4j.cluster.InstanceId me, CommonContextState commonState,
-                         LogService logService,
+                         LogProvider logging,
                          Timeouts timeouts, Iterable<ElectionRole> roles, ClusterContext clusterContext,
                          HeartbeatContext heartbeatContext, ElectionCredentialsProvider electionCredentialsProvider )
     {
-        super( me, commonState, logService, timeouts );
+        super( me, commonState, logging, timeouts );
         this.electionCredentialsProvider = electionCredentialsProvider;
-        this.roles = new ArrayList<>(toList(roles));
+        this.roles = new ArrayList<>( asList(roles));
         this.elections = new HashMap<>();
         this.clusterContext = clusterContext;
         this.heartbeatContext = heartbeatContext;
@@ -75,11 +73,11 @@ public class ElectionContextImpl
         heartbeatContext.addHeartbeatListener( this );
     }
 
-    ElectionContextImpl( InstanceId me, CommonContextState commonState, LogService logService, Timeouts timeouts,
+    ElectionContextImpl( InstanceId me, CommonContextState commonState, LogProvider logging, Timeouts timeouts,
                          ClusterContext clusterContext, HeartbeatContext heartbeatContext, List<ElectionRole> roles,
                          Map<String, Election> elections, ElectionCredentialsProvider electionCredentialsProvider )
     {
-        super( me, commonState, logService, timeouts );
+        super( me, commonState, logging, timeouts );
         this.clusterContext = clusterContext;
         this.heartbeatContext = heartbeatContext;
         this.roles = roles;
@@ -156,7 +154,7 @@ public class ElectionContextImpl
     @Override
     public void startElectionProcess( String role )
     {
-        clusterContext.getInternalLog( getClass() ).info( "Doing elections for role " + role );
+        clusterContext.getLog( getClass() ).info( "Doing elections for role " + role );
         if ( !clusterContext.getMyId().equals( clusterContext.getLastElector() ) )
         {
             clusterContext.setLastElector( clusterContext.getMyId() );
@@ -174,7 +172,7 @@ public class ElectionContextImpl
                 Collections.sort( filteredVoteList );
                 Collections.reverse( filteredVoteList );
 
-                clusterContext.getInternalLog( getClass() ).debug( "Election started with " + voteList +
+                clusterContext.getLog( getClass() ).debug( "Election started with " + voteList +
                         ", ended up with " + filteredVoteList );
 
                 // Elect this highest voted instance
@@ -266,21 +264,8 @@ public class ElectionContextImpl
     @Override
     public Iterable<String> getRolesRequiringElection()
     {
-        return filter( new Predicate<String>() // Only include roles that are not elected
-        {
-            @Override
-            public boolean test( String role )
-            {
-                return clusterContext.getConfiguration().getElected( role ) == null;
-            }
-        }, map( new Function<ElectionRole, String>() // Convert ElectionRole to String
-        {
-            @Override
-            public String apply( ElectionRole role )
-            {
-                return role.getName();
-            }
-        }, roles ) );
+        return filter( role -> clusterContext.getConfiguration().getElected( role ) == null,
+                map( ElectionRole::getName, roles ) );
     }
 
     @Override
@@ -313,7 +298,7 @@ public class ElectionContextImpl
     public boolean isElector()
     {
         // Only the first alive server should try elections. Everyone else waits
-        List<org.neo4j.cluster.InstanceId> aliveInstances = toList( getAlive() );
+        List<org.neo4j.cluster.InstanceId> aliveInstances = asList( getAlive() );
         Collections.sort( aliveInstances );
         return aliveInstances.indexOf( getMyId() ) == 0;
     }
@@ -342,7 +327,7 @@ public class ElectionContextImpl
         return heartbeatContext.getFailed();
     }
 
-    public ElectionContextImpl snapshot( CommonContextState commonStateSnapshot, LogService logService, Timeouts timeouts,
+    public ElectionContextImpl snapshot( CommonContextState commonStateSnapshot, LogProvider logging, Timeouts timeouts,
                                          ClusterContextImpl snapshotClusterContext,
                                          HeartbeatContextImpl snapshotHeartbeatContext,
                                          ElectionCredentialsProvider credentialsProvider )
@@ -354,7 +339,7 @@ public class ElectionContextImpl
             electionsSnapshot.put( election.getKey(), election.getValue().snapshot() );
         }
 
-        return new ElectionContextImpl( me, commonStateSnapshot, logService, timeouts, snapshotClusterContext,
+        return new ElectionContextImpl( me, commonStateSnapshot, logging, timeouts, snapshotClusterContext,
                 snapshotHeartbeatContext, new ArrayList<>(roles), electionsSnapshot, credentialsProvider );
     }
 
@@ -458,13 +443,7 @@ public class ElectionContextImpl
 
     public static List<Vote> removeBlankVotes( Collection<Vote> voteList )
     {
-        return toList( filter( new Predicate<Vote>()
-        {
-            @Override
-            public boolean test( Vote item )
-            {
-                return !(item.getCredentials() instanceof NotElectableElectionCredentials);
-            }
-        }, voteList ) );
+        return asList( filter( item ->
+                !(item.getCredentials() instanceof NotElectableElectionCredentials), voteList ) );
     }
 }

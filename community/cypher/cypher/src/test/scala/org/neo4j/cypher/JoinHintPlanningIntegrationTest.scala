@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,27 +19,22 @@
  */
 package org.neo4j.cypher
 
-import org.neo4j.cypher.internal.compiler.v3_0.planner.{LogicalPlanningTestSupport2, PlannerQuery}
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.QueryGraphSolver
-import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.greedy.{GreedyQueryGraphSolver, expandsOrJoins}
-import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.idp.{IDPQueryGraphSolver, IDPQueryGraphSolverMonitor}
-import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.{NodeHashJoin, LogicalPlan, IdName}
-import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.idp._
+import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.{IdName, LogicalPlan, NodeHashJoin}
+import org.neo4j.cypher.internal.compiler.v3_0.planner.{LogicalPlanningTestSupport2, RegularPlannerQuery}
 import org.neo4j.cypher.internal.frontend.v3_0.Foldable.FoldableAny
+import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
 import org.scalacheck.Gen
 
 import scala.util.Random
 
 class JoinHintPlanningIntegrationTest extends CypherFunSuite with PatternGen with LogicalPlanningTestSupport2 {
 
-  test("NodeHashJoin is planned in greedy planner") {
-    val solver = new GreedyQueryGraphSolver(expandsOrJoins)
-
-    testPlanner(solver)
-  }
-
   test("NodeHashJoin is planned in IDP planner") {
-    val solver = IDPQueryGraphSolver(mock[IDPQueryGraphSolverMonitor])
+    val monitor = mock[IDPQueryGraphSolverMonitor]
+    val planner1 = SingleComponentPlanner(monitor, solverConfig = DefaultIDPSolverConfig)
+    val solver = IDPQueryGraphSolver(planner1, cartesianProductsOrValueJoins, monitor)
 
     testPlanner(solver)
   }
@@ -70,7 +65,7 @@ class JoinHintPlanningIntegrationTest extends CypherFunSuite with PatternGen wit
     val semanticPlan = new given {
       cardinality = mapCardinality {
         // expand - cheap
-        case PlannerQuery(queryGraph, _,  _, _) if queryGraph.patternRelationships.size == 1 => 100.0
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternRelationships.size == 1 => 100.0
         // everything else - expensive
         case _ => Double.MaxValue
       }
@@ -84,7 +79,7 @@ class JoinHintPlanningIntegrationTest extends CypherFunSuite with PatternGen wit
 
   def joinSymbolsIn(plan: LogicalPlan) = {
     val flattenedPlan = plan.treeFold(Seq.empty[LogicalPlan]) {
-      case plan: LogicalPlan => (acc, r) => r(acc :+ plan)
+      case plan: LogicalPlan => acc => (acc :+ plan, Some(identity))
     }
 
     flattenedPlan.collect {

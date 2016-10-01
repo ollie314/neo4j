@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,12 +22,11 @@ package org.neo4j.cypher.internal.compiler.v3_0.planner.execution
 import org.neo4j.cypher.internal.compiler.v3_0.Monitors
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.{FakePipe, Pipe, RonjaPipe}
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.Cardinality
-import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.{IdName, LogicalPlan}
+import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.LogicalPlan
 import org.neo4j.cypher.internal.compiler.v3_0.planner.{CardinalityEstimation, PlannerQuery}
 import org.neo4j.cypher.internal.compiler.v3_0.spi.PlanContext
-import org.neo4j.cypher.internal.frontend.v3_0.ast.Expression
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
-import org.neo4j.helpers.FakeClock
+import org.neo4j.time.FakeClock
 
 class PipeExecutionPlanBuilderTest extends CypherFunSuite {
 
@@ -42,8 +41,6 @@ class PipeExecutionPlanBuilderTest extends CypherFunSuite {
     override def availableSymbols = ???
 
     override def rhs: Option[LogicalPlan] = None
-
-    override def mapExpressions(f: (Set[IdName], Expression) => Expression) = ???
 
     override def strictness = ???
   }
@@ -77,7 +74,7 @@ class PipeExecutionPlanBuilderTest extends CypherFunSuite {
 
 
   val factory = new PipeBuilderFactory {
-    override def apply(monitors: Monitors, recurse: LogicalPlan => Pipe)
+    override def apply(monitors: Monitors, recurse: LogicalPlan => Pipe, readOnly: Boolean)
                       (implicit context: PipeExecutionBuilderContext, planContext: PlanContext): PipeBuilder = new PipeBuilder {
       def build(plan: LogicalPlan) = plan match {
         case LeafPlan(n) => LeafPipe(n)
@@ -102,7 +99,7 @@ class PipeExecutionPlanBuilderTest extends CypherFunSuite {
     val plan = LeafPlan("a")
     val expectedPipe = LeafPipe("a")
 
-    val result = builder.build(plan).pipe
+    val result = builder.build(None, plan).pipe
     result should equal(expectedPipe)
   }
 
@@ -128,7 +125,7 @@ class PipeExecutionPlanBuilderTest extends CypherFunSuite {
         )
       )
 
-    val result = builder.build(plan).pipe
+    val result = builder.build(None, plan).pipe
     result should equal(expectedPipe)
   }
 
@@ -157,7 +154,7 @@ class PipeExecutionPlanBuilderTest extends CypherFunSuite {
         )
       )
 
-    val result = builder.build(plan).pipe
+    val result = builder.build(None, plan).pipe
     result should equal(expectedPipe)
   }
 
@@ -178,7 +175,7 @@ class PipeExecutionPlanBuilderTest extends CypherFunSuite {
                         OneChildPipe("b", LeafPipe("d")),
                         TwoChildPipe("c", LeafPipe("e"), LeafPipe("f")))
 
-    val result = builder.build(plan).pipe
+    val result = builder.build(None, plan).pipe
     result should equal(expectedPipe)
   }
 }

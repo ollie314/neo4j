@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,10 +24,10 @@ import org.junit.Test;
 import java.net.URI;
 import javax.ws.rs.core.Response;
 
+import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.server.configuration.ServerSettings;
 import org.neo4j.server.rest.repr.formats.JsonFormat;
-import org.neo4j.server.web.ServerInternalSettings;
 import org.neo4j.test.server.EntityOutputFormat;
 
 import static org.hamcrest.Matchers.containsString;
@@ -46,10 +46,10 @@ public class DiscoveryServiceTest
     {
         Config mockConfig = mock( Config.class );
         URI managementUri = new URI( "/management" );
-        when( mockConfig.get( ServerInternalSettings.management_api_path ) ).thenReturn( managementUri );
+        when( mockConfig.get( ServerSettings.management_api_path ) ).thenReturn( managementUri );
         URI dataUri = new URI( "/data" );
-        when( mockConfig.get( ServerInternalSettings.rest_api_path ) ).thenReturn( dataUri );
-        when(mockConfig.get( ServerSettings.auth_enabled )).thenReturn( false );
+        when( mockConfig.get( ServerSettings.rest_api_path ) ).thenReturn( dataUri );
+        when(mockConfig.get( GraphDatabaseSettings.auth_enabled )).thenReturn( false );
 
         String baseUri = "http://www.example.com";
         DiscoveryService ds = new DiscoveryService( mockConfig, new EntityOutputFormat( new JsonFormat(), new URI(
@@ -73,7 +73,7 @@ public class DiscoveryServiceTest
     {
         Config mockConfig = mock( Config.class );
         URI browserUri = new URI( "/browser/" );
-        when( mockConfig.get( ServerInternalSettings.browser_path ) ).thenReturn(
+        when( mockConfig.get( ServerSettings.browser_path ) ).thenReturn(
                 browserUri );
 
         String baseUri = "http://www.example.com:5435";

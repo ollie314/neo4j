@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,9 +24,9 @@ import java.io.File;
 import org.junit.Rule;
 import org.junit.Test;
 
-import org.neo4j.graphdb.DynamicRelationshipType;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.mockfs.EphemeralFileSystemAbstraction;
 import org.neo4j.test.EphemeralFileSystemRule;
@@ -60,7 +60,7 @@ public class TestTxEntries
         Node node1 = db.createNode();
         Node node2 = db.createNode();
         node1.createRelationshipTo( node2,
-                DynamicRelationshipType.withName( "relType1" ) );
+                RelationshipType.withName( "relType1" ) );
         tx.success();
         tx.close();
 

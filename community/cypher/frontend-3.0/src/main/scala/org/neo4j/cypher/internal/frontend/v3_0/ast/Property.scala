@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,7 +28,7 @@ case class Property(map: Expression, propertyKey: PropertyKeyName)(val position:
 
   override def semanticCheck(ctx: SemanticContext) =
     map.semanticCheck(ctx) chain
-      map.expectType(CTMap.covariant) chain
+      map.expectType(CTMap.covariant | CTAny.invariant) chain
       super.semanticCheck(ctx)
 }
 
@@ -36,7 +36,7 @@ object LegacyProperty {
   def apply(map: Expression, propertyKey: PropertyKeyName, legacyOperator: String)(position: InputPosition) =
     new Property(map, propertyKey)(position) {
       override def semanticCheck(ctx: SemanticContext): SemanticCheck = legacyOperator match {
-        case "?" => SemanticError(s"This syntax is no longer supported (missing properties are now returned as null). Please use (not(has(<ident>.${propertyKey.name})) OR <ident>.${propertyKey.name}=<value>) if you really need the old behavior.", position)
+        case "?" => SemanticError(s"This syntax is no longer supported (missing properties are now returned as null). Please use (not(exists(<ident>.${propertyKey.name})) OR <ident>.${propertyKey.name}=<value>) if you really need the old behavior.", position)
         case "!" => SemanticError(s"This syntax is no longer supported (missing properties are now returned as null).", position)
         case _   => throw new InternalException(s"Invalid legacy operator $legacyOperator following access to property.")
       }

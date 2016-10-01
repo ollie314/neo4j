@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,8 +23,8 @@ import java.io.ByteArrayOutputStream
 
 import org.neo4j.cypher.internal.frontend.v3_0._
 import org.neo4j.cypher.internal.helpers.GraphIcing
-import org.neo4j.graphdb.GraphDatabaseService
-import org.neo4j.visualization.graphviz.{AsciiDocStyle, GraphvizWriter}
+import org.neo4j.cypher.javacompat.internal.GraphDatabaseCypherService
+import org.neo4j.visualization.graphviz.{AsciiDocSimpleStyle, GraphvizWriter}
 import org.neo4j.walk.Walker
 
 /**
@@ -33,14 +33,14 @@ import org.neo4j.walk.Walker
  */
 object captureStateAsGraphViz extends GraphIcing {
 
-  def apply(db: GraphDatabaseService, name: String, count: Int): GraphViz = GraphViz(emitGraphviz(s"$name-$count", "", db))
+  def apply(db: GraphDatabaseCypherService, name: String, count: Int, options: String): GraphViz = GraphViz(emitGraphviz(s"$name-$count", options, db))
 
-  private def emitGraphviz(testid: String, graphVizOptions: String, db: GraphDatabaseService): String = {
+  private def emitGraphviz(testid: String, graphVizOptions: String, db: GraphDatabaseCypherService): String = {
     val out = new ByteArrayOutputStream()
-    val writer = new GraphvizWriter(AsciiDocStyle.withAutomaticRelationshipTypeColors())
+    val writer = new GraphvizWriter(AsciiDocSimpleStyle.withAutomaticRelationshipTypeColors())
 
     db.inTx {
-      writer.emit(out, Walker.fullGraph(db))
+      writer.emit(out, Walker.fullGraph(db.getGraphDatabaseService))
     }
 
     """.Graph
@@ -54,9 +54,9 @@ object captureStateAsGraphViz extends GraphIcing {
 }
 
 case class replaceSingleObject(from: Content, to: Content) extends Rewriter {
-  def apply(input: AnyRef) = bottomUp(instance).apply(input)
+  override def apply(input: AnyRef) = instance.apply(input)
 
-  private val instance: Rewriter = Rewriter.lift {
+  private val instance: Rewriter = bottomUp(Rewriter.lift {
     case x if x == from => to
-  }
+  })
 }

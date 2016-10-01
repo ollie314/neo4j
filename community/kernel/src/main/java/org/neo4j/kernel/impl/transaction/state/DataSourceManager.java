@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,8 @@
  */
 package org.neo4j.kernel.impl.transaction.state;
 
-import org.neo4j.function.Supplier;
+import java.util.function.Supplier;
+
 import org.neo4j.helpers.Listeners;
 import org.neo4j.kernel.NeoStoreDataSource;
 import org.neo4j.kernel.api.KernelAPI;
@@ -69,28 +70,14 @@ public class DataSourceManager implements Lifecycle, Supplier<KernelAPI>
         this.dataSource = dataSource;
         if ( life.getStatus().equals( LifecycleStatus.STARTED ) )
         {
-            Listeners.notifyListeners( dsRegistrationListeners, new Listeners.Notification<Listener>()
-            {
-                @Override
-                public void notify( Listener listener )
-                {
-                    listener.registered( dataSource );
-                }
-            } );
+            Listeners.notifyListeners( dsRegistrationListeners, listener -> listener.registered( dataSource ) );
         }
     }
 
     public void unregister( final NeoStoreDataSource dataSource )
     {
         this.dataSource = null;
-        Listeners.notifyListeners( dsRegistrationListeners, new Listeners.Notification<Listener>()
-        {
-            @Override
-            public void notify( Listener listener )
-            {
-                listener.unregistered( dataSource );
-            }
-        } );
+        Listeners.notifyListeners( dsRegistrationListeners, listener -> listener.unregistered( dataSource ) );
         life.remove( dataSource );
     }
 

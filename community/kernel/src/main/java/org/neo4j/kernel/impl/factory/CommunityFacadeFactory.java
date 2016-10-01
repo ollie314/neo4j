@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,28 +25,31 @@ import java.util.Map;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 
 import static org.neo4j.helpers.collection.Iterables.append;
-import static org.neo4j.helpers.collection.Iterables.toList;
+import static org.neo4j.helpers.collection.Iterables.asList;
 import static org.neo4j.kernel.GraphDatabaseDependencies.newDependencies;
 
 /**
  * This facade creates instances of the Community edition of Neo4j.
  */
-public class CommunityFacadeFactory
-        extends GraphDatabaseFacadeFactory
+public class CommunityFacadeFactory extends GraphDatabaseFacadeFactory
 {
     @Override
-    public GraphDatabaseFacade newFacade( File storeDir, Map<String, String> params, Dependencies dependencies, GraphDatabaseFacade
-            graphDatabaseFacade )
+    public GraphDatabaseFacade newFacade( File storeDir, Map<String,String> params, Dependencies dependencies,
+            GraphDatabaseFacade graphDatabaseFacade )
     {
-        params.put( Configuration.editionName.name(), "Community" );
-
         return super.newFacade( storeDir, params, newDependencies( dependencies ).settingsClasses(
-                toList( append( GraphDatabaseSettings.class, dependencies.settingsClasses() ) ) ),
+                asList( append( GraphDatabaseSettings.class, dependencies.settingsClasses() ) ) ),
                 graphDatabaseFacade );
     }
 
     protected EditionModule createEdition( PlatformModule platformModule )
     {
         return new CommunityEditionModule( platformModule );
+    }
+
+    @Override
+    protected DatabaseInfo databaseInfo()
+    {
+        return new DatabaseInfo( Edition.community, OperationalMode.single );
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,18 +30,18 @@ class ModuloTest extends InfixExpressionTestBase(Modulo(_, _)(DummyPosition(0)))
   // 1.1 % 1 => 0.1
   // 1.1 % 1.1 => 0.0
 
-  test("shouldHandleAllSpecializations") {
+  test("should handle all specializations") {
     testValidTypes(CTInteger, CTInteger)(CTInteger)
     testValidTypes(CTInteger, CTFloat)(CTFloat)
     testValidTypes(CTFloat, CTInteger)(CTFloat)
     testValidTypes(CTFloat, CTFloat)(CTFloat)
   }
 
-  test("shouldHandleCombinedSpecializations") {
+  test("should handle combined specializations") {
     testValidTypes(CTFloat | CTInteger, CTFloat | CTInteger)(CTFloat | CTInteger)
   }
 
-  test("shouldFailTypeCheckWhenAddingIncompatible") {
+  test("should fail type check when adding incompatible") {
     testInvalidApplication(CTInteger, CTBoolean)(
       "Type mismatch: expected Float or Integer but was Boolean"
     )

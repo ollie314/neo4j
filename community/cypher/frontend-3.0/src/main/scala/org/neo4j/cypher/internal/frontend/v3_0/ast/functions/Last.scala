@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,10 +28,10 @@ case object Last extends Function {
 
   def semanticCheck(ctx: ast.Expression.SemanticContext, invocation: ast.FunctionInvocation): SemanticCheck =
     checkArgs(invocation, 1) ifOkChain {
-      invocation.arguments.head.expectType(CTCollection(CTAny).covariant) chain
+      invocation.arguments.head.expectType(CTList(CTAny).covariant) chain
       invocation.specifyType(possibleInnerTypes(invocation.arguments.head))
     }
 
   private def possibleInnerTypes(expression: ast.Expression) : TypeGenerator = s =>
-    (expression.types(s) constrain CTCollection(CTAny)).unwrapCollections
+    (expression.types(s) constrain CTList(CTAny)).unwrapLists
 }

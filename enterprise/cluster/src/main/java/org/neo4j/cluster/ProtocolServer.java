@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -54,7 +54,7 @@ public class ProtocolServer
         this.msgLog = logProvider.getLog( getClass() );
 
         StateMachineConversations conversations = new StateMachineConversations(me);
-        proxyFactory = new StateMachineProxyFactory( stateMachines, conversations, me );
+        proxyFactory = new StateMachineProxyFactory( stateMachines, conversations, me, logProvider );
         stateMachines.addMessageProcessor( proxyFactory );
     }
 

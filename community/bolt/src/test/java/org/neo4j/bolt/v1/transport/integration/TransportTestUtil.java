@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -99,7 +99,8 @@ public class TransportTestUtil
 
     public static byte[] acceptedVersions( long option1, long option2, long option3, long option4 )
     {
-        ByteBuffer bb = ByteBuffer.allocate( 4 * 4 ).order( BIG_ENDIAN );
+        ByteBuffer bb = ByteBuffer.allocate( 5 * 4 ).order( BIG_ENDIAN );
+        bb.putInt( 0x6060B017 );
         bb.putInt( (int) option1 );
         bb.putInt( (int) option2 );
         bb.putInt( (int) option3 );

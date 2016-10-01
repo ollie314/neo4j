@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,7 +26,7 @@ import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 // Argument is used inside of an Apply to feed the row from the LHS of the Apply to the leaf of the RHS
 case class Argument(argumentIds: Set[IdName])(val solved: PlannerQuery with CardinalityEstimation)
                     (val typeInfo: Map[String, CypherType] = argumentIds.map( id => id.name -> CTNode).toMap)
-  extends LogicalLeafPlan with LogicalPlanWithoutExpressions {
+  extends LogicalLeafPlan {
 
   def availableSymbols = argumentIds
 

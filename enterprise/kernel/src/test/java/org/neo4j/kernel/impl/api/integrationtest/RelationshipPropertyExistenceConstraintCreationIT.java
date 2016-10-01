@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,9 +26,8 @@ import org.neo4j.graphdb.Relationship;
 import org.neo4j.kernel.api.SchemaWriteOperations;
 import org.neo4j.kernel.api.constraints.RelationshipPropertyExistenceConstraint;
 import org.neo4j.kernel.api.exceptions.KernelException;
-import org.neo4j.tooling.GlobalGraphOperations;
 
-import static org.neo4j.graphdb.DynamicRelationshipType.withName;
+import static org.neo4j.graphdb.RelationshipType.withName;
 
 public class RelationshipPropertyExistenceConstraintCreationIT
         extends AbstractConstraintCreationIT<RelationshipPropertyExistenceConstraint>
@@ -76,7 +75,7 @@ public class RelationshipPropertyExistenceConstraintCreationIT
     @Override
     void removeOffendingDataInRunningTx( GraphDatabaseService db )
     {
-        Iterable<Relationship> relationships = GlobalGraphOperations.at( db ).getAllRelationships();
+        Iterable<Relationship> relationships = db.getAllRelationships();
         for ( Relationship relationship : relationships )
         {
             relationship.delete();

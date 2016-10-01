@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,6 @@ import org.junit.Rule;
 import org.junit.Test;
 
 import org.neo4j.test.ImpermanentDatabaseRule;
-import org.neo4j.tooling.GlobalGraphOperations;
 
 public class CreateAndDeleteNodesIT
 {
@@ -39,7 +38,7 @@ public class CreateAndDeleteNodesIT
     public void addingALabelUsingAValidIdentifierShouldSucceed() throws Exception
     {
         // Given
-        GraphDatabaseService dataBase = dbRule.getGraphDatabaseService();
+        GraphDatabaseService dataBase = dbRule.getGraphDatabaseAPI();
         Node myNode;
 
         // When
@@ -56,12 +55,12 @@ public class CreateAndDeleteNodesIT
         // When
         try ( Transaction tx2 = dataBase.beginTx() )
         {
-            for ( Relationship r : GlobalGraphOperations.at( dataBase ).getAllRelationships() )
+            for ( Relationship r : dataBase.getAllRelationships() )
             {
                 r.delete();
             }
 
-            for ( Node n : GlobalGraphOperations.at( dataBase ).getAllNodes() )
+            for ( Node n : dataBase.getAllNodes() )
             {
                 n.delete();
             }

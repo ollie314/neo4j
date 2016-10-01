@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,17 +19,19 @@
  */
 package org.neo4j.server.rest.management.console;
 
+import org.apache.commons.lang3.StringUtils;
+
 import java.util.Collections;
 import javax.servlet.http.HttpServletRequest;
 
 import org.neo4j.cypher.SyntaxException;
+import org.neo4j.cypher.internal.javacompat.ExecutionEngine;
 import org.neo4j.graphdb.Result;
-import org.neo4j.helpers.Pair;
+import org.neo4j.helpers.collection.Pair;
+import org.neo4j.kernel.impl.query.QuerySession;
 import org.neo4j.logging.Log;
 import org.neo4j.logging.LogProvider;
 import org.neo4j.server.database.CypherExecutor;
-import org.neo4j.server.rest.web.ServerQuerySession;
-import org.neo4j.server.webadmin.console.ScriptSession;
 
 public class CypherSession implements ScriptSession
 {
@@ -47,15 +49,17 @@ public class CypherSession implements ScriptSession
     @Override
     public Pair<String, String> evaluate( String script )
     {
-        if ( script.trim().equals( "" ) )
+        if ( StringUtils.EMPTY.equals( script.trim() ) )
         {
-            return Pair.of( "", null );
+            return Pair.of( StringUtils.EMPTY, null );
         }
 
         String resultString;
         try
         {
-            Result result = cypherExecutor.getExecutionEngine().executeQuery( script, Collections.<String, Object>emptyMap(), new ServerQuerySession( request ) );
+            QuerySession querySession = cypherExecutor.createSession( request );
+            ExecutionEngine engine = cypherExecutor.getExecutionEngine();
+            Result result = engine.executeQuery( script, Collections.emptyMap(), querySession );
             resultString = result.resultAsString();
         }
         catch ( SyntaxException error )

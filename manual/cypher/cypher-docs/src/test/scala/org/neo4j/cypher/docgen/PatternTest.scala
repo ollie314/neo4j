@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -69,9 +69,7 @@ For example:
 (a)
 ----
 
-This simple pattern describes a single node, and names that node using the identifier `a`.
-
-Note that the parentheses may be omitted, but only when there are no labels or properties specified for the node pattern.
+This simple pattern describes a single node, and names that node using the variable `a`.
 
 == Patterns for related nodes ==
 
@@ -161,7 +159,7 @@ If you don't care about the direction of the relationship, the arrow head can be
 ----
 
 As with nodes, relationships may also be given names.
-In this case, a pair of square brackets is used to break up the arrow and the identifier is placed between.
+In this case, a pair of square brackets is used to break up the arrow and the variable is placed between.
 For example:
 
 [source,cypher]
@@ -264,7 +262,7 @@ This is a typical example of finding first and second degree friends.
 
 Note that variable length relationships can not be used with `CREATE` and `MERGE`.
 
-== Assigning to path identifiers ==
+== Assigning to path variables ==
 
 As described above, a series of connected nodes and relationships is called a "path". Cypher allows paths to be named
 using an identifer, like so:

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,22 +21,15 @@ package org.neo4j.ha.correctness;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.function.Function;
 
 import org.neo4j.cluster.com.message.Message;
 import org.neo4j.cluster.com.message.MessageType;
-import org.neo4j.function.Function;
 import org.neo4j.helpers.collection.Iterables;
 
 class MessageDeliveryAction implements ClusterAction
 {
-    public static final Function<Message,ClusterAction> MESSAGE_TO_ACTION = new Function<Message, ClusterAction>()
-    {
-        @Override
-        public ClusterAction apply( Message message )
-        {
-            return new MessageDeliveryAction( message );
-        }
-    };
+    public static final Function<Message,ClusterAction> MESSAGE_TO_ACTION = MessageDeliveryAction::new;
 
     private final Message message;
 

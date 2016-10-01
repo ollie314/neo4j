@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -58,7 +58,7 @@ object QueryTags {
     FilteringExpressionTag,
     LiteralExpressionTag,
     ParameterExpressionTag,
-    IdentifierExpressionTag
+    VariableExpressionTag
   )
 
   private val tagsByName: Map[String, QueryTag] = all.map { tag => tag.name -> tag }.toMap
@@ -134,7 +134,7 @@ case object ComplexExpressionTag extends QueryTag("complex-expr")
 case object FilteringExpressionTag extends QueryTag("filtering-expr")
 case object LiteralExpressionTag extends QueryTag("literal-expr")
 case object ParameterExpressionTag extends QueryTag("parameter-expr")
-case object IdentifierExpressionTag extends QueryTag("identifier-expr")
+case object VariableExpressionTag extends QueryTag("variable-expr")
 
 object QueryTagger extends QueryTagger[String] {
 
@@ -188,16 +188,16 @@ object QueryTagger extends QueryTagger[String] {
         )
     } ++
 
-    // <expr> unless identifier or literal
+    // <expr> unless variable or literal
     lift[ASTNode] {
-      case x: Identifier => Set.empty
+      case x: Variable => Set.empty
       case x: Literal => Set.empty
       case x: Expression => Set(ComplexExpressionTag)
     } ++
 
     // subtype of <expr>
     lift[ASTNode] {
-      case x: Identifier => Set(IdentifierExpressionTag)
+      case x: Variable => Set(VariableExpressionTag)
       case x: Literal => Set(LiteralExpressionTag)
       case x: Parameter => Set(ParameterExpressionTag)
       case x: FilteringExpression => Set(FilteringExpressionTag)
@@ -216,7 +216,7 @@ object QueryTagger extends QueryTagger[String] {
   // run inner query tagger on each child ast node and return union over all results
   case class forEachChild(inner: QueryTagger[ASTNode]) extends QueryTagger[Statement] {
     def apply(input: Statement) = input.treeFold(Set.empty[QueryTag]) {
-      case node: ASTNode => (acc, children) => children(acc ++ inner(node))
+      case node: ASTNode => acc => (acc ++ inner(node), Some(identity))
     }
   }
 

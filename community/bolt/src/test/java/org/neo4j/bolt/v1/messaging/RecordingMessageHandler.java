@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,9 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import org.neo4j.bolt.v1.messaging.MessageHandler;
-import org.neo4j.kernel.api.exceptions.Status;
-import org.neo4j.bolt.v1.messaging.message.AcknowledgeFailureMessage;
+import org.neo4j.bolt.v1.messaging.message.AckFailureMessage;
 import org.neo4j.bolt.v1.messaging.message.DiscardAllMessage;
 import org.neo4j.bolt.v1.messaging.message.FailureMessage;
 import org.neo4j.bolt.v1.messaging.message.IgnoredMessage;
@@ -33,9 +31,11 @@ import org.neo4j.bolt.v1.messaging.message.InitMessage;
 import org.neo4j.bolt.v1.messaging.message.Message;
 import org.neo4j.bolt.v1.messaging.message.PullAllMessage;
 import org.neo4j.bolt.v1.messaging.message.RecordMessage;
+import org.neo4j.bolt.v1.messaging.message.ResetMessage;
 import org.neo4j.bolt.v1.messaging.message.RunMessage;
 import org.neo4j.bolt.v1.messaging.message.SuccessMessage;
 import org.neo4j.bolt.v1.runtime.spi.Record;
+import org.neo4j.kernel.api.exceptions.Status;
 
 public class RecordingMessageHandler implements MessageHandler<RuntimeException>
 {
@@ -57,12 +57,6 @@ public class RecordingMessageHandler implements MessageHandler<RuntimeException>
     public void handleDiscardAllMessage()
     {
         messages.add( new DiscardAllMessage() );
-    }
-
-    @Override
-    public void handleAckFailureMessage() throws RuntimeException
-    {
-        messages.add( new AcknowledgeFailureMessage() );
     }
 
     @Override
@@ -90,9 +84,21 @@ public class RecordingMessageHandler implements MessageHandler<RuntimeException>
     }
 
     @Override
-    public void handleInitMessage( String clientName ) throws RuntimeException
+    public void handleInitMessage( String clientName, Map<String,Object> credentials ) throws RuntimeException
     {
-        messages.add( new InitMessage( clientName ) );
+        messages.add( new InitMessage( clientName, credentials ) );
+    }
+
+    @Override
+    public void handleResetMessage() throws RuntimeException
+    {
+        messages.add( new ResetMessage() );
+    }
+
+    @Override
+    public void handleAckFailureMessage() throws RuntimeException
+    {
+        messages.add( new AckFailureMessage() );
     }
 
     public List<Message> asList()

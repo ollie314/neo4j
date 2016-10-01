@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,7 +21,7 @@ package org.neo4j.cypher
 
 class UpdateReportingAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerTestSupport {
   test("creating a node gets reported as such") {
-    val output = updateWithBothPlanners("create (:A)").dumpToString()
+    val output = updateWithBothPlannersAndCompatibilityMode("create (:A)").dumpToString()
 
     output should include ("Nodes created: 1")
     output should include ("Labels added: 1")

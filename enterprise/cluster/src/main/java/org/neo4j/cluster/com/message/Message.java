@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -32,6 +32,8 @@ import java.util.Map;
 public class Message<MESSAGETYPE extends MessageType>
         implements Serializable
 {
+    private static final long serialVersionUID = 7043669983188264476L;
+
     public static <MESSAGETYPE extends MessageType> Message<MESSAGETYPE> to( MESSAGETYPE messageType, URI to )
     {
         return to( messageType, to, null );
@@ -70,21 +72,29 @@ public class Message<MESSAGETYPE extends MessageType>
     public static <MESSAGETYPE extends MessageType> Message<MESSAGETYPE> timeout( MESSAGETYPE message,
                                                                                   Message<?> causedBy, Object payload )
     {
-        return causedBy.copyHeadersTo( new Message<MESSAGETYPE>( message, payload ), Message.CONVERSATION_ID,
-                Message.CREATED_BY );
+        Message<MESSAGETYPE> timeout = causedBy.copyHeadersTo( new Message<>( message, payload ),
+                Message.CONVERSATION_ID, Message.CREATED_BY );
+        int timeoutCount = 0;
+        if ( causedBy.hasHeader( TIMEOUT_COUNT ) )
+        {
+            timeoutCount = Integer.parseInt( causedBy.getHeader( TIMEOUT_COUNT ) ) + 1;
+        }
+        timeout.setHeader( TIMEOUT_COUNT, "" + timeoutCount );
+        return timeout;
     }
 
 
     // Standard headers
     public static final String CONVERSATION_ID = "conversation-id";
     public static final String CREATED_BY = "created-by";
+    public static final String TIMEOUT_COUNT = "timeout-count";
     public static final String FROM = "from";
     public static final String TO = "to";
     public static final String INSTANCE_ID = "instance-id";
 
-    final private MESSAGETYPE messageType;
-    final private Object payload;
-    final private Map<String, String> headers = new HashMap<String, String>();
+    private MESSAGETYPE messageType;
+    private Object payload;
+    private Map<String, String> headers = new HashMap<String, String>();
 
     protected Message( MESSAGETYPE messageType, Object payload )
     {

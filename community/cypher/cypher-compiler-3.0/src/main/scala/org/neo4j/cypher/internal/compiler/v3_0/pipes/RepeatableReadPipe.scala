@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,15 +30,18 @@ case class RepeatableReadPipe(src: Pipe)(val estimatedCardinality: Option[Double
 
   def symbols: SymbolTable = src.symbols
 
-  override def planDescription = src.planDescription.andThen(this.id, "RepeatableRead", identifiers)
+  override def planDescription = src.planDescription.andThen(this.id, "RepeatableRead", variables)
 
   protected def internalCreateResults(input: Iterator[ExecutionContext], state: QueryState): Iterator[ExecutionContext] = {
     val cached = state.repeatableReads.getOrElseUpdate(this, input.toList)
 
-    cached.toIterator
+    //cached results must propagate initial results
+    //so that it is only caching the results from inner pipe
+    //and not results coming from e.g. the left-hand-side of an APPLY
+    cached.map(_ ++ state.initialContext.getOrElse(ExecutionContext.empty)).toIterator
   }
 
-  override def planDescriptionWithoutCardinality: InternalPlanDescription = src.planDescription.andThen(this.id, "RepeatableRead", identifiers)
+  override def planDescriptionWithoutCardinality: InternalPlanDescription = src.planDescription.andThen(this.id, "RepeatableRead", variables)
 
   override def withEstimatedCardinality(estimated: Double) = copy()(Some(estimated))
 

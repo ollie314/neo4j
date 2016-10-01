@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,10 +24,11 @@ import io.netty.channel.Channel;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.neo4j.bolt.v1.messaging.MessageBoundaryHook;
-import org.neo4j.bolt.v1.packstream.PackStream;
 import org.neo4j.bolt.v1.packstream.PackOutput;
+import org.neo4j.bolt.v1.packstream.PackStream;
 
 import static java.lang.Math.max;
 
@@ -42,6 +43,7 @@ public class ChunkedOutput implements PackOutput, MessageBoundaryHook
 
     private final int bufferSize;
     private final int maxChunkSize;
+    private final AtomicBoolean closed = new AtomicBoolean( false );
 
     private ByteBuf buffer;
     private Channel channel;
@@ -58,10 +60,12 @@ public class ChunkedOutput implements PackOutput, MessageBoundaryHook
         this.buffer = channel.alloc().buffer( this.bufferSize, this.bufferSize );
     }
 
+    //Flush can be called from a separate thread, we therefor need to synchronize
+    //on everything that touches the buffer
     @Override
-    public PackOutput flush() throws IOException
+    public synchronized PackOutput flush() throws IOException
     {
-        if ( buffer.readableBytes() > 0 )
+        if ( buffer != null && buffer.readableBytes() > 0 )
         {
             closeChunkIfOpen();
 
@@ -77,7 +81,7 @@ public class ChunkedOutput implements PackOutput, MessageBoundaryHook
     }
 
     @Override
-    public PackOutput writeByte( byte value ) throws IOException
+    public synchronized PackOutput writeByte( byte value ) throws IOException
     {
         ensure(1);
         buffer.writeByte( value );
@@ -85,7 +89,7 @@ public class ChunkedOutput implements PackOutput, MessageBoundaryHook
     }
 
     @Override
-    public PackOutput writeShort( short value ) throws IOException
+    public synchronized PackOutput writeShort( short value ) throws IOException
     {
         ensure(2);
         buffer.writeShort( value );
@@ -93,7 +97,7 @@ public class ChunkedOutput implements PackOutput, MessageBoundaryHook
     }
 
     @Override
-    public PackOutput writeInt( int value ) throws IOException
+    public synchronized PackOutput writeInt( int value ) throws IOException
     {
         ensure(4);
         buffer.writeInt( value );
@@ -101,7 +105,7 @@ public class ChunkedOutput implements PackOutput, MessageBoundaryHook
     }
 
     @Override
-    public PackOutput writeLong( long value ) throws IOException
+    public synchronized PackOutput writeLong( long value ) throws IOException
     {
         ensure(8);
         buffer.writeLong( value );
@@ -109,7 +113,7 @@ public class ChunkedOutput implements PackOutput, MessageBoundaryHook
     }
 
     @Override
-    public PackOutput writeDouble( double value ) throws IOException
+    public synchronized PackOutput writeDouble( double value ) throws IOException
     {
         ensure(8);
         buffer.writeDouble( value );
@@ -128,10 +132,12 @@ public class ChunkedOutput implements PackOutput, MessageBoundaryHook
             ensure( 1 );
 
             int oldLimit = data.limit();
-            data.limit( data.position() + Math.min( buffer.writableBytes(), data.remaining() ) );
+            synchronized ( this )
+            {
+                data.limit( data.position() + Math.min( buffer.writableBytes(), data.remaining() ) );
 
-            buffer.writeBytes( data );
-
+                buffer.writeBytes( data );
+            }
             data.limit( oldLimit );
         }
         return this;
@@ -148,25 +154,32 @@ public class ChunkedOutput implements PackOutput, MessageBoundaryHook
         return writeBytes( ByteBuffer.wrap( data, offset, length ) );
     }
 
+    //must be called from within a synchronized block
     private void ensure( int size ) throws IOException
     {
         assert size <= maxChunkSize : size + " > " + maxChunkSize;
-
-        int toWriteSize = chunkOpen ? size : size + CHUNK_HEADER_SIZE;
-        if ( buffer.writableBytes() < toWriteSize )
+        if ( closed.get() )
         {
-            flush();
+            throw new IOException( "Cannot write to buffer when closed" );
         }
-
-        if ( !chunkOpen )
+        int toWriteSize = chunkOpen ? size : size + CHUNK_HEADER_SIZE;
+        synchronized ( this )
         {
-            currentChunkHeaderOffset = buffer.writerIndex();
-            buffer.writerIndex( buffer.writerIndex() + CHUNK_HEADER_SIZE );
-            chunkOpen = true;
+            if ( buffer.writableBytes() < toWriteSize )
+            {
+                flush();
+            }
+
+            if ( !chunkOpen )
+            {
+                currentChunkHeaderOffset = buffer.writerIndex();
+                buffer.writerIndex( buffer.writerIndex() + CHUNK_HEADER_SIZE );
+                chunkOpen = true;
+            }
         }
     }
 
-    private void closeChunkIfOpen()
+    private synchronized void closeChunkIfOpen()
     {
         if ( chunkOpen )
         {
@@ -176,6 +189,7 @@ public class ChunkedOutput implements PackOutput, MessageBoundaryHook
         }
     }
 
+    //must be called from within a synchronized block
     private void newBuffer()
     {
         // Assumption: We're using nettys buffer pooling here
@@ -186,17 +200,29 @@ public class ChunkedOutput implements PackOutput, MessageBoundaryHook
         chunkOpen = false;
     }
 
-    public void close()
+    public synchronized void close()
     {
         if(buffer != null)
         {
-            buffer.release();
-            buffer = null;
+            try
+            {
+                flush();
+            }
+            catch ( IOException e )
+            {
+                //
+            }
+            finally
+            {
+                closed.set( true );
+                buffer.release();
+                buffer = null;
+            }
         }
     }
 
     @Override
-    public void onMessageComplete() throws IOException
+    public synchronized void onMessageComplete() throws IOException
     {
         closeChunkIfOpen();
 

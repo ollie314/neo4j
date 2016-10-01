@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,6 +24,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 
 import org.neo4j.visualization.Visualizer;
 import org.neo4j.walk.Walker;
@@ -87,13 +88,14 @@ public final class GraphvizWriter
 		}
 		else
 		{
-			emit( walker, new GraphvizRenderer( style, new PrintStream( outputStream, true, "UTF-8" ) ) );
+			emit( walker, new GraphvizRenderer( style,
+					new PrintStream( outputStream, true, StandardCharsets.UTF_8.name() ) ) );
 		}
 	}
 
 	private void emit( Walker walker, GraphvizRenderer renderer )
 	    throws IOException
 	{
-		walker.accept( new Visualizer<IOException>( renderer ) );
+		walker.accept( new Visualizer<>( renderer ) );
 	}
 }

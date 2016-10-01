@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -40,7 +40,7 @@ case class TypeRange(lower: CypherType, upper: Option[CypherType]) {
   lazy val hasDefiniteSize: Boolean = upper.isDefined || !checkForAny(lower)
   private def checkForAny: CypherType => Boolean = {
     case _: AnyType => true
-    case c: CollectionType => checkForAny(c.innerType)
+    case c: ListType => checkForAny(c.innerType)
     case _ => false
   }
 
@@ -53,6 +53,8 @@ case class TypeRange(lower: CypherType, upper: Option[CypherType]) {
       else
         Some(TypeRange(newLower, newUpper))
   }
+
+  def covariant = copy(upper = None)
 
   def constrain(aType: CypherType): Option[TypeRange] = this & TypeRange(aType, None)
 

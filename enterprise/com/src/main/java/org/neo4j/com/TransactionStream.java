@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,19 +19,17 @@
  */
 package org.neo4j.com;
 
-import java.io.IOException;
-
 import org.neo4j.helpers.collection.Visitor;
 import org.neo4j.kernel.impl.transaction.CommittedTransactionRepresentation;
 
 public interface TransactionStream
 {
-    void accept( Visitor<CommittedTransactionRepresentation, IOException> visitor ) throws IOException;
+    void accept( Visitor<CommittedTransactionRepresentation,Exception> visitor ) throws Exception;
 
     public static final TransactionStream EMPTY = new TransactionStream()
     {
         @Override
-        public void accept( Visitor<CommittedTransactionRepresentation, IOException> visitor ) throws IOException
+        public void accept( Visitor<CommittedTransactionRepresentation,Exception> visitor ) throws Exception
         {
         }
     };

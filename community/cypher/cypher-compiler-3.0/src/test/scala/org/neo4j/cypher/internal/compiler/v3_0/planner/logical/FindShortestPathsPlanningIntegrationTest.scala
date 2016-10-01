@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,11 +19,10 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner.logical
 
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.LazyLabel
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans._
-import org.neo4j.cypher.internal.compiler.v3_0.planner.{LogicalPlanningTestSupport2, PlannerQuery}
+import org.neo4j.cypher.internal.compiler.v3_0.planner.{LogicalPlanningTestSupport2, RegularPlannerQuery}
 import org.neo4j.cypher.internal.frontend.v3_0.SemanticDirection
-import org.neo4j.cypher.internal.frontend.v3_0.ast.{Equals, Identifier, Not}
+import org.neo4j.cypher.internal.frontend.v3_0.ast.{Equals, Variable, Not}
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
 
 class FindShortestPathsPlanningIntegrationTest extends CypherFunSuite with LogicalPlanningTestSupport2 {
@@ -32,11 +31,11 @@ class FindShortestPathsPlanningIntegrationTest extends CypherFunSuite with Logic
     planFor("MATCH (a), (b), shortestPath((a)-[r]->(b)) RETURN b").plan should equal(
       FindShortestPaths(
         CartesianProduct(
-          AllNodesScan("b", Set.empty)(solved),
-          AllNodesScan("a", Set.empty)(solved)
+          AllNodesScan("a", Set.empty)(solved),
+          AllNodesScan("b", Set.empty)(solved)
         )(solved),
         ShortestPathPattern(
-          None,
+          Some("  FRESHID16"),
           PatternRelationship("r", ("a", "b"), SemanticDirection.OUTGOING, Seq.empty, SimplePatternLength),
           single = true
         )(null)
@@ -48,11 +47,11 @@ class FindShortestPathsPlanningIntegrationTest extends CypherFunSuite with Logic
     planFor("MATCH (a), (b), allShortestPaths((a)-[r]->(b)) RETURN b").plan should equal(
       FindShortestPaths(
         CartesianProduct(
-          AllNodesScan("b", Set.empty)(solved),
-          AllNodesScan("a", Set.empty)(solved)
+          AllNodesScan("a", Set.empty)(solved),
+          AllNodesScan("b", Set.empty)(solved)
         )(solved),
         ShortestPathPattern(
-          None,
+          Some("  FRESHID16"),
           PatternRelationship("r", ("a", "b"), SemanticDirection.OUTGOING, Seq.empty, SimplePatternLength),
           single = false
         )(null)
@@ -64,11 +63,11 @@ class FindShortestPathsPlanningIntegrationTest extends CypherFunSuite with Logic
     val result = (new given {
       cardinality = mapCardinality {
         // node label scan
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.size == 1 => 100.0
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.size == 1 => 100.0
         // all node scan
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.isEmpty => 10000.0
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.isEmpty => 10000.0
         // expand
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.patternRelationships.size == 1 => 100.0
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternRelationships.size == 1 => 100.0
         case _                             => Double.MaxValue
       }
     } planFor "MATCH (a:X)<-[r1]-(b)-[r2]->(c:X), p = shortestPath((a)-[r]->(c)) RETURN p").plan
@@ -76,14 +75,14 @@ class FindShortestPathsPlanningIntegrationTest extends CypherFunSuite with Logic
     val expected =
       FindShortestPaths(
         Selection(
-          Seq(Not(Equals(Identifier("r1") _, Identifier("r2") _) _) _),
+          Seq(Not(Equals(Variable("r1") _, Variable("r2") _) _) _),
           NodeHashJoin(
             Set(IdName("b")),
             Expand(
-              NodeByLabelScan(IdName("a"), LazyLabel("X"), Set.empty)(solved),
+              NodeByLabelScan(IdName("a"), lblName("X"), Set.empty)(solved),
               IdName("a"), SemanticDirection.INCOMING, Seq.empty, IdName("b"), IdName("r1"), ExpandAll)(solved),
             Expand(
-              NodeByLabelScan(IdName("c"), LazyLabel("X"), Set.empty)(solved),
+              NodeByLabelScan(IdName("c"), lblName("X"), Set.empty)(solved),
               IdName("c"), SemanticDirection.INCOMING, Seq.empty, IdName("b"), IdName("r2"), ExpandAll)(solved)
           )(solved)
         )(solved),

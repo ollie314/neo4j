@@ -4,12 +4,12 @@
   <parent>
     <groupId>org.neo4j</groupId>
     <artifactId>parent</artifactId>
-    <version>3.0.0-SNAPSHOT</version>
+    <version>3.0.7-SNAPSHOT</version>
     <relativePath>../..</relativePath>
   </parent>
 
   <artifactId>neo4j-enterprise</artifactId>
-  <version>3.0.0-SNAPSHOT</version>
+  <version>3.0.7-SNAPSHOT</version>
 
   <name>Neo4j - Enterprise</name>
   <packaging>jar</packaging>
@@ -26,14 +26,15 @@
   </properties>
 
   <scm>
-	  <url>https://github.com/neo4j/neo4j/tree/master/enterprise/neo4j-enterprise</url>
+    <connection>scm:git:git://github.com/neo4j/neo4j.git</connection>
+    <developerConnection>scm:git:git@github.com:neo4j/neo4j.git</developerConnection>
+    <url>https://github.com/neo4j/neo4j</url>
   </scm>
-
 
   <dependencies>
     <dependency>
       <groupId>org.neo4j</groupId>
-      <artifactId>neo4j-advanced</artifactId>
+      <artifactId>neo4j</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
@@ -61,6 +62,11 @@
       <artifactId>neo4j-metrics</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.neo4j</groupId>
+      <artifactId>neo4j-management</artifactId>
+      <version>${project.version}</version>
+    </dependency>
 
     <!-- For the tests specified by this package -->
     <dependency>
@@ -77,6 +83,11 @@
         <groupId>org.hamcrest</groupId>
         <artifactId>hamcrest-library</artifactId>
         <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-core</artifactId>
+      <scope>test</scope>
     </dependency>
 
     <dependency>
@@ -109,7 +120,28 @@
     </dependency>
     <dependency>
       <groupId>org.neo4j</groupId>
+      <artifactId>neo4j-cluster</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.neo4j</groupId>
+      <artifactId>neo4j-enterprise-kernel</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.neo4j</groupId>
       <artifactId>neo4j-consistency-check</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.neo4j</groupId>
+      <artifactId>neo4j-logging</artifactId>
       <version>${project.version}</version>
       <type>test-jar</type>
       <scope>test</scope>
@@ -180,10 +212,6 @@
                 </resource>
                 <resource>
                   <directory>${project.build.directory}/../../ha/src/main/java/</directory>
-                  <filtering>false</filtering>
-                </resource>
-                 <resource>
-                  <directory>${project.build.directory}/../../../advanced/management/src/main/java/</directory>
                   <filtering>false</filtering>
                 </resource>
                  <resource>
@@ -271,23 +299,7 @@
                   <title>Helpers</title>
                   <packages>org.neo4j.helpers:org.neo4j.helpers.*</packages>
                 </group>
-                <group>
-                  <title>Tooling</title>
-                  <packages>org.neo4j.tooling:org.neo4j.tooling.*</packages>
-                </group>
               </groups>
-              <additionalDependencies>
-                <additionalDependency>
-                  <groupId>ch.qos.logback</groupId>
-                  <artifactId>logback-classic</artifactId>
-                  <version>${logback-classic.version}</version>
-                </additionalDependency>
-                <additionalDependency>
-                  <groupId>ch.qos.logback</groupId>
-                  <artifactId>logback-core</artifactId>
-                  <version>${logback-classic.version}</version>
-                </additionalDependency>
-              </additionalDependencies>
             </configuration>
           </execution>
         </executions>

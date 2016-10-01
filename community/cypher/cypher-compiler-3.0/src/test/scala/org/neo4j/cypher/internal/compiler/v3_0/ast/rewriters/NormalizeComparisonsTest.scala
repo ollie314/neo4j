@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,12 +20,12 @@
 package org.neo4j.cypher.internal.compiler.v3_0.ast.rewriters
 
 import org.neo4j.cypher.internal.frontend.v3_0.DummyPosition
-import org.neo4j.cypher.internal.frontend.v3_0.ast.{Equals, Expression, Identifier, InvalidNotEquals, NotEquals, _}
+import org.neo4j.cypher.internal.frontend.v3_0.ast.{Equals, Expression, Variable, InvalidNotEquals, NotEquals, _}
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
 
 class NormalizeComparisonsTest extends CypherFunSuite {
   val pos = DummyPosition(0)
-  val expression: Expression = Identifier("foo")(pos)
+  val expression: Expression = Variable("foo")(pos)
   val comparisons = List(
     Equals(expression, expression)(pos),
     NotEquals(expression, expression)(pos),

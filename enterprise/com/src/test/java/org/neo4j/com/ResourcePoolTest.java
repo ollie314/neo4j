@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -31,13 +31,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.neo4j.helpers.FakeClock;
 
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 public class ResourcePoolTest
 {
-
     private static final int TIMEOUT_MILLIS = 100;
     private static final int TIMEOUT_EXCEED_MILLIS = TIMEOUT_MILLIS + 10;
 
@@ -192,7 +193,7 @@ public class ResourcePoolTest
 
         StatefulMonitor stateMonitor = new StatefulMonitor();
         FakeClock clock = new FakeClock();
-        final ResourcePool<Something> pool = getResourcePool( stateMonitor, clock, poolMinSize );
+        final SomethingResourcePool pool = getResourcePool( stateMonitor, clock, poolMinSize );
 
         acquireResourcesAndExceedTimeout( pool, clock, poolMaxSize );
 
@@ -211,6 +212,7 @@ public class ResourcePoolTest
         assertEquals( poolMinSize, stateMonitor.targetSize.get() );
         // Only pooled resources must be used, disposing what is in excess
         // +1 that was used to trigger exceed timeout check
+        assertEquals( poolMinSize, pool.unusedSize() );
         assertEquals( poolMaxSize - poolMinSize + 1, stateMonitor.disposed.get() );
     }
 
@@ -224,7 +226,7 @@ public class ResourcePoolTest
 
         StatefulMonitor stateMonitor = new StatefulMonitor();
         FakeClock clock = new FakeClock();
-        final ResourcePool<Something> pool = getResourcePool( stateMonitor, clock, poolMinSize );
+        final SomethingResourcePool pool = getResourcePool( stateMonitor, clock, poolMinSize );
 
         acquireResourcesAndExceedTimeout( pool, clock, poolMaxSize );
 
@@ -253,7 +255,8 @@ public class ResourcePoolTest
         assertEquals( afterPeekPoolSize, stateMonitor.targetSize.get() );
         // only the excess from the maximum size down to after peek usage size must have been disposed
         // +1 that was used to trigger exceed timeout check
-        assertEquals( poolMaxSize - afterPeekPoolSize + 1, stateMonitor.disposed.get() );
+        assertEquals( afterPeekPoolSize, pool.unusedSize() );
+        assertThat( stateMonitor.disposed.get(), greaterThanOrEqualTo( poolMaxSize - afterPeekPoolSize + 1 )  );
     }
 
     @Test
@@ -266,7 +269,7 @@ public class ResourcePoolTest
 
         StatefulMonitor stateMonitor = new StatefulMonitor();
         FakeClock clock = new FakeClock();
-        final ResourcePool<Something> pool = getResourcePool( stateMonitor, clock, poolMinSize );
+        final SomethingResourcePool pool = getResourcePool( stateMonitor, clock, poolMinSize );
 
         acquireResourcesAndExceedTimeout( pool, clock, poolMaxSize );
 
@@ -288,10 +291,12 @@ public class ResourcePoolTest
         }
 
         // then
-        // currentPeakSize should be at bellowPoolMinSize
-        assertEquals( bellowPoolMinSize, stateMonitor.currentPeakSize.get() );
+        // currentPeakSize should not be higher than bellowPoolMinSize
+        assertTrue( String.valueOf( stateMonitor.currentPeakSize.get() ),
+                stateMonitor.currentPeakSize.get() <= bellowPoolMinSize );
         // target size should remain at pool min size
         assertEquals( poolMinSize, stateMonitor.targetSize.get() );
+        assertEquals( poolMinSize, pool.unusedSize() );
         // only the excess from the pool max size down to min size must have been disposed
         // +1 that was used to trigger initial exceed timeout check
         assertEquals( poolMaxSize - poolMinSize + 1, stateMonitor.disposed.get() );
@@ -330,7 +335,7 @@ public class ResourcePoolTest
         }
     }
 
-    private ResourcePool<Something> getResourcePool( StatefulMonitor stateMonitor, FakeClock clock, int minSize )
+    private SomethingResourcePool getResourcePool( StatefulMonitor stateMonitor, FakeClock clock, int minSize )
     {
         ResourcePool.CheckStrategy.TimeoutCheckStrategy timeoutCheckStrategy =
                 new ResourcePool.CheckStrategy.TimeoutCheckStrategy( TIMEOUT_MILLIS, clock );
@@ -369,6 +374,11 @@ public class ResourcePoolTest
         protected boolean isAlive( Something resource )
         {
             return !resource.closed;
+        }
+
+        public int unusedSize()
+        {
+            return unused.size();
         }
     }
 

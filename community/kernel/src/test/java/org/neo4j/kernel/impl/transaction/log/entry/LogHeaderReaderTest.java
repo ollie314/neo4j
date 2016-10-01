@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -31,9 +31,11 @@ import org.mockito.stubbing.Answer;
 
 import org.neo4j.io.fs.DefaultFileSystemAbstraction;
 import org.neo4j.io.fs.FileSystemAbstraction;
-import org.neo4j.kernel.impl.transaction.log.InMemoryLogChannel;
+import org.neo4j.kernel.impl.transaction.log.InMemoryClosableChannel;
+import org.neo4j.kernel.impl.util.IoPrimitiveUtils;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -47,22 +49,6 @@ public class LogHeaderReaderTest
 {
     private final long expectedLogVersion = CURRENT_LOG_VERSION;
     private final long expectedTxId = 42;
-
-    @Test
-    public void shouldReadALogHeaderFromALogChannel() throws IOException
-    {
-        // given
-        final InMemoryLogChannel channel = new InMemoryLogChannel();
-
-        channel.putLong( encodeLogVersion( expectedLogVersion ) );
-        channel.putLong( expectedTxId );
-
-        // when
-        final LogHeader result = readLogHeader( channel );
-
-        // then
-        assertEquals( new LogHeader( CURRENT_LOG_VERSION, expectedLogVersion, expectedTxId ), result );
-    }
 
     @Test
     public void shouldReadALogHeaderFromAByteChannel() throws IOException
@@ -83,7 +69,7 @@ public class LogHeaderReaderTest
         } );
 
         // when
-        final LogHeader result = readLogHeader( buffer, channel, true );
+        final LogHeader result = readLogHeader( buffer, channel, true, null );
 
         // then
         assertEquals( new LogHeader( CURRENT_LOG_VERSION, expectedLogVersion, expectedTxId ), result );
@@ -101,13 +87,12 @@ public class LogHeaderReaderTest
         try
         {
             // when
-            readLogHeader( buffer, channel, true );
+            readLogHeader( buffer, channel, true, null );
             fail( "should have thrown" );
         }
-        catch ( IOException ex )
+        catch ( IncompleteLogHeaderException ex )
         {
-            // then
-            assertEquals( "Unable to read log version and last committed tx", ex.getMessage() );
+            // then good
         }
     }
 
@@ -147,10 +132,36 @@ public class LogHeaderReaderTest
             readLogHeader( fs, file );
             fail( "should have thrown" );
         }
-        catch ( IOException ex )
+        catch ( IncompleteLogHeaderException ex )
         {
             // then
-            assertEquals( "Unable to read log version and last committed tx", ex.getMessage() );
+            assertTrue( ex.getMessage(), ex.getMessage().contains( file.getName() ) );
         }
+    }
+
+    @Test
+    public void shouldReadALongString() throws IOException
+    {
+        // given
+
+        // build a string longer than 32k
+        int stringSize = 32 * 1024 + 1;
+        StringBuilder sb = new StringBuilder();
+        for ( int i = 0; i < stringSize; i++ )
+        {
+            sb.append( "x" );
+        }
+        String lengthyString = sb.toString();
+
+        // we need 3 more bytes for writing the string length
+        InMemoryClosableChannel channel = new InMemoryClosableChannel( stringSize + 3 );
+
+        IoPrimitiveUtils.write3bLengthAndString( channel, lengthyString );
+
+        // when
+        String stringFromChannel = IoPrimitiveUtils.read3bLengthAndString( channel );
+
+        // then
+        assertEquals( lengthyString, stringFromChannel );
     }
 }

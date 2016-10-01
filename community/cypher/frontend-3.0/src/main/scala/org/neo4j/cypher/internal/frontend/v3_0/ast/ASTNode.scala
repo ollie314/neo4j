@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,24 +20,15 @@
 package org.neo4j.cypher.internal.frontend.v3_0.ast
 
 import org.neo4j.cypher.internal.frontend.v3_0.Rewritable._
-import org.neo4j.cypher.internal.frontend.v3_0.perty.PageDocFormatting
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 import org.neo4j.cypher.internal.frontend.v3_0._
 
 trait ASTNode
   extends Product
   with Foldable
-  with Rewritable
-  with PageDocFormatting /* multi line */
-  // with LineDocFormatting  /* single line */
-//  with ToPrettyString[ASTNode]
-{
+  with Rewritable {
 
   self =>
-
-//  def toDefaultPrettyString(formatter: DocFormatter): String =
-////    toPrettyString(formatter)(DefaultDocHandler.docGen) /* scala like */
-//    toPrettyString(formatter)(InternalDocHandler.docGen) /* see there for more choices */
 
   def position: InputPosition
 
@@ -56,12 +47,6 @@ trait ASTNode
     }
 }
 
-// This is used by pretty printing to distinguish between
-//
-// - expressions
-// - particles (non-expression ast nodes contained in expressions)
-// - terms (neither expressions nor particles, like Clause)
-//
 sealed trait ASTNodeType { self: ASTNode => }
 
 trait ASTExpression extends ASTNodeType { self: ASTNode => }
@@ -76,27 +61,25 @@ trait ASTSlicingPhrase extends ASTPhrase with SemanticCheckable {
   def expression: Expression
 
   def semanticCheck =
-    containsNoIdentifiers chain
+    containsNoVariables chain
       literalShouldBeUnsignedInteger chain
       expression.semanticCheck(Expression.SemanticContext.Simple) chain
       expression.expectType(CTInteger.covariant)
 
-  private def containsNoIdentifiers: SemanticCheck = {
+  private def containsNoVariables: SemanticCheck = {
     val deps = dependencies
     if (deps.nonEmpty) {
       val id = deps.toSeq.sortBy(_.position).head
-      SemanticError(s"It is not allowed to refer to identifiers in $name", id.position)
+      SemanticError(s"It is not allowed to refer to variables in $name", id.position)
     }
     else SemanticCheckResult.success
   }
 
   private def literalShouldBeUnsignedInteger: SemanticCheck = {
     expression match {
-      case lit: Literal => lit match {
-        case _: UnsignedDecimalIntegerLiteral => SemanticCheckResult.success
-        case i: SignedDecimalIntegerLiteral if i.value >= 0 => SemanticCheckResult.success
-        case l => SemanticError(s"Invalid input '${l.asCanonicalStringVal}' is not a valid value, must be a positive integer", l.position)
-      }
+      case _: UnsignedDecimalIntegerLiteral => SemanticCheckResult.success
+      case i: SignedDecimalIntegerLiteral if i.value >= 0 => SemanticCheckResult.success
+      case lit: Literal => SemanticError(s"Invalid input '${lit.asCanonicalStringVal}' is not a valid value, must be a positive integer", lit.position)
       case _ => SemanticCheckResult.success
     }
   }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,7 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner.logical.steps
 
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.{LazyLabel, LazyTypes}
+import org.neo4j.cypher.internal.compiler.v3_0.pipes.LazyTypes
 import org.neo4j.cypher.internal.compiler.v3_0.planner._
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.LogicalPlanningContext
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans._
@@ -32,48 +32,90 @@ case object countStorePlanner {
     implicit val semanticTable = context.semanticTable
     query.horizon match {
       case AggregatingQueryProjection(groupingKeys, aggregatingExpressions, shuffle)
-        if groupingKeys.isEmpty && aggregatingExpressions.size == 1 => aggregatingExpressions.head match {
+        if groupingKeys.isEmpty && aggregatingExpressions.size == 1 =>
+        val (columnName, exp) = aggregatingExpressions.head
+        val countStorePlan = checkForValidQueryGraph(query, columnName, exp)
+        countStorePlan.map(p => projection(p, groupingKeys))
 
-        case (aggregationIdent, FunctionInvocation(FunctionName("count"), false, Vector(Identifier(countName)))) =>
+      case _ => None
+    }
+  }
 
-          query.queryGraph match {
+  private def checkForValidQueryGraph(query: PlannerQuery, columnName: String, exp: Expression)
+                                     (implicit context: LogicalPlanningContext): Option[LogicalPlan] = query.queryGraph match {
+    case QueryGraph(patternRelationships, patternNodes, argumentIds, selections, Seq(), hints, shortestPathPatterns, _)
+      if hints.isEmpty && shortestPathPatterns.isEmpty && query.queryGraph.readOnly =>
+      checkForValidAggregations(query, columnName, exp, patternRelationships, patternNodes, argumentIds, selections)
+    case _ => None
+  }
 
-            case QueryGraph(patternRelationships, patternNodes, argumentIds, selections, Seq(), hints, shortestPathPatterns)
-              if hints.isEmpty && shortestPathPatterns.isEmpty =>
-                if (patternNodes.size == 1 && patternRelationships.isEmpty && patternNodes.head.name == countName && noWrongPredicates(Set(patternNodes.head), selections)) {
-                  // MATCH (n), MATCH (n:A)
-                  Some(context.logicalPlanProducer.planCountStoreNodeAggregation(
-                    query, IdName(aggregationIdent), findLabel(patternNodes.head, selections), argumentIds)(context))
-                } else if (patternRelationships.size == 1) {
-                  // MATCH ()-[r]->(), MATCH ()-[r:X]->(), MATCH ()-[r:X|Y]->()
-                  patternRelationships.head match {
+  private def checkForValidAggregations(query: PlannerQuery, columnName: String, exp: Expression,
+                                        patternRelationships: Set[PatternRelationship], patternNodes: Set[IdName],
+                                        argumentIds: Set[IdName], selections: Selections)(implicit context: LogicalPlanningContext): Option[LogicalPlan] =
+    exp match {
+      case // COUNT(<id>)
+        func@FunctionInvocation(_, false, Vector(Variable(variableName))) if func.function contains functions.Count =>
+        trySolveNodeAggregation(query, columnName, Some(variableName), patternRelationships, patternNodes, argumentIds, selections)
 
-                    case PatternRelationship(relId, (startNodeId, endNodeId), direction, types, SimplePatternLength)
-                      if relId.name == countName && noWrongPredicates(Set(startNodeId, endNodeId), selections) =>
+      case // COUNT(*)
+        CountStar() =>
+        trySolveNodeAggregation(query, columnName, None, patternRelationships, patternNodes, argumentIds, selections)
 
-                      def planRelAggr(fromLabel: Option[LazyLabel], toLabel: Option[LazyLabel], bothDirections: Boolean = false) =
-                        Some(context.logicalPlanProducer.planCountStoreRelationshipAggregation(query, IdName(aggregationIdent), fromLabel, LazyTypes(types.map(_.name)), toLabel, bothDirections, argumentIds)(context))
-
-                      (findLabel(startNodeId, selections), direction, findLabel(endNodeId, selections)) match {
-                        case (None,       BOTH,     None)     => planRelAggr(None, None, bothDirections = true)
-                        case (None,       BOTH,     endLabel) => planRelAggr(endLabel, None, bothDirections = true)
-                        case (startLabel, BOTH,     None)     => planRelAggr(None, startLabel, bothDirections = true)
-                        case (None,       _,        None)     => planRelAggr(None, None)
-                        case (None,       OUTGOING, endLabel) => planRelAggr(None, endLabel)
-                        case (startLabel, OUTGOING, None)     => planRelAggr(startLabel, None)
-                        case (None,       INCOMING, endLabel) => planRelAggr(endLabel, None)
-                        case (startLabel, INCOMING, None)     => planRelAggr(None, startLabel)
-                        case _ => None
-                      }
-
-                    case _ => None
-                  }
-                } else None
-
-            case _ => None
+      case // COUNT(n.prop)
+        func@FunctionInvocation(_, false, Vector(Property(Variable(variableName), PropertyKeyName(propKeyName))))
+        if func.function contains functions.Count =>
+        val labelCheck: Option[LabelName] => (Option[LogicalPlan] => Option[LogicalPlan]) = {
+            case None => _ => None
+            case Some(LabelName(labelName)) => (plan: Option[LogicalPlan]) => plan.filter(_ => context.planContext.hasPropertyExistenceConstraint(labelName, propKeyName))
           }
-        case _ => None
-      }
+        trySolveNodeAggregation(query, columnName, None, patternRelationships, patternNodes, argumentIds, selections, labelCheck)
+
+      case _ => None
+    }
+
+  private def trySolveNodeAggregation(query: PlannerQuery, columnName: String, variableName: Option[String],
+                                      patternRelationships: Set[PatternRelationship], patternNodes: Set[IdName], argumentIds: Set[IdName],
+                                      selections: Selections,
+                                      // This function is used when the aggregation needs a specific label to exist,
+                                      // for constraint checking
+                                      labelCheck: Option[LabelName] => (Option[LogicalPlan] => Option[LogicalPlan]) = _ => identity)
+                                     (implicit context: LogicalPlanningContext): Option[LogicalPlan] = {
+    if (patternNodes.size == 1 &&
+      patternRelationships.isEmpty &&
+      variableName.forall(_ == patternNodes.head.name) &&
+      noWrongPredicates(Set(patternNodes.head), selections)) { // MATCH (n), MATCH (n:A)
+      val label = findLabel(patternNodes.head, selections)
+      val lpp = context.logicalPlanProducer
+      val aggregation1 = lpp.planCountStoreNodeAggregation(query, IdName(columnName), label, argumentIds)(context)
+      labelCheck(label)(Some(aggregation1))
+    } else if (patternRelationships.size == 1) { // MATCH ()-[r]->(), MATCH ()-[r:X]->(), MATCH ()-[r:X|Y]->()
+      labelCheck(None)(
+        trySolveRelationshipAggregation(query, columnName, variableName, patternRelationships, argumentIds, selections)
+      )
+    } else None
+  }
+
+  private def trySolveRelationshipAggregation(query: PlannerQuery, columnName: String, variableName: Option[String],
+                                              patternRelationships: Set[PatternRelationship], argumentIds: Set[IdName],
+                                              selections: Selections)(implicit context: LogicalPlanningContext): Option[RelationshipCountFromCountStore] = {
+    patternRelationships.head match {
+
+      case PatternRelationship(relId, (startNodeId, endNodeId), direction, types, SimplePatternLength)
+        if variableName.forall(_ == relId.name) && noWrongPredicates(Set(startNodeId, endNodeId), selections) =>
+
+        def planRelAggr(fromLabel: Option[LabelName], toLabel: Option[LabelName]) =
+          Some(context.logicalPlanProducer.planCountStoreRelationshipAggregation(query, IdName(columnName), fromLabel, LazyTypes(types.map(_.name)), toLabel, argumentIds)(context))
+
+        (findLabel(startNodeId, selections), direction, findLabel(endNodeId, selections)) match {
+          case (None,       OUTGOING, None) => planRelAggr(None, None)
+          case (None,       INCOMING, None) => planRelAggr(None, None)
+          case (None,       OUTGOING, endLabel) => planRelAggr(None, endLabel)
+          case (startLabel, OUTGOING, None) => planRelAggr(startLabel, None)
+          case (None,       INCOMING, endLabel) => planRelAggr(endLabel, None)
+          case (startLabel, INCOMING, None) => planRelAggr(None, startLabel)
+          case _ => None
+        }
+
       case _ => None
     }
   }
@@ -86,7 +128,7 @@ case object countStorePlanner {
     labelPredicates.size <= 1 && other.isEmpty
   }
 
-  def findLabel(nodeId: IdName, selections: Selections): Option[LazyLabel] = selections.predicates.collectFirst {
-    case Predicate(nIds, h: HasLabels) if nIds == Set(nodeId) && h.labels.size == 1 => LazyLabel(h.labels.head.name)
+  def findLabel(nodeId: IdName, selections: Selections): Option[LabelName] = selections.predicates.collectFirst {
+    case Predicate(nIds, h: HasLabels) if nIds == Set(nodeId) && h.labels.size == 1 => h.labels.head
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,27 +19,35 @@
  */
 package org.neo4j.unsafe.impl.batchimport;
 
-import org.neo4j.kernel.api.labelscan.LabelScanStore;
 import org.neo4j.kernel.impl.store.NodeStore;
-import org.neo4j.kernel.impl.store.RelationshipGroupStore;
+import org.neo4j.kernel.impl.store.RecordStore;
 import org.neo4j.kernel.impl.store.record.NodeRecord;
+import org.neo4j.kernel.impl.store.record.RelationshipGroupRecord;
 import org.neo4j.unsafe.impl.batchimport.cache.NodeRelationshipCache;
-import org.neo4j.unsafe.impl.batchimport.input.Collector;
 import org.neo4j.unsafe.impl.batchimport.staging.Stage;
 
 /**
- * Sets {@link NodeRecord#setNextRel(long)} in {@link ParallelBatchImporter}.
+ * Updates {@link NodeRecord node records} with relationship/group chain heads after relationship import. Steps:
+ *
+ * <ol>
+ * <li>{@link ReadNodeRecordsByCacheStep} looks at {@link NodeRelationshipCache} for which nodes have had
+ * relationships imported and loads those {@link NodeRecord records} from store.</li>
+ * <li>{@link RecordProcessorStep} / {@link NodeFirstRelationshipProcessor} uses {@link NodeRelationshipCache}
+ * to update each {@link NodeRecord#setNextRel(long)}. For dense nodes {@link RelationshipGroupRecord group records}
+ * are created and set as {@link NodeRecord#setNextRel(long)}.</li>
+ * <li>{@link UpdateRecordsStep} writes the updated records back into store.</li>
+ * </ol>
  */
 public class NodeFirstRelationshipStage extends Stage
 {
-    public NodeFirstRelationshipStage( Configuration config, NodeStore nodeStore,
-            RelationshipGroupStore relationshipGroupStore, NodeRelationshipCache cache, final Collector collector,
-            LabelScanStore labelScanStore )
+    public NodeFirstRelationshipStage( String topic, Configuration config, NodeStore nodeStore,
+            RecordStore<RelationshipGroupRecord> relationshipGroupStore, NodeRelationshipCache cache,
+            boolean denseNodes, int relationshipType )
     {
-        super( "Node --> Relationship", config );
-        add( new ReadNodeRecordsStep( control(), config, nodeStore ) );
+        super( "Node --> Relationship" + topic, config );
+        add( new ReadNodeRecordsByCacheStep( control(), config, nodeStore, cache, denseNodes ) );
         add( new RecordProcessorStep<>( control(), "LINK", config,
-                new NodeFirstRelationshipProcessor( relationshipGroupStore, cache ), false ) );
-        add( new UpdateNodeRecordsStep( control(), config, nodeStore, collector, labelScanStore ) );
+                new NodeFirstRelationshipProcessor( relationshipGroupStore, cache, relationshipType ), false ) );
+        add( new UpdateRecordsStep<>( control(), config, nodeStore ) );
     }
 }

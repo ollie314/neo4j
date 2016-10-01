@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -44,12 +44,6 @@ public class StageTest
             {
                 return 10;
             }
-
-            @Override
-            public int workAheadSize()
-            {
-                return 20;
-            }
         };
         Stage stage = new Stage( "Test stage", config, ORDER_SEND_DOWNSTREAM );
         long batches = 1000;
@@ -85,7 +79,7 @@ public class StageTest
         for ( Step<?> step : execution.steps() )
         {
             // we start off with two in each step
-            step.incrementNumberOfProcessors();
+            step.processors( 1 );
         }
         new ExecutionSupervisor( ExecutionMonitors.invisible() ).supervise( execution );
 

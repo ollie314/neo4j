@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -42,7 +42,7 @@ class LoadCsvIterator(url: URL, inner: Iterator[Array[String]])(onNext: => Unit)
 
   def msg = {
     val committedAnything = lastCommitted >= 0
-    (s"Failure when processing URL '$url' on line $lastProcessed") +
+    s"Failure when processing URL '$url' on line $lastProcessed" +
       (if (readAll) " (which is the last row in the file). " else ". ") +
       (if (committedAnything)
         s"Possibly the last row committed during import is line $lastCommitted. "

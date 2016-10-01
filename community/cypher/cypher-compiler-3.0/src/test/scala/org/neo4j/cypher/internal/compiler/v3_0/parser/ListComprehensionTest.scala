@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -32,17 +32,17 @@ class ListComprehensionTest extends ParserTest[ast.ListComprehension, legacy.Exp
 
   test("tests") {
     val filterCommand = legacy.FilterFunction(
-      legacy.Identifier("p"),
+      legacy.Variable("p"),
       "a",
-      GreaterThan(legacy.Property(legacy.Identifier("a"), PropertyKey("foo")), legacy.Literal(123)))
+      GreaterThan(legacy.Property(legacy.Variable("a"), PropertyKey("foo")), legacy.Literal(123)))
 
     parsing("[ a in p WHERE a.foo > 123 ]") shouldGive filterCommand
 
     parsing("[ a in p | a.foo ]") shouldGive
-      legacy.ExtractFunction(legacy.Identifier("p"), "a", legacy.Property(legacy.Identifier("a"), PropertyKey("foo")))
+      legacy.ExtractFunction(legacy.Variable("p"), "a", legacy.Property(legacy.Variable("a"), PropertyKey("foo")))
 
     parsing("[ a in p WHERE a.foo > 123 | a.foo ]") shouldGive
-      legacy.ExtractFunction(filterCommand, "a", legacy.Property(legacy.Identifier("a"), PropertyKey("foo")))
+      legacy.ExtractFunction(filterCommand, "a", legacy.Property(legacy.Variable("a"), PropertyKey("foo")))
   }
 
   def convert(astNode: ast.ListComprehension): legacy.Expression = toCommandExpression(astNode)

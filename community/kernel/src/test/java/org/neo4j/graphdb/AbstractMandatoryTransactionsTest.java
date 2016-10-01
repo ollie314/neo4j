@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,7 +21,8 @@ package org.neo4j.graphdb;
 
 import org.junit.Rule;
 
-import org.neo4j.function.Consumer;
+import java.util.function.Consumer;
+
 import org.neo4j.test.EmbeddedDatabaseRule;
 
 import static org.junit.Assert.fail;
@@ -33,7 +34,7 @@ public abstract class AbstractMandatoryTransactionsTest<T>
 
     public T obtainEntity()
     {
-        GraphDatabaseService graphDatabaseService = dbRule.getGraphDatabaseService();
+        GraphDatabaseService graphDatabaseService = dbRule.getGraphDatabaseAPI();
 
         try ( Transaction tx = graphDatabaseService.beginTx() )
         {
@@ -46,7 +47,7 @@ public abstract class AbstractMandatoryTransactionsTest<T>
 
     public void obtainEntityInTerminatedTransaction( Consumer<T> f )
     {
-        GraphDatabaseService graphDatabaseService = dbRule.getGraphDatabaseService();
+        GraphDatabaseService graphDatabaseService = dbRule.getGraphDatabaseAPI();
 
         try ( Transaction tx = graphDatabaseService.beginTx() )
         {
@@ -80,23 +81,18 @@ public abstract class AbstractMandatoryTransactionsTest<T>
     {
         for ( final FacadeMethod<T> method : methods )
         {
-            obtainEntityInTerminatedTransaction(  new Consumer<T>()
-            {
-                @Override
-                public void accept( T entity )
+            obtainEntityInTerminatedTransaction( entity -> {
+                try
                 {
-                    try
-                    {
-                        method.call( entity );
+                    method.call( entity );
 
-                        fail( "Transaction was terminated, yet not exception thrown in: " + method );
-                    }
-                    catch ( TransactionTerminatedException e )
-                    {
-                        // awesome
-                    }
+                    fail( "Transaction was terminated, yet not exception thrown in: " + method );
                 }
-            });
+                catch ( TransactionTerminatedException e )
+                {
+                    // awesome
+                }
+            } );
         }
     }
 }

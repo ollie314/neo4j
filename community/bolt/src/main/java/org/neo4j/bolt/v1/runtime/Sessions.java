@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,5 +24,15 @@ package org.neo4j.bolt.v1.runtime;
  */
 public interface Sessions
 {
-    Session newSession();
+    default Session newSession( String connectionDescriptor )
+    {
+        return newSession( connectionDescriptor, false );
+    }
+
+    /**
+     * @param connectionDescriptor a string for logging that describes the underlying medium over which this session is used (TCP, HTTP, ...)
+     * @param isEncrypted if the session has to be encrypted
+     * @return a new session
+     */
+    Session newSession( String connectionDescriptor, boolean isEncrypted );
 }

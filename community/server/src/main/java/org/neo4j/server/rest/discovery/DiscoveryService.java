@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -29,9 +29,9 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 import org.neo4j.kernel.configuration.Config;
+import org.neo4j.server.configuration.ServerSettings;
 import org.neo4j.server.rest.repr.DiscoveryRepresentation;
 import org.neo4j.server.rest.repr.OutputFormat;
-import org.neo4j.server.web.ServerInternalSettings;
 
 /**
  * Used to discover the rest of the server URIs through a HTTP GET request to
@@ -53,17 +53,17 @@ public class DiscoveryService
     @Produces( MediaType.APPLICATION_JSON )
     public Response getDiscoveryDocument() throws URISyntaxException
     {
-        String webAdminManagementUri = configuration.get( ServerInternalSettings.management_api_path ).getPath() + "/";
-        String dataUri = configuration.get( ServerInternalSettings.rest_api_path ).getPath() + "/";
+        String managementUri = configuration.get( ServerSettings.management_api_path ).getPath() + "/";
+        String dataUri = configuration.get( ServerSettings.rest_api_path ).getPath() + "/";
 
-        return outputFormat.ok( new DiscoveryRepresentation( webAdminManagementUri, dataUri ) );
+        return outputFormat.ok( new DiscoveryRepresentation( managementUri, dataUri ) );
     }
 
     @GET
     @Produces( MediaType.WILDCARD )
     public Response redirectToBrowser()
     {
-        return outputFormat.seeOther( configuration.get( ServerInternalSettings.browser_path ) );
+        return outputFormat.seeOther( configuration.get( ServerSettings.browser_path ) );
 
     }
 }

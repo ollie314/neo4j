@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,13 +19,11 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner.logical
 
-import org.neo4j.cypher.internal.compiler.v3_0.commands.SingleQueryExpression
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.LazyLabel
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans._
-import org.neo4j.cypher.internal.compiler.v3_0.planner.{LogicalPlanningTestSupport2, PlannerQuery}
+import org.neo4j.cypher.internal.compiler.v3_0.planner.{LogicalPlanningTestSupport2, RegularPlannerQuery}
+import org.neo4j.cypher.internal.frontend.v3_0.SemanticDirection
 import org.neo4j.cypher.internal.frontend.v3_0.ast._
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
-import org.neo4j.cypher.internal.frontend.v3_0.{SemanticDirection, LabelId, PropertyKeyId}
 
 class NodeHashJoinPlanningIntegrationTest extends CypherFunSuite with LogicalPlanningTestSupport2 {
 
@@ -33,11 +31,11 @@ class NodeHashJoinPlanningIntegrationTest extends CypherFunSuite with LogicalPla
     val result= (new given {
       cardinality = mapCardinality {
         // node label scan
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.size == 1 => 100.0
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.size == 1 => 100.0
         // all node scan
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.isEmpty => 10000.0
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.isEmpty => 10000.0
         // expand
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.patternRelationships.size == 1 => 100.0
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternRelationships.size == 1 => 100.0
         case _                             => Double.MaxValue
       }
 
@@ -45,47 +43,19 @@ class NodeHashJoinPlanningIntegrationTest extends CypherFunSuite with LogicalPla
 
     val expected =
       Selection(
-        Seq(Not(Equals(Identifier("r1")_, Identifier("r2")_)_)_),
+        Seq(Not(Equals(Variable("r1")_, Variable("r2")_)_)_),
         NodeHashJoin(
           Set(IdName("b")),
           Expand(
-            NodeByLabelScan(IdName("a"), LazyLabel("X"), Set.empty)(solved),
+            NodeByLabelScan(IdName("a"), lblName("X"), Set.empty)(solved),
             IdName("a"), SemanticDirection.INCOMING, Seq.empty, IdName("b"), IdName("r1"))(solved),
           Expand(
-            NodeByLabelScan(IdName("c"), LazyLabel("X"), Set.empty)(solved),
+            NodeByLabelScan(IdName("c"), lblName("X"), Set.empty)(solved),
             IdName("c"), SemanticDirection.INCOMING, Seq.empty, IdName("b"), IdName("r2"))(solved)
         )(solved)
       )(solved)
 
     result should equal(expected)
-  }
-
-  test("Should build plans with leaves for both sides if that is requested by using hints") {
-    (new given {
-      cardinality = mapCardinality {
-        // node index seek
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.nonEmpty => 1000.0
-        // expand from a
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.patternRelationships.size == 1 && queryGraph.patternNodeLabels(IdName("a")).nonEmpty => 100.0
-        // expand from b
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.patternRelationships.size == 1 && queryGraph.patternNodeLabels(IdName("b")).nonEmpty => 200.0
-        case _                                  => 10.0
-      }
-
-      indexOn("Person", "name")
-    } planFor "MATCH (a)-[r]->(b) USING INDEX a:Person(name) USING INDEX b:Person(name) WHERE a:Person AND b:Person AND a.name = 'Jakub' AND b.name = 'Andres' return r").plan should equal(
-      NodeHashJoin(
-        Set(IdName("b")),
-        Selection(
-          Seq(In(Property(ident("b"), PropertyKeyName("name") _) _, Collection(Seq(StringLiteral("Andres") _)) _) _, HasLabels(ident("b"), Seq(LabelName("Person") _)) _),
-          Expand(
-            NodeIndexSeek("a", LabelToken("Person", LabelId(0)), PropertyKeyToken("name", PropertyKeyId(0)), SingleQueryExpression(StringLiteral("Jakub") _), Set.empty)(solved),
-            "a", SemanticDirection.OUTGOING, Seq.empty, "b", "r"
-          )(solved)
-        )(solved),
-        NodeIndexSeek("b", LabelToken("Person", LabelId(0)), PropertyKeyToken("name", PropertyKeyId(0)), SingleQueryExpression(StringLiteral("Andres") _), Set.empty)(solved)
-      )(solved)
-    )
   }
 
   test("should plan hash join when join hint is used") {
@@ -98,26 +68,26 @@ class NodeHashJoinPlanningIntegrationTest extends CypherFunSuite with LogicalPla
     val result = (new given {
       cardinality = mapCardinality {
         // node label scan
-        case PlannerQuery(queryGraph, _,  _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.size == 1 => 100.0
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.size == 1 => 100.0
         // all node scan
-        case PlannerQuery(queryGraph, _,  _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.isEmpty => 10000.0
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.isEmpty => 10000.0
         case _ => Double.MaxValue
       }
     } planFor cypherQuery).plan
 
     val expected =
       Selection(
-        Seq(Not(Equals(Identifier("r1") _, Identifier("r2") _) _) _,
-          In(Property(Identifier("a") _, PropertyKeyName("prop") _) _,
-            Collection(List(Property(Identifier("c") _, PropertyKeyName("prop") _) _)) _) _
+        Seq(
+          Not(Equals(Variable("r1") _, Variable("r2") _) _) _,
+          Equals(Property(Variable("a") _, PropertyKeyName("prop") _) _, Property(Variable("c") _, PropertyKeyName("prop") _) _) _
         ),
         NodeHashJoin(
           Set(IdName("b")),
           Expand(
-            NodeByLabelScan(IdName("a"), LazyLabel("A"), Set.empty)(solved),
+            NodeByLabelScan(IdName("a"), lblName("A"), Set.empty)(solved),
             IdName("a"), SemanticDirection.OUTGOING, Seq(RelTypeName("X") _), IdName("b"), IdName("r1"), ExpandAll)(solved),
           Expand(
-            NodeByLabelScan(IdName("c"), LazyLabel("C"), Set.empty)(solved),
+            NodeByLabelScan(IdName("c"), lblName("C"), Set.empty)(solved),
             IdName("c"), SemanticDirection.INCOMING, Seq(RelTypeName("X") _), IdName("b"), IdName("r2"), ExpandAll)(solved)
         )(solved)
       )(solved)

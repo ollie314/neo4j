@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,7 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.commands
 
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Identifier}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Variable}
 import org.neo4j.cypher.internal.compiler.v3_0.helpers.UnNamedNameGenerator.isNamed
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 
@@ -31,10 +31,10 @@ abstract class ReturnColumn {
   def name: String
 }
 
-case class AllIdentifiers() extends ReturnColumn {
-  def expressions(symbols: SymbolTable): Map[String, Expression] = symbols.identifiers.keys.
+case class AllVariables() extends ReturnColumn {
+  def expressions(symbols: SymbolTable): Map[String, Expression] = symbols.variables.keys.
     filter(isNamed).
-    map(n => n -> Identifier(n)).toMap
+    map(n => n -> Variable(n)).toMap
 
   def name = "*"
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,7 +20,7 @@
 package org.neo4j.cypher.internal.compiler.v3_0.executionplan.builders
 
 import org.neo4j.cypher.internal.compiler.v3_0.commands._
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{IdFunction, Identifier}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{IdFunction, Variable}
 import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates.{Equals, Predicate}
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{ExecutionPlanInProgress, PlanBuilder}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.matching.{Trail, TraversalMatcher}
@@ -29,17 +29,16 @@ import org.neo4j.cypher.internal.compiler.v3_0.spi.PlanContext
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 import org.neo4j.graphdb.Node
-import org.neo4j.helpers.ThisShouldNotHappenError
 
 class TraversalMatcherBuilder extends PlanBuilder with PatternGraphBuilder {
   def apply(plan: ExecutionPlanInProgress, ctx: PlanContext)(implicit pipeMonitor: PipeMonitor): ExecutionPlanInProgress =
     extractExpanderStepsFromQuery(plan) match {
-      case (None,_) => throw new ThisShouldNotHappenError("Andres", "This plan should not have been accepted")
+      case (None,_) => throw new AssertionError("This plan should not have been accepted")
       case (Some(longestPath), solvedStartItems) =>
         val LongestTrail(start, end, longestTrail) = longestPath
 
         val unsolvedItems = plan.query.start.filter(_.unsolved)
-        val (startToken, startNodeFn) = identifier2nodeFn(ctx, start, unsolvedItems)
+        val (startToken, startNodeFn) = variable2nodeFn(ctx, start, unsolvedItems)
 
         val (matcher, tokens) = chooseCorrectMatcher(end, longestPath, startNodeFn, startToken, unsolvedItems, ctx)
 
@@ -61,8 +60,8 @@ class TraversalMatcherBuilder extends PlanBuilder with PatternGraphBuilder {
     }
 
   private def checkPattern(plan: ExecutionPlanInProgress, tokens: Seq[QueryToken[StartItem]]) {
-    val newIdentifiers = tokens.map(_.token).map(x => x.identifierName -> CTNode).toMap
-    val newSymbolTable = plan.pipe.symbols.add(newIdentifiers)
+    val newVariables = tokens.map(_.token).map(x => x.variableName -> CTNode).toMap
+    val newSymbolTable = plan.pipe.symbols.add(newVariables)
     validatePattern(newSymbolTable, plan.query.patterns.map(_.token))
   }
 
@@ -106,7 +105,7 @@ class TraversalMatcherBuilder extends PlanBuilder with PatternGraphBuilder {
       val matcher = ctx.monoDirectionalTraversalMatcher(longestPath.step, startNodeFn)
       (matcher, Seq(startToken))
     } else {
-      val (endToken, endNodeFn) = identifier2nodeFn(ctx, end.get, unsolvedItems)
+      val (endToken, endNodeFn) = variable2nodeFn(ctx, end.get, unsolvedItems)
       val step = longestPath.step
       val matcher = ctx.bidirectionalTraversalMatcher(step, startNodeFn, endNodeFn)
       (matcher, Seq(startToken, endToken))
@@ -114,16 +113,16 @@ class TraversalMatcherBuilder extends PlanBuilder with PatternGraphBuilder {
     (matcher, tokens)
   }
 
-  def identifier2nodeFn(ctx:PlanContext, identifier: String, unsolvedItems: Seq[QueryToken[StartItem]]):
+  def variable2nodeFn(ctx:PlanContext, variable: String, unsolvedItems: Seq[QueryToken[StartItem]]):
   (QueryToken[StartItem], EntityProducer[Node]) = {
-    val startItemQueryToken = unsolvedItems.filter { (item) => identifier == item.token.identifierName }.head
+    val startItemQueryToken = unsolvedItems.filter { (item) => variable == item.token.variableName }.head
     (startItemQueryToken, mapNodeStartCreator()((ctx, startItemQueryToken.token)))
   }
 
   val entityFactory = new EntityProducerFactory
 
   private def mapNodeStartCreator(): PartialFunction[(PlanContext, StartItem), EntityProducer[Node]] =
-    entityFactory.nodeStartItems
+    entityFactory.readNodeStartItems
 
   def canWorkWith(plan: ExecutionPlanInProgress, ctx: PlanContext)(implicit pipeMonitor: PipeMonitor): Boolean = {
     val (longest,_) = extractExpanderStepsFromQuery(plan)
@@ -137,7 +136,7 @@ class TraversalMatcherBuilder extends PlanBuilder with PatternGraphBuilder {
 
   private def extractExpanderStepsFromQuery(plan: ExecutionPlanInProgress): (Option[LongestTrail], Seq[QueryToken[StartItem]]) = {
     val startPoints = plan.query.start.flatMap {
-      case Unsolved(x: NodeStartItemIdentifiers) => Some(x.identifierName)
+      case Unsolved(x: NodeStartItemVariables) => Some(x.variableName)
       case _            => None
     }
 
@@ -151,13 +150,13 @@ class TraversalMatcherBuilder extends PlanBuilder with PatternGraphBuilder {
       case Unsolved(r: RelatedTo) if r.left != r.right => r.relName
     }
 
-    val relIdPreds = plan.query.start.collect[(QueryToken[StartItem], AnyInCollection), Seq[(QueryToken[StartItem], AnyInCollection)]] {
-      case qt@Unsolved(x: RelationshipById) if unsolvedRelNames.contains(x.identifierName) =>
-        val compKey: String = s"--relId-${x.identifierName}--"
-        (qt, AnyInCollection(
+    val relIdPreds = plan.query.start.collect[(QueryToken[StartItem], AnyInList), Seq[(QueryToken[StartItem], AnyInList)]] {
+      case qt@Unsolved(x: RelationshipById) if unsolvedRelNames.contains(x.variableName) =>
+        val compKey: String = s"--relId-${x.variableName}--"
+        (qt, AnyInList(
           x.expression, compKey,
-          Equals(IdFunction(Identifier(x.identifierName)),
-          Identifier(compKey))))
+          Equals(IdFunction(Variable(x.variableName)),
+          Variable(compKey))))
     }
 
     val preds = plan.query.where.filter(_.unsolved).map(_.token).

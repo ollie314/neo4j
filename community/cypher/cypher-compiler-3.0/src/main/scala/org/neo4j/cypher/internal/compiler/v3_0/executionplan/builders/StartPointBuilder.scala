@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,7 +20,7 @@
 package org.neo4j.cypher.internal.compiler.v3_0.executionplan.builders
 
 import org.neo4j.cypher.internal.compiler.v3_0.commands._
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.Identifier
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.Variable
 import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates.Equals
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{ExecutionPlanInProgress, PlanBuilder}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes._
@@ -55,7 +55,7 @@ class StartPointBuilder extends PlanBuilder {
   private def genNodeStart(entityFactory: EntityProducerFactory): PartialFunction[(PlanContext, StartItem), EntityProducer[Node]] =
     entityFactory.nodeByIndex orElse
       entityFactory.nodeByIndexQuery orElse
-      entityFactory.nodeByIndexHint orElse
+      entityFactory.nodeByIndexHint(readOnly = true) orElse
       entityFactory.nodeById orElse
       entityFactory.nodesAll orElse
       entityFactory.nodeByLabel
@@ -74,15 +74,15 @@ class StartPointBuilder extends PlanBuilder {
     val result: PartialFunction[(PlanContext, QueryToken[StartItem]), (Pipe => Pipe)] = {
       case (planContext, Unsolved(item)) if nodeStart.isDefinedAt((planContext, item)) =>
         (p: Pipe) =>
-          new NodeStartPipe(p, item.identifierName, nodeStart.apply((planContext, item)), item.effects)()
+          new NodeStartPipe(p, item.variableName, nodeStart.apply((planContext, item)), item.effects)()
 
       case (planContext, Unsolved(item)) if relationshipStart.isDefinedAt((planContext, item)) => {
-        case (p: Pipe) if p.symbols.hasIdentifierNamed(item.identifierName) =>
-          val compKey: String = s"  --rel-${item.identifierName}--"
+        case (p: Pipe) if p.symbols.hasVariableNamed(item.variableName) =>
+          val compKey: String = s"  --rel-${item.variableName}--"
           val relationshipByIndex = new RelationshipStartPipe(p, compKey, relationshipStart.apply((planContext, item)))()
-          val relEqualPred = Equals(Identifier(item.identifierName), Identifier(compKey))
+          val relEqualPred = Equals(Variable(item.variableName), Variable(compKey))
           new FilterPipe(relationshipByIndex, relEqualPred)()
-        case (p: Pipe) => new RelationshipStartPipe(p, item.identifierName, relationshipStart.apply((planContext, item)))()
+        case (p: Pipe) => new RelationshipStartPipe(p, item.variableName, relationshipStart.apply((planContext, item)))()
       }
     }
     result

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,18 +19,15 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.ast.rewriters
 
+import org.neo4j.cypher.internal.frontend.v3_0._
 import org.neo4j.cypher.internal.frontend.v3_0.ast._
-import org.neo4j.cypher.internal.frontend.v3_0.{InputPosition, InternalException, Rewriter, replace}
 
 case object addUniquenessPredicates extends Rewriter {
 
   def apply(that: AnyRef): AnyRef = instance(that)
 
-  private val instance = replace(replacer => {
-    case expr: Expression =>
-      replacer.stop(expr)
-
-    case m @ Match(_, pattern: Pattern, _, where: Option[Where]) =>
+  private val rewriter = Rewriter.lift {
+    case m@Match(_, pattern: Pattern, _, where: Option[Where]) =>
       val uniqueRels: Seq[UniqueRel] = collectUniqueRels(pattern)
 
       if (uniqueRels.size < 2) {
@@ -41,27 +38,26 @@ case object addUniquenessPredicates extends Rewriter {
           case (Some(oldWhere), Some(newPredicate)) =>
             Some(oldWhere.copy(expression = And(oldWhere.expression, newPredicate)(m.position))(m.position))
 
-          case (None,           Some(newPredicate)) =>
+          case (None, Some(newPredicate)) =>
             Some(Where(expression = newPredicate)(m.position))
 
-          case (oldWhere,       None)               => oldWhere
+          case (oldWhere, None) => oldWhere
         }
         m.copy(where = newWhere)(m.position)
       }
+  }
 
-    case astNode =>
-      replacer.expand(astNode)
-  })
+  private val instance = bottomUp(rewriter, _.isInstanceOf[Expression])
 
   def collectUniqueRels(pattern: ASTNode): Seq[UniqueRel] =
     pattern.treeFold(Seq.empty[UniqueRel]) {
       case _: ShortestPaths =>
-        (acc, _) => acc
+        acc => (acc, None)
 
-      case RelationshipChain(_, patRel @ RelationshipPattern(optIdent, _, types, _, _, _), _) =>
-        (acc, children) => {
+      case RelationshipChain(_, patRel@RelationshipPattern(optIdent, _, types, _, _, _), _) =>
+        acc => {
           val ident = optIdent.getOrElse(throw new InternalException("This rewriter cannot work with unnamed patterns"))
-          children(acc :+ UniqueRel(ident, types.toSet, patRel.isSingleLength))
+          (acc :+ UniqueRel(ident, types.toSet, patRel.isSingleLength), Some(identity))
         }
     }
 
@@ -74,25 +70,25 @@ case object addUniquenessPredicates extends Rewriter {
       x <- uniqueRels
       y <- uniqueRels if x.name < y.name && !x.isAlwaysDifferentFrom(y)
     } yield {
-      val equals = Equals(x.identifier.copyId, y.identifier.copyId)(pos)
+      val equals = Equals(x.variable.copyId, y.variable.copyId)(pos)
 
       (x.singleLength, y.singleLength) match {
         case (true, true) =>
           Not(equals)(pos)
 
         case (true, false) =>
-          NoneIterablePredicate(y.identifier.copyId, y.identifier.copyId, Some(equals))(pos)
+          NoneIterablePredicate(y.variable.copyId, y.variable.copyId, Some(equals))(pos)
 
         case (false, true) =>
-          NoneIterablePredicate(x.identifier.copyId, x.identifier.copyId, Some(equals))(pos)
+          NoneIterablePredicate(x.variable.copyId, x.variable.copyId, Some(equals))(pos)
 
         case (false, false) =>
-          NoneIterablePredicate(x.identifier.copyId, x.identifier.copyId, Some(AnyIterablePredicate(y.identifier.copyId, y.identifier.copyId, Some(equals))(pos)))(pos)
+          NoneIterablePredicate(x.variable.copyId, x.variable.copyId, Some(AnyIterablePredicate(y.variable.copyId, y.variable.copyId, Some(equals))(pos)))(pos)
       }
     }
 
-  case class UniqueRel(identifier: Identifier, types: Set[RelTypeName], singleLength: Boolean) {
-    def name = identifier.name
+  case class UniqueRel(variable: Variable, types: Set[RelTypeName], singleLength: Boolean) {
+    def name = variable.name
 
     def isAlwaysDifferentFrom(other: UniqueRel) =
       types.nonEmpty && other.types.nonEmpty && (types intersect other.types).isEmpty

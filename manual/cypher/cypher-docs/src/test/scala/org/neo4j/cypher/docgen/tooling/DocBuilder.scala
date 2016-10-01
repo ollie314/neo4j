@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,7 @@
  */
 package org.neo4j.cypher.docgen.tooling
 
-import org.neo4j.cypher.docgen.tooling.Admonitions.{Note, Tip}
+import org.neo4j.cypher.docgen.tooling.Admonitions.{Caution, Note, Tip}
 
 import scala.collection.mutable
 
@@ -50,6 +50,8 @@ trait DocBuilder {
 
   def p(text: String) = current.addContent(Paragraph(text.stripMargin))
 
+  def function(syntax: String, arguments: (String, String)*) = current.addContent(Function(syntax, arguments))
+
   def resultTable() = {
     val queryScope = scope.collectFirst {
       case q: QueryScope => q
@@ -57,7 +59,31 @@ trait DocBuilder {
     queryScope.addContent(new TablePlaceHolder(queryScope.assertions))
   }
 
-  def graphViz() = current.addContent(new GraphVizPlaceHolder())
+  def executionPlan() = {
+    val queryScope = scope.collectFirst {
+      case q: QueryScope => q
+    }.get
+    queryScope.addContent(new ExecutionPlanPlaceHolder())
+  }
+
+  def profileExecutionPlan() = {
+    val queryScope = scope.collectFirst {
+      case q: QueryScope => q
+    }.get
+    queryScope.addContent(new ProfileExecutionPlanPlaceHolder(queryScope.assertions))
+  }
+
+  def graphViz(options: String = "") = current.addContent(new GraphVizPlaceHolder(options))
+
+  def consoleData() = {
+    val docScope = scope.collectFirst {
+      case d: DocScope => d
+    }.get
+    val queryScope = scope.collectFirst {
+      case q: QueryScope => q
+    }.get
+    queryScope.addContent(ConsoleData(docScope.initQueries, queryScope.initQueries, queryScope.queryText))
+  }
 
   def synopsis(text: String) = current.addContent(Abstract(text))
 
@@ -69,13 +95,18 @@ trait DocBuilder {
     current.addContent(pop.toContent)
   }
 
-  def section(title: String)(f: => Unit) = inScope(SectionScope(title), f)
+  def section(title: String, id: String)(f: => Unit) = inScope(SectionScope(title, Some(id)), f)
+  def section(title: String)(f: => Unit) = inScope(SectionScope(title, None), f)
 
   def tip(f: => Unit) = inScope(AdmonitionScope(Tip.apply), f)
   def note(f: => Unit) = inScope(AdmonitionScope(Note.apply), f)
+  def caution(f: => Unit) = inScope(AdmonitionScope(Caution.apply), f)
 
-  def query(q: String, assertions: QueryAssertions)(f: => Unit) = inScope(QueryScope(q.stripMargin, assertions), f)
-
+  def query(q: String, assertions: QueryAssertions)(f: => Unit) =
+    inScope(QueryScope(q.stripMargin, assertions), {
+      f
+      consoleData() // Always append console data
+    })
 }
 
 object DocBuilder {
@@ -100,12 +131,12 @@ object DocBuilder {
     def toContent: Content
   }
 
-  case class DocScope(val title: String, val id: String) extends Scope {
+  case class DocScope(title: String, id: String) extends Scope {
     override def toContent = throw new LiskovSubstitutionPrincipleException
   }
 
-  case class SectionScope(name: String) extends Scope {
-    override def toContent = Section(name, initQueries, content)
+  case class SectionScope(name: String, id: Option[String]) extends Scope {
+    override def toContent = Section(name, id, initQueries, content)
   }
 
   case class AdmonitionScope(f: Content => Content) extends Scope {

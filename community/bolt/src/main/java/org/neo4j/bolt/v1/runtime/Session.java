@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -53,6 +53,13 @@ public interface Session extends AutoCloseable
         {
         };
 
+        static <V,A> Callback<V,A> noOp() {
+            return NO_OP;
+        }
+
+        /** Called exactly once, before the request is processed by the Session State Machine */
+        void started( A attachment );
+
         /** Called zero or more times with results, if the operation invoked yields results. */
         void result( V result, A attachment ) throws Exception;
 
@@ -67,6 +74,12 @@ public interface Session extends AutoCloseable
 
         abstract class Adapter<V, A> implements Callback<V,A>
         {
+            @Override
+            public void started( A attachment )
+            {
+                // this page intentionally left blank
+            }
+
             @Override
             public void result( V result, A attachment ) throws Exception
             {
@@ -109,10 +122,13 @@ public interface Session extends AutoCloseable
     /** A session id that is unique for this database instance */
     String key();
 
+    /** A descriptor for the underlying medium (connection etc) via which this session is being used */
+    String connectionDescriptor();
+
     /**
      * Initialize the session.
      */
-    <A> void init( String clientName, A attachment, Callback<Void,A> callback );
+    <A> void init( String clientName, Map<String,Object> authToken, A attachment, Callback<Boolean,A> callback );
 
     /**
      * Run a statement, yielding a result stream which can be retrieved through pulling it in a subsequent call.
@@ -137,16 +153,62 @@ public interface Session extends AutoCloseable
     <A> void discardAll( A attachment, Callback<Void,A> callback );
 
     /**
-     * Whenever an error has occurred, all incoming requests will be ignored until the error is acknowledged through
-     * this method. The point of this is that we can do pipelining, sending multiple requests in one go and
-     * optimistically assuming they will succeed. If any of them fail all subsequent requests are declined until the
-     * client has acknowledged it has seen the error and has taken it into account for upcoming requests.
-     * <p/>
-     * Whenever an error has been acknowledged, the session will revert back to its intial state. Any ongoing
-     * statements
-     * or transactions will have been rolled back and/or disposed of.
+     * Clear any outstanding error condition. This differs from {@link #reset(Object, Callback)} in two
+     * important ways:
+     *
+     * 1) If there was an explicitly created transaction, the session will move back
+     *    to IN_TRANSACTION, rather than IDLE. This allows a more natural flow for client
+     *    side drivers, where explicitly opened transactions always are ended with COMMIT or ROLLBACK,
+     *    even if an error occurs. In all other cases, the session will move to the IDLE state.
+     *
+     * 2) It will not interrupt any ahead-in-line messages.
      */
-    <A> void acknowledgeFailure( A attachment, Callback<Void,A> callback );
+    <A> void ackFailure( A attachment, Callback<Void,A> callback );
+
+
+    /**
+     * Reset the session to an IDLE state. This clears any outstanding failure condition, disposes
+     * of any outstanding result records and rolls back the current transaction (if any).
+     *
+     * This differs from {@link #reset(Object, Callback)} in that it is more "radical" - it does not
+     * matter what the state of the session is, as long as it is open, reset will move it back to IDLE.
+     *
+     * This is designed to cater to two use cases:
+     *
+     * 1) Rather than create new sessions over and over, drivers can maintain a pool of sessions,
+     *    and reset them before each re-use. Since establishing sessions can be high overhead,
+     *    this is quite helpful.
+     * 2) Kill any stuck or long running operation
+     */
+    <A> void reset( A attachment, Callback<Void,A> callback );
+
+    /**
+     * Signals that the infrastructure around the session has failed in some non-recoverable way; it will
+     * not be able to deliver more messages to the session. This is meant to allow the session to signal
+     * back out any final message it wants delivered.
+     *
+     * Note that this does not close the session; close can be expected to be called immediately after
+     * this call.
+     *
+     * @param error cause of the fatal error
+     */
+    <A> void externalError( Neo4jError error, A attachment, Callback<Void,A> callback  );
+
+    /**
+     * This is a special mechanism, it is the only method on this interface
+     * that is thread safe. When this is invoked, the machine will make attempts
+     * at interrupting any currently running action,
+     * and will then ignore all inbound messages until a {@link #reset(Object, Callback) reset}
+     * message is received. If this is called multiple times, an equivalent number
+     * of reset messages must be received before the SSM goes back to a good state.
+     *
+     * You can imagine this is as a "call ahead" mechanism used by RESET to
+     * cancel any statements ahead of it in line, without compromising the single-
+     * threaded processing of messages that the state machine does.
+     *
+     * This can be used to cancel a long-running statement or transaction.
+     */
+    void interrupt();
 
     @Override
     void close();

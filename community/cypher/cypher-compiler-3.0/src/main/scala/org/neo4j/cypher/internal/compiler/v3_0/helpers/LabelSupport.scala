@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,6 +22,6 @@ package org.neo4j.cypher.internal.compiler.v3_0.helpers
 import org.neo4j.cypher.internal.compiler.v3_0._
 import commands.values.{TokenType, KeyToken}
 
-object LabelSupport extends CollectionSupport {
+object LabelSupport extends ListSupport {
   def labelCollection(elems: String*): Seq[KeyToken] = Seq(elems.map(KeyToken.Unresolved(_, TokenType.Label)): _*)
 }

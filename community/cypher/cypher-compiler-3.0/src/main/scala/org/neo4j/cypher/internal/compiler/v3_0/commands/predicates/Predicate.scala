@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -17,19 +17,19 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 package org.neo4j.cypher.internal.compiler.v3_0.commands.predicates
 
 import org.neo4j.cypher.internal.compiler.v3_0._
 import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Literal}
 import org.neo4j.cypher.internal.compiler.v3_0.commands.values.KeyToken
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{ReadsNodesWithLabels, Effects}
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.{CastSupport, CollectionSupport, IsCollection}
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.{IsMap, CastSupport, ListSupport, IsList}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import org.neo4j.cypher.internal.frontend.v3_0.CypherTypeException
 import org.neo4j.cypher.internal.frontend.v3_0.helpers.NonEmptyList
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
+
 import org.neo4j.graphdb._
 
 import scala.util.{Failure, Success, Try}
@@ -149,23 +149,24 @@ case class True() extends Predicate {
   def symbolTableDependencies = Set()
 }
 
-case class PropertyExists(identifier: Expression, propertyKey: KeyToken) extends Predicate {
-  def isMatch(m: ExecutionContext)(implicit state: QueryState): Option[Boolean] = identifier(m) match {
+case class PropertyExists(variable: Expression, propertyKey: KeyToken) extends Predicate {
+  def isMatch(m: ExecutionContext)(implicit state: QueryState): Option[Boolean] = variable(m) match {
     case pc: Node         => Some(propertyKey.getOptId(state.query).exists(state.query.nodeOps.hasProperty(pc.getId, _)))
     case pc: Relationship => Some(propertyKey.getOptId(state.query).exists(state.query.relationshipOps.hasProperty(pc.getId, _)))
+    case IsMap(map)       => Some(map(state.query).get(propertyKey.name).orNull != null)
     case null             => None
-    case _                => throw new CypherTypeException("Expected " + identifier + " to be a property container.")
+    case _                => throw new CypherTypeException("Expected " + variable + " to be a property container.")
   }
 
-  override def toString: String = s"hasProp($identifier.${propertyKey.name})"
+  override def toString: String = s"hasProp($variable.${propertyKey.name})"
 
   def containsIsNull = false
 
-  def rewrite(f: (Expression) => Expression) = f(PropertyExists(identifier.rewrite(f), propertyKey.rewrite(f)))
+  def rewrite(f: (Expression) => Expression) = f(PropertyExists(variable.rewrite(f), propertyKey.rewrite(f)))
 
-  def arguments = Seq(identifier)
+  def arguments = Seq(variable)
 
-  def symbolTableDependencies = identifier.symbolTableDependencies
+  def symbolTableDependencies = variable.symbolTableDependencies
 }
 
 trait StringOperator {
@@ -254,10 +255,10 @@ case class RegularExpression(lhsExpr: Expression, regexExpr: Expression)(implici
   def symbolTableDependencies = lhsExpr.symbolTableDependencies ++ regexExpr.symbolTableDependencies
 }
 
-case class NonEmpty(collection: Expression) extends Predicate with CollectionSupport {
+case class NonEmpty(collection: Expression) extends Predicate with ListSupport {
   def isMatch(m: ExecutionContext)(implicit state: QueryState): Option[Boolean] = {
     collection(m) match {
-      case IsCollection(x) => Some(x.nonEmpty)
+      case IsList(x) => Some(x.nonEmpty)
       case null            => None
       case x               => throw new CypherTypeException("Expected a collection, got `%s`".format(x))
     }
@@ -309,13 +310,13 @@ case class HasLabel(entity: Expression, label: KeyToken) extends Predicate {
   override def localEffects(symbols: SymbolTable) = Effects(ReadsNodesWithLabels(label.name))
 }
 
-case class CoercedPredicate(inner:Expression) extends Predicate with CollectionSupport {
+case class CoercedPredicate(inner:Expression) extends Predicate with ListSupport {
   def arguments = Seq(inner)
 
   def isMatch(m: ExecutionContext)(implicit state: QueryState) = inner(m) match {
     case x: Boolean         => Some(x)
     case null               => None
-    case IsCollection(coll) => Some(coll.nonEmpty)
+    case IsList(coll) => Some(coll.nonEmpty)
     case x                  => throw new CypherTypeException(s"Don't know how to treat that as a predicate: $x")
   }
 

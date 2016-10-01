@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,14 +19,14 @@
  */
 package org.neo4j.server.rest;
 
-import java.util.List;
-import java.util.Map;
-
 import com.sun.jersey.api.client.ClientHandlerException;
 import com.sun.jersey.api.client.UniformInterfaceException;
 import org.codehaus.jackson.JsonNode;
 import org.json.JSONException;
 import org.junit.Test;
+
+import java.util.List;
+import java.util.Map;
 
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Transaction;
@@ -35,39 +35,35 @@ import org.neo4j.server.ServerTestUtils;
 import org.neo4j.server.rest.domain.JsonHelper;
 import org.neo4j.server.rest.domain.JsonParseException;
 import org.neo4j.test.GraphDescription.Graph;
-import org.neo4j.tooling.GlobalGraphOperations;
 
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-
 import static org.neo4j.graphdb.Neo4jMatchers.hasProperty;
 import static org.neo4j.graphdb.Neo4jMatchers.inTx;
 
 public class BatchOperationDocIT extends AbstractRestFunctionalDocTestBase
 {
-    /**
-     * Execute multiple operations in batch.
-     *
-     * The batch service expects an array of job descriptions as input, each job
-     * description describing an action to be performed via the normal server
-     * API.
-     *
-     * Each job description should contain a +to+ attribute, with a value
-     * relative to the data API root (so http://localhost:7474/db/data/node becomes
-     * just /node), and a +method+ attribute containing HTTP verb to use.
-     *
-     * Optionally you may provide a +body+ attribute, and an +id+ attribute to
-     * help you keep track of responses, although responses are guaranteed to be
-     * returned in the same order the job descriptions are received.
-     *
-     * The following figure outlines the different parts of the job
-     * descriptions:
-     *
-     * image::batch-request-api.png[]
-     */
-    @Documented
+
+    @Documented( "Execute multiple operations in batch.\n" +
+                 "\n" +
+                 "The batch service expects an array of job descriptions as input, each job\n" +
+                 "description describing an action to be performed via the normal server\n" +
+                 "API.\n" +
+                 "\n" +
+                 "Each job description should contain a +to+ attribute, with a value\n" +
+                 "relative to the data API root (so http://localhost:7474/db/data/node becomes\n" +
+                 "just /node), and a +method+ attribute containing HTTP verb to use.\n" +
+                 "\n" +
+                 "Optionally you may provide a +body+ attribute, and an +id+ attribute to\n" +
+                 "help you keep track of responses, although responses are guaranteed to be\n" +
+                 "returned in the same order the job descriptions are received.\n" +
+                 "\n" +
+                 "The following figure outlines the different parts of the job\n" +
+                 "descriptions:\n" +
+                 "\n" +
+                 "image::batch-request-api.png[]" )
     @SuppressWarnings( "unchecked" )
     @Test
     @Graph("Joe knows John")
@@ -148,17 +144,14 @@ public class BatchOperationDocIT extends AbstractRestFunctionalDocTestBase
 
     }
 
-    /**
-     * Refer to items created earlier in the same batch job.
-     *
-     * The batch operation API allows you to refer to the URI returned from a
-     * created resource in subsequent job descriptions, within the same batch
-     * call.
-     *
-     * Use the +{[JOB ID]}+ special syntax to inject URIs from created resources
-     * into JSON strings in subsequent job descriptions.
-     */
-    @Documented
+    @Documented( "Refer to items created earlier in the same batch job.\n" +
+                 "\n" +
+                 "The batch operation API allows you to refer to the URI returned from a\n" +
+                 "created resource in subsequent job descriptions, within the same batch\n" +
+                 "call.\n" +
+                 "\n" +
+                 "Use the +{[JOB ID]}+ special syntax to inject URIs from created resources\n" +
+                 "into JSON strings in subsequent job descriptions." )
     @Test
     public void shouldBeAbleToReferToCreatedResource() throws Exception
     {
@@ -364,7 +357,7 @@ public class BatchOperationDocIT extends AbstractRestFunctionalDocTestBase
                     .key("method") .value("POST")
                     .key("to")     .value("/cypher")
                     .key("body")   .object()
-                                       .key("query").value("start n=node({id}) set n.foo = 10   return n")
+                                       .key("query").value("create (n) set n.foo = {maps:'not welcome'} return n")
                                        .key("params").object().key("id").value("0").endObject()
                                    .endObject()
                 .endObject()
@@ -755,12 +748,12 @@ public class BatchOperationDocIT extends AbstractRestFunctionalDocTestBase
                 JsonNode errors = result.get(0).get("body").get("errors");
 
                 assertTrue( "Results not an array", results.isArray() );
-                assertTrue( "Results not empty", 0 == results.size() );
+                assertEquals( 0, results.size() );
                 assertTrue( "Errors not an array", errors.isArray() );
-                assertTrue("Didn't find exactly one error", 1 == errors.size());
+                assertEquals( 1, errors.size() );
 
                 String errorCode = errors.get(0).get("code").getTextValue();
-                assertEquals( "Neo.ClientError.Statement.InvalidSemantics", errorCode );
+                assertEquals( "Neo.ClientError.Statement.SemanticError", errorCode );
             }
         } );
     }
@@ -770,7 +763,7 @@ public class BatchOperationDocIT extends AbstractRestFunctionalDocTestBase
         try ( Transaction tx = graphdb().beginTx() )
         {
             int count = 0;
-            for(Node node : GlobalGraphOperations.at(graphdb()).getAllNodes())
+            for(Node node : graphdb().getAllNodes())
             {
                 count++;
             }

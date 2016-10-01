@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,9 +22,9 @@ package org.neo4j.kernel.impl.api.index.inmemory;
 import java.util.Set;
 
 import org.neo4j.collection.primitive.PrimitiveLongIterator;
-import org.neo4j.kernel.api.direct.BoundedIterable;
+import org.neo4j.helpers.collection.BoundedIterable;
 import org.neo4j.kernel.api.index.ArrayEncoder;
-import org.neo4j.kernel.api.index.IndexReader;
+import org.neo4j.storageengine.api.schema.IndexReader;
 
 abstract class InMemoryIndexImplementation implements IndexReader, BoundedIterable<Long>
 {
@@ -47,6 +47,14 @@ abstract class InMemoryIndexImplementation implements IndexReader, BoundedIterab
     {
         doRemove( encode( propertyValue ), nodeId );
     }
+
+    @Override
+    public final long countIndexedNodes( long nodeId, Object propertyValue )
+    {
+        return doCountIndexedNodes( nodeId, encode( propertyValue ) );
+    }
+
+    protected abstract long doCountIndexedNodes( long nodeId, Object encode );
 
     abstract PrimitiveLongIterator doIndexSeek( Object propertyValue );
 

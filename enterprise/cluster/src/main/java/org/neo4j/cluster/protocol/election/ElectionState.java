@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -34,7 +34,7 @@ import org.neo4j.cluster.statemachine.State;
 import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.logging.Log;
 
-import static org.neo4j.helpers.collection.Iterables.first;
+import static org.neo4j.helpers.collection.Iterables.firstOrNull;
 
 /**
  * State machine that implements the {@link Election} API.
@@ -78,7 +78,7 @@ public enum ElectionState
                 )
                         throws Throwable
                 {
-                    Log log = context.getInternalLog( ElectionState.class );
+                    Log log = context.getLog( ElectionState.class );
                     switch ( message.getMessageType() )
                     {
                         case demote:
@@ -99,7 +99,7 @@ public enum ElectionState
                             if ( context.isInCluster() )
                             {
                                 // Only the first alive server should try elections. Everyone else waits
-                                List<InstanceId> aliveInstances = Iterables.toList(context.getAlive());
+                                List<InstanceId> aliveInstances = Iterables.asList(context.getAlive());
                                 Collections.sort( aliveInstances );
                                 boolean isElector = aliveInstances.indexOf( context.getMyId() ) == 0;
 
@@ -160,7 +160,7 @@ public enum ElectionState
                                         String roleName = role.getName();
                                         if ( !context.isElectionProcessInProgress( roleName ) )
                                         {
-                                            context.getInternalLog(ElectionState.class).debug(
+                                            context.getLog( ElectionState.class ).debug(
                                                     "Starting election process for role " + roleName );
 
                                             context.startElectionProcess( roleName );
@@ -211,10 +211,10 @@ public enum ElectionState
                                 }
                                 else
                                 {
-                                    List<InstanceId> aliveInstances = Iterables.toList( context.getAlive() );
+                                    List<InstanceId> aliveInstances = Iterables.asList( context.getAlive() );
                                     Collections.sort( aliveInstances );
                                     outgoing.offer( message.setHeader( Message.TO,
-                                            context.getUriForId( first( aliveInstances ) ).toString() ) );
+                                            context.getUriForId( firstOrNull( aliveInstances ) ).toString() ) );
                                 }
                             }
                             break;

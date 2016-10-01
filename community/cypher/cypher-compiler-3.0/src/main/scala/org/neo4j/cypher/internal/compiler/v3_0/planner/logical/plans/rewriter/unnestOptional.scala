@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,27 +19,41 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.rewriter
 
-import org.neo4j.cypher.internal.frontend.v3_0.ast.Expression
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans._
 import org.neo4j.cypher.internal.compiler.v3_0.planner.{CardinalityEstimation, PlannerQuery}
+import org.neo4j.cypher.internal.frontend.v3_0.ast.Expression
 import org.neo4j.cypher.internal.frontend.v3_0.{Rewriter, bottomUp}
 
 case object unnestOptional extends Rewriter {
 
-  def apply(input: AnyRef) = bottomUp(instance).apply(input)
+  override def apply(input: AnyRef) = if (isSafe(input)) instance.apply(input) else input
 
-  private val instance: Rewriter = Rewriter.lift {
+  import org.neo4j.cypher.internal.frontend.v3_0.Foldable._
+
+  /*
+   * It is not safe to unnest an optional expand with when we have
+   * a merge relationship, since it must be able to read its own
+   * writes
+   */
+  private def isSafe(input: AnyRef) = !input.exists {
+        case _:MergeCreateRelationship => true
+  }
+
+  private val instance: Rewriter = bottomUp(Rewriter.lift {
+
+    case apply:AntiConditionalApply => apply
+
     case apply@Apply(lhs,
       Optional(
-      e@Expand(_: Argument, _, _, _, _, _, _))) =>
+      e@Expand(_: Argument, _, _, _, _, _, _), _)) =>
         optionalExpand(e, lhs)(Seq.empty)(apply.solved)
 
     case apply@Apply(lhs,
       Optional(
       Selection(predicates,
-      e@Expand(_: Argument, _, _, _, _, _, _)))) =>
+      e@Expand(_: Argument, _, _, _, _, _, _)), _)) =>
         optionalExpand(e, lhs)(predicates)(apply.solved)
-  }
+  })
 
   private def optionalExpand(e: Expand, lhs: LogicalPlan): (Seq[Expression] => PlannerQuery with CardinalityEstimation => OptionalExpand) =
     predicates => OptionalExpand(lhs, e.from, e.dir, e.types, e.to, e.relName, e.mode, predicates)

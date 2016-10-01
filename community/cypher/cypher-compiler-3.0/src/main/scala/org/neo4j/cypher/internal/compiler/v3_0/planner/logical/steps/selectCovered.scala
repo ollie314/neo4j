@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,13 +24,15 @@ import org.neo4j.cypher.internal.compiler.v3_0.planner.logical._
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.LogicalPlan
 
 case object selectCovered extends CandidateGenerator[LogicalPlan] {
+  val patternExpressionSolver = PatternExpressionSolver()
+  def apply(in: LogicalPlan, queryGraph: QueryGraph)(implicit context: LogicalPlanningContext): Seq[LogicalPlan] = {
+    val unsolvedPredicates = queryGraph.selections.unsolvedPredicates(in)
 
-  def apply(plan: LogicalPlan, queryGraph: QueryGraph)(implicit context: LogicalPlanningContext): Seq[LogicalPlan] = {
-    val unsolvedPredicates = queryGraph.selections.unsolvedPredicates(plan)
     if (unsolvedPredicates.isEmpty)
       Seq()
     else {
-      Seq(context.logicalPlanProducer.planSelection(unsolvedPredicates, plan))
+      val (plan, predicates) = patternExpressionSolver(in, unsolvedPredicates)
+      Seq(context.logicalPlanProducer.planSelection(plan, predicates, unsolvedPredicates))
     }
   }
 }

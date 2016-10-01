@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -42,11 +42,6 @@ public interface Step<T> extends Parallelizable, AutoCloseable
      * Whether or not tickets arrive in {@link #receive(long, Object)} ordered by ticket number.
      */
     int ORDER_SEND_DOWNSTREAM = 0x1;
-
-    /**
-     * Whether or not actual processing of batches are ordered by ticket number.
-     */
-    int ORDER_PROCESS = 0x2;
 
     /**
      * Starts the processing in this step, such that calls to {@link #receive(long, Object)} can be accepted.

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,16 +19,15 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.executionplan.builders
 
-import org.neo4j.cypher.internal.compiler.v3_0._
-import commands._
-import commands.expressions.{Property, Expression, Identifier}
-import commands.values.{KeyToken, UnresolvedProperty}
-import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates.{Equals, HasLabel, True, Predicate}
-import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{Namer, RandomNamer, ExecutionPlanInProgress, PlanBuilder}
-import spi.PlanContext
-import collection.Map
-import org.neo4j.helpers.ThisShouldNotHappenError
+import org.neo4j.cypher.internal.compiler.v3_0.commands._
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Property, Variable}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates.{Equals, HasLabel, Predicate, True}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.values.{KeyToken, UnresolvedProperty}
+import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{ExecutionPlanInProgress, Namer, PlanBuilder, RandomNamer}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.PipeMonitor
+import org.neo4j.cypher.internal.compiler.v3_0.spi.PlanContext
+
+import scala.collection.Map
 
 class PredicateRewriter(namer: Namer = new RandomNamer) extends PlanBuilder {
 
@@ -90,10 +89,10 @@ class PredicateRewriter(namer: Namer = new RandomNamer) extends PlanBuilder {
         val iteratorName = rel.relIterator.getOrElse(namer.nextName())
         val innerSymbolName = namer.nextName()
         val innerPredicate1: Seq[Predicate] = rel.properties.toSeq.map {
-          case (prop, value) => Equals(Property(Identifier(innerSymbolName), UnresolvedProperty(prop)), value).asInstanceOf[Predicate]
+          case (prop, value) => Equals(Property(Variable(innerSymbolName), UnresolvedProperty(prop)), value).asInstanceOf[Predicate]
         }
         val innerPredicate2 = True().andWith(innerPredicate1: _*)
-        val predicate = AllInCollection(Identifier(iteratorName), innerSymbolName, innerPredicate2)
+        val predicate = AllInList(Variable(iteratorName), innerSymbolName, innerPredicate2)
 
         (rel, rel.copy(relIterator = Some(iteratorName), properties = Map.empty), predicate)
     }
@@ -117,7 +116,7 @@ class PredicateRewriter(namer: Namer = new RandomNamer) extends PlanBuilder {
         (Seq(Unsolved(predicate)), Unsolved(originalRel), Unsolved(newRel))
 
       case (None, None, None) =>
-        throw new ThisShouldNotHappenError("Andres", "This query should not have been treated by this plan builder")
+        throw new IllegalArgumentException("This query should not have been treated by this plan builder")
     }
 
     plan.copy(query = plan.query.copy(
@@ -126,10 +125,10 @@ class PredicateRewriter(namer: Namer = new RandomNamer) extends PlanBuilder {
   }
 
   def mapLabelsToPredicates(tokens: Seq[KeyToken], name: String): Seq[Unsolved[Predicate]] = tokens.map {
-    token => Unsolved(HasLabel(Identifier(name), token).asInstanceOf[Predicate])
+    token => Unsolved(HasLabel(Variable(name), token).asInstanceOf[Predicate])
   }
 
   def mapPropertiesToPredicates(props: Map[String, Expression], name: String): Seq[Unsolved[Predicate]] = props.toSeq.map {
-    case (prop, value) => Unsolved(Equals(Property(Identifier(name), UnresolvedProperty(prop)), value).asInstanceOf[Predicate])
+    case (prop, value) => Unsolved(Equals(Property(Variable(name), UnresolvedProperty(prop)), value).asInstanceOf[Predicate])
   }
 }

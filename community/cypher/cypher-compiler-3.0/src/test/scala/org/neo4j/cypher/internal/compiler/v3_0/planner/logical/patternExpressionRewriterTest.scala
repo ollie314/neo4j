@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -92,9 +92,9 @@ class patternExpressionRewriterTest extends CypherFunSuite with LogicalPlanningT
 
   private def newPatExpr(left: String, right: String): PatternExpression = {
     PatternExpression(RelationshipsPattern(RelationshipChain(
-      NodePattern(Some(ident(left)), Seq.empty, None) _,
+      NodePattern(Some(varFor(left)), Seq.empty, None) _,
       RelationshipPattern(None, optional = false, Seq.empty, None, None, SemanticDirection.OUTGOING) _,
-      NodePattern(Some(ident(right)), Seq.empty, None) _) _) _)
+      NodePattern(Some(varFor(right)), Seq.empty, None) _) _) _)
   }
 
   private def createStrategy: QueryGraphSolver = {

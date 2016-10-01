@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,15 +19,15 @@
  */
 package org.neo4j.kernel.impl.transaction;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-
 import java.io.File;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReference;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
 
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Transaction;
@@ -38,8 +38,8 @@ import org.neo4j.kernel.impl.factory.GraphDatabaseFacade;
 import org.neo4j.kernel.impl.factory.PlatformModule;
 import org.neo4j.test.TargetDirectory;
 
+import static java.util.Collections.emptyMap;
 import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.neo4j.helpers.collection.MapUtil.stringMap;
 
 public class CommitContentionTests
 {
@@ -133,19 +133,19 @@ public class CommitContentionTests
             @Override
             protected PlatformModule createPlatform( File storeDir, Map<String, String> params, Dependencies dependencies, GraphDatabaseFacade graphDatabaseFacade )
             {
-                return new PlatformModule( storeDir, params, dependencies, graphDatabaseFacade )
+                return new PlatformModule( storeDir, params, databaseInfo(), dependencies, graphDatabaseFacade )
                 {
                     @Override
-                    protected TransactionCounters createTransactionCounters()
+                    protected TransactionStats createTransactionStats()
                     {
-                        return new TransactionCounters()
+                        return new TransactionStats()
                         {
                             public boolean skip;
 
                             @Override
-                            public void transactionFinished( boolean successful )
+                            public void transactionFinished( boolean committed, boolean write )
                             {
-                                super.transactionFinished( successful );
+                                super.transactionFinished( committed, write );
 
                                 if ( isTheRemoveOrphanedConstraintIndexesOnStartupTransaction() )
                                 {
@@ -153,7 +153,7 @@ public class CommitContentionTests
                                 }
 
 
-                                if ( successful )
+                                if ( committed )
                                 {
                                     // skip signal and waiting for second transaction
                                     if ( skip )
@@ -183,7 +183,7 @@ public class CommitContentionTests
                     }
                 };
             }
-        }.newFacade( storeLocation.graphDbDir(), stringMap(), state.databaseDependencies() );
+        }.newFacade( storeLocation.graphDbDir(), emptyMap(), state.databaseDependencies() );
     }
 
     private void waitForFirstTransactionToStartPushing() throws InterruptedException

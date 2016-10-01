@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -40,8 +40,8 @@ public class DeadlockDetectedException extends TransientTransactionFailureExcept
                 "holding locks, were wanting to await locks held by one another, which would have resulted in a deadlock " +
                 "between these transactions. This exception was thrown instead of ending up in that deadlock.\n" +
                 "\n" +
-                "See the deadlock section in the Neo4j manual for how to avoid this: " +
-                "http://neo4j.com/docs/stable/transactions-deadlocks.html\n" +
+                "See the deadlock section in the Neo4j Java developer reference for how to avoid this: " +
+                "http://neo4j.com/docs/java-reference/current/#transactions-deadlocks\n" +
                 "\n" +
                 "Details: '" + message + "'.", cause );
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,16 +19,14 @@
  */
 package org.neo4j.collection.primitive;
 
+import org.junit.Test;
+
 import java.util.Arrays;
 import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import org.junit.Test;
-
-import org.neo4j.function.LongPredicate;
+import java.util.function.LongPredicate;
 
 import static java.util.Arrays.asList;
-
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -113,14 +111,7 @@ public class PrimitiveLongCollectionsTest
         PrimitiveLongIterator items = PrimitiveLongCollections.iterator( 1, 2, 3 );
 
         // WHEN
-        PrimitiveLongIterator filtered = PrimitiveLongCollections.filter( items, new LongPredicate()
-        {
-            @Override
-            public boolean test( long item )
-            {
-                return item != 2;
-            }
-        } );
+        PrimitiveLongIterator filtered = PrimitiveLongCollections.filter( items, (LongPredicate) item -> item != 2 );
 
         // THEN
         assertItems( filtered, 1, 3 );

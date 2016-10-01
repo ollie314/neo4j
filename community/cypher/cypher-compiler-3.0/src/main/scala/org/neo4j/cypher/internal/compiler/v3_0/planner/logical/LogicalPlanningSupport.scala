@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,7 +25,7 @@ import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.IdName
 object LogicalPlanningSupport {
 
   implicit class RichHint(val hint: Hint) extends AnyVal {
-    def ids = hint.identifiers.map { identifier => IdName(identifier.name) }
+    def ids = hint.variables.map { variable => IdName(variable.name) }
     def coveredBy(overlappingIds: Set[IdName]) = ids.forall(id => overlappingIds contains id)
   }
 }

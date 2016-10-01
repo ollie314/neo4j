@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,6 +21,7 @@ package upgrade;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Map;
 
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.fs.FileUtils;
@@ -37,9 +38,8 @@ public class StoreMigratorTestUtil
     }
 
     public static ClusterManager.ManagedCluster buildClusterWithMasterDirIn( FileSystemAbstraction fs,
-                                                                             final File legacyStoreDir,
-                                                                             LifeSupport life )
-            throws Throwable
+            final File legacyStoreDir, LifeSupport life,
+            final Map<String,String> sharedConfig ) throws Throwable
     {
         File haRootDir = new File( legacyStoreDir.getParentFile(), "ha-migration" );
         fs.deleteRecursively( haRootDir );
@@ -56,12 +56,13 @@ public class StoreMigratorTestUtil
                         }
                     }
                 } )
-                .withProvider( clusterOfSize( 3 ) )
+                .withCluster( clusterOfSize( 3 ) )
+                .withSharedConfig( sharedConfig )
                 .build();
 
         life.add( clusterManager );
         life.start();
 
-        return clusterManager.getDefaultCluster();
+        return clusterManager.getCluster();
     }
 }

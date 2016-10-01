@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -31,19 +31,18 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
+import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.io.fs.FileSystemAbstraction;
-import org.neo4j.kernel.GraphDatabaseAPI;
 import org.neo4j.kernel.impl.MyRelTypes;
 import org.neo4j.kernel.impl.transaction.log.LogFileInformation;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntry;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import org.neo4j.test.DatabaseRule;
 import org.neo4j.test.ImpermanentDatabaseRule;
 import org.neo4j.test.LogTestUtils.CountingLogHook;
 
 import static org.junit.Assert.assertEquals;
-
-import static org.neo4j.graphdb.DynamicLabel.label;
-import static org.neo4j.helpers.collection.IteratorUtil.count;
+import static org.neo4j.graphdb.Label.label;
 import static org.neo4j.test.LogTestUtils.filterNeostoreLogicalLog;
 
 /**
@@ -102,7 +101,7 @@ public class ReadTransactionLogWritingTest
             filterNeostoreLogicalLog( fs, storeDir.getPath(), logicalLogCounter );
 
             long txLogRecordCount = db.getDependencyResolver()
-                    .resolveDependency( LogFileInformation.class ).getLastCommittedTxId();
+                    .resolveDependency( LogFileInformation.class ).getLastEntryId();
 
             return logicalLogCounter.getCount() + txLogRecordCount;
         }
@@ -130,7 +129,7 @@ public class ReadTransactionLogWritingTest
 
     private void executeTransaction( Runnable runnable, boolean success )
     {
-        try ( Transaction tx = dbr.getGraphDatabaseService().beginTx() )
+        try ( Transaction tx = dbr.getGraphDatabaseAPI().beginTx() )
         {
             runnable.run();
             if ( success )
@@ -142,41 +141,24 @@ public class ReadTransactionLogWritingTest
 
     private Runnable getRelationships()
     {
-        return new Runnable()
-        {
-            @Override
-            public void run()
-            {
-                assertEquals( 1, count( node.getRelationships() ) );
-            }
-        };
+        return () -> assertEquals( 1, Iterables.count( node.getRelationships() ) );
     }
 
     private Runnable getNodesFromRelationship()
     {
-        return new Runnable()
-        {
-            @Override
-            public void run()
-            {
-                relationship.getEndNode();
-                relationship.getStartNode();
-                relationship.getNodes();
-                relationship.getOtherNode( node );
-            }
+        return () -> {
+            relationship.getEndNode();
+            relationship.getStartNode();
+            relationship.getNodes();
+            relationship.getOtherNode( node );
         };
     }
 
     private Runnable getById()
     {
-        return new Runnable()
-        {
-            @Override
-            public void run()
-            {
-                dbr.getGraphDatabaseService().getNodeById( node.getId() );
-                dbr.getGraphDatabaseService().getRelationshipById( relationship.getId() );
-            }
+        return () -> {
+            dbr.getGraphDatabaseAPI().getNodeById( node.getId() );
+            dbr.getGraphDatabaseAPI().getRelationshipById( relationship.getId() );
         };
     }
 

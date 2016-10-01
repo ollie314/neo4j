@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,6 +23,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+import static java.lang.System.currentTimeMillis;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 /**
  * Simple race scenario, a utility for executing multiple threads coordinated to start at the same time.
@@ -35,13 +40,42 @@ public class Race
     private final List<Contestant> contestants = new ArrayList<>();
     private volatile CountDownLatch readySet;
     private final CountDownLatch go = new CountDownLatch( 1 );
+    private final boolean addSomeMinorRandomStartDelays;
+
+    public Race()
+    {
+        this( false );
+    }
+
+    public Race( boolean addSomeMinorRandomStartDelays )
+    {
+        this.addSomeMinorRandomStartDelays = addSomeMinorRandomStartDelays;
+    }
 
     public void addContestant( Runnable contestant )
     {
         contestants.add( new Contestant( contestant, contestants.size() ) );
     }
 
+    /**
+     * Starts the race and waits indefinitely for all contestants to either fail or succeed.
+     *
+     * @throws Throwable on any exception thrown from any contestant.
+     */
     public void go() throws Throwable
+    {
+        go( 0, TimeUnit.MILLISECONDS );
+    }
+
+    /**
+     * Starts the race and waits {@code maxWaitTime} for all contestants to either fail or succeed.
+     *
+     * @param maxWaitTime max time to wait for all contestants, 0 means indefinite wait.
+     * @param unit {@link TimeUnit} that {£{@code maxWaitTime} is given in.
+     * @throws TimeoutException if all contestants haven't either succeeded or failed within the given time.
+     * @throws Throwable on any exception thrown from any contestant.
+     */
+    public void go( long maxWaitTime, TimeUnit unit ) throws Throwable
     {
         readySet = new CountDownLatch( contestants.size() );
         for ( Contestant contestant : contestants )
@@ -52,9 +86,24 @@ public class Race
         go.countDown();
 
         int errorCount = 0;
+        long maxWaitTimeMillis = MILLISECONDS.convert( maxWaitTime, unit );
+        long waitedSoFar = 0;
         for ( Contestant contestant : contestants )
         {
-            contestant.join();
+            if ( maxWaitTime == 0 )
+            {
+                contestant.join();
+            }
+            else
+            {
+                if ( waitedSoFar >= maxWaitTimeMillis )
+                {
+                    throw new TimeoutException( "Didn't complete after " + maxWaitTime + " " + unit );
+                }
+                long time = currentTimeMillis();
+                contestant.join( maxWaitTimeMillis - waitedSoFar );
+                waitedSoFar += (currentTimeMillis() - time);
+            }
             if ( contestant.error != null )
             {
                 errorCount++;
@@ -109,7 +158,10 @@ public class Race
                 return;
             }
 
-            randomlyDelaySlightly();
+            if ( addSomeMinorRandomStartDelays )
+            {
+                randomlyDelaySlightly();
+            }
 
             try
             {

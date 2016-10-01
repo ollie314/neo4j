@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -112,7 +112,7 @@ public class CypherResultRepresentationTest
     @Test
     public void shouldFormatMapsProperly() throws Exception
     {
-        GraphDatabaseService graphdb = database.getGraphDatabaseService();
+        GraphDatabaseService graphdb = database.getGraphDatabaseAPI();
         Result result = graphdb.execute( "RETURN {one:{two:['wait for it...', {three: 'GO!'}]}}" );
         CypherResultRepresentation representation = new CypherResultRepresentation( result, false, false );
 
@@ -130,9 +130,9 @@ public class CypherResultRepresentationTest
     @Test
     public void shouldRenderNestedEntities() throws Exception
     {
-        try ( Transaction ignored = database.getGraphDatabaseService().beginTx() )
+        try ( Transaction ignored = database.getGraphDatabaseAPI().beginTx() )
         {
-            GraphDatabaseService graphdb = database.getGraphDatabaseService();
+            GraphDatabaseService graphdb = database.getGraphDatabaseAPI();
             graphdb.execute( "CREATE (n {name: 'Sally'}), (m {age: 42}), (n)-[r:FOO {drunk: false}]->(m)" );
             Result result = graphdb.execute( "MATCH p=(n)-[r]->(m) RETURN n, r, p, {node: n, edge: r, path: p}" );
             CypherResultRepresentation representation = new CypherResultRepresentation( result, false, false );

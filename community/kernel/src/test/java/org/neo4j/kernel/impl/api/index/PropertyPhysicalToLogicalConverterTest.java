@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -32,12 +32,12 @@ import java.util.Collections;
 import java.util.List;
 
 import org.neo4j.helpers.collection.Iterables;
-import org.neo4j.kernel.DefaultIdGeneratorFactory;
 import org.neo4j.kernel.api.index.NodePropertyUpdate;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.impl.store.NeoStores;
 import org.neo4j.kernel.impl.store.PropertyStore;
 import org.neo4j.kernel.impl.store.StoreFactory;
+import org.neo4j.kernel.impl.store.id.DefaultIdGeneratorFactory;
 import org.neo4j.kernel.impl.store.record.PropertyBlock;
 import org.neo4j.kernel.impl.store.record.PropertyRecord;
 import org.neo4j.kernel.impl.transaction.state.PropertyRecordChange;
@@ -46,10 +46,8 @@ import org.neo4j.test.EphemeralFileSystemRule;
 import org.neo4j.test.PageCacheRule;
 
 import static org.junit.Assert.assertEquals;
-import static org.neo4j.helpers.collection.Iterables.toList;
-import static org.neo4j.helpers.collection.IteratorUtil.count;
-import static org.neo4j.helpers.collection.IteratorUtil.single;
-import static org.neo4j.kernel.impl.store.StoreFactory.SF_CREATE;
+import static org.neo4j.helpers.collection.Iterables.asList;
+
 
 public class PropertyPhysicalToLogicalConverterTest
 {
@@ -66,7 +64,7 @@ public class PropertyPhysicalToLogicalConverterTest
         PropertyRecord after = propertyRecord( property( key, value ) );
 
         // WHEN
-        List<NodePropertyUpdate> updates = toList( convert( none, none, change( before, after ) ) );
+        List<NodePropertyUpdate> updates = asList( convert( none, none, change( before, after ) ) );
 
         // THEN
         assertEquals( Collections.<NodePropertyUpdate>emptyList(), updates );
@@ -82,7 +80,7 @@ public class PropertyPhysicalToLogicalConverterTest
         PropertyRecord after = propertyRecord( property( key, valueAfter ) );
 
         // WHEN
-        NodePropertyUpdate update = single( convert( none, none, change( before, after ) ) );
+        NodePropertyUpdate update = Iterables.single( convert( none, none, change( before, after ) ) );
 
         // THEN
         assertEquals( UpdateMode.CHANGED, update.getUpdateMode() );
@@ -98,7 +96,7 @@ public class PropertyPhysicalToLogicalConverterTest
         PropertyRecord after = propertyRecord( property( key, value ) );
 
         // WHEN
-        assertEquals( 0, count( convert( none, none, change( before, after ) ) ) );
+        assertEquals( 0, Iterables.count( convert( none, none, change( before, after ) ) ) );
     }
 
     @Test
@@ -111,7 +109,7 @@ public class PropertyPhysicalToLogicalConverterTest
         PropertyRecord after = propertyRecord();
 
         // WHEN
-        NodePropertyUpdate update = single( convert( none, none, change( before, after ) ) );
+        NodePropertyUpdate update = Iterables.single( convert( none, none, change( before, after ) ) );
 
         // THEN
         assertEquals( UpdateMode.REMOVED, update.getUpdateMode() );
@@ -126,7 +124,7 @@ public class PropertyPhysicalToLogicalConverterTest
         PropertyRecord after = propertyRecord( property( key, longString ) );
 
         // WHEN
-        List<NodePropertyUpdate> updates = toList( convert( none, none, change( before, after ) ) );
+        List<NodePropertyUpdate> updates = asList( convert( none, none, change( before, after ) ) );
 
         // THEN
         assertEquals( Collections.<NodePropertyUpdate>emptyList(), updates );
@@ -141,7 +139,7 @@ public class PropertyPhysicalToLogicalConverterTest
         PropertyRecord after = propertyRecord( property( key, longerString ) );
 
         // WHEN
-        NodePropertyUpdate update = single( convert( none, none, change( before, after ) ) );
+        NodePropertyUpdate update = Iterables.single( convert( none, none, change( before, after ) ) );
 
         // THEN
         assertEquals( UpdateMode.CHANGED, update.getUpdateMode() );
@@ -156,7 +154,7 @@ public class PropertyPhysicalToLogicalConverterTest
         PropertyRecord after = propertyRecord();
 
         // WHEN
-        NodePropertyUpdate update = single( convert( none, none, change( before, after ) ) );
+        NodePropertyUpdate update = Iterables.single( convert( none, none, change( before, after ) ) );
 
         // THEN
         assertEquals( UpdateMode.REMOVED, update.getUpdateMode() );
@@ -177,7 +175,7 @@ public class PropertyPhysicalToLogicalConverterTest
                 propertyRecord( property( key, newValue ) ) );
 
         // WHEN
-        NodePropertyUpdate update = single( convert( none, none, movedFrom, movedTo ) );
+        NodePropertyUpdate update = Iterables.single( convert( none, none, movedFrom, movedTo ) );
 
         // THEN
         assertEquals( UpdateMode.CHANGED, update.getUpdateMode() );
@@ -220,9 +218,9 @@ public class PropertyPhysicalToLogicalConverterTest
     {
         File storeDir = new File( "dir" );
         fs.get().mkdirs( storeDir );
-        StoreFactory storeFactory = new StoreFactory( storeDir, new Config(), new DefaultIdGeneratorFactory( fs.get() ),
+        StoreFactory storeFactory = new StoreFactory( storeDir, Config.empty(), new DefaultIdGeneratorFactory( fs.get() ),
                 pageCacheRule.getPageCache( fs.get() ), fs.get(), NullLogProvider.getInstance() );
-        neoStores = storeFactory.openNeoStores( SF_CREATE );
+        neoStores = storeFactory.openAllNeoStores( true );
         store = neoStores.getPropertyStore();
         converter = new PropertyPhysicalToLogicalConverter( store );
     }

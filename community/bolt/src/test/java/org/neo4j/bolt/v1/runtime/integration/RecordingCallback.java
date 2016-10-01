@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -33,10 +33,18 @@ import org.neo4j.bolt.v1.runtime.internal.Neo4jError;
 import org.neo4j.bolt.v1.runtime.spi.ImmutableRecord;
 import org.neo4j.bolt.v1.runtime.spi.Record;
 import org.neo4j.bolt.v1.runtime.spi.RecordStream;
+import org.neo4j.helpers.collection.Iterables;
 
 public class RecordingCallback<V, A> implements Session.Callback<V,A>
 {
     private final BlockingQueue<Call> calls = new ArrayBlockingQueue<>( 64 );
+
+    /** Used for toString etc. to help debugging */
+    private final List<Call> seenCalls = new LinkedList<>();
+
+    private List<Call> results = new LinkedList<>();
+    private List<Neo4jError> errors = new LinkedList<>();
+    private boolean ignored;
 
     public Call next() throws InterruptedException
     {
@@ -45,12 +53,15 @@ public class RecordingCallback<V, A> implements Session.Callback<V,A>
         {
             throw new RuntimeException( "Waited 10 seconds for message, but no message arrived." );
         }
+        seenCalls.add( msg );
         return msg;
     }
 
-    private List<Call> results = new LinkedList<>();
-    private List<Neo4jError> errors = new LinkedList<>();
-    private boolean ignored;
+    @Override
+    public void started( A attachment )
+    {
+
+    }
 
     @Override
     public void result( V result, A attachment )
@@ -70,6 +81,12 @@ public class RecordingCallback<V, A> implements Session.Callback<V,A>
         else if ( result instanceof StatementMetadata )
         {
             results.add( new StatementSuccess( (StatementMetadata) result ) );
+        }
+        else if( result instanceof Boolean )
+        {
+            // TODO: Using Boolean as the payload for init results should be
+            //       changed, since it makes this check really brittle.
+            results.add( new InitSuccess( (Boolean)result ));
         }
         else
         {
@@ -140,6 +157,12 @@ public class RecordingCallback<V, A> implements Session.Callback<V,A>
         {
             return false;
         }
+
+        @Override
+        public String toString()
+        {
+            return getClass().getSimpleName();
+        }
     }
 
     public static class Success extends Call
@@ -148,6 +171,12 @@ public class RecordingCallback<V, A> implements Session.Callback<V,A>
         public boolean isSuccess()
         {
             return true;
+        }
+
+        @Override
+        public String toString()
+        {
+            return "SUCCESS";
         }
     }
 
@@ -187,6 +216,33 @@ public class RecordingCallback<V, A> implements Session.Callback<V,A>
         {
             return meta;
         }
+
+        @Override
+        public String toString()
+        {
+            return "SUCCESS " + meta;
+        }
+    }
+
+    public static class InitSuccess extends Success
+    {
+        private final boolean credentialsExpired;
+
+        public InitSuccess( boolean credentialsExpired )
+        {
+            this.credentialsExpired = credentialsExpired;
+        }
+
+        public boolean credentialsExpired()
+        {
+            return credentialsExpired;
+        }
+
+        @Override
+        public String toString()
+        {
+            return "SUCCESS " + (credentialsExpired ? "(but password change required)" : "");
+        }
     }
 
     public static class Ignored extends Call
@@ -195,6 +251,12 @@ public class RecordingCallback<V, A> implements Session.Callback<V,A>
         public boolean isIgnored()
         {
             return true;
+        }
+
+        @Override
+        public String toString()
+        {
+            return "IGNORED";
         }
     }
 
@@ -238,5 +300,11 @@ public class RecordingCallback<V, A> implements Session.Callback<V,A>
             }
         } );
         return values.toArray( new Record[values.size()] );
+    }
+
+    @Override
+    public String toString()
+    {
+        return Iterables.toString( seenCalls, ", " );
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -68,6 +68,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import static org.neo4j.helpers.progress.ProgressListener.NONE;
+import static org.neo4j.unsafe.impl.batchimport.cache.idmapping.IdMapper.ID_NOT_FOUND;
 import static org.neo4j.unsafe.impl.batchimport.cache.idmapping.string.EncodingIdMapper.NO_MONITOR;
 import static org.neo4j.unsafe.impl.batchimport.input.Collectors.badCollector;
 import static org.neo4j.unsafe.impl.batchimport.input.Group.GLOBAL;
@@ -112,15 +113,9 @@ public class EncodingIdMapperTest
                     private int i;
 
                     @Override
-                    public boolean hasNext()
+                    protected Object fetchNextOrNull()
                     {
-                        return i < 300_000;
-                    }
-
-                    @Override
-                    public Object next()
-                    {
-                        return "" + (i++);
+                        return i < 300_000 ? "" + (i++) : null;
                     }
                 };
             }
@@ -144,7 +139,7 @@ public class EncodingIdMapperTest
         for ( Object id : ids )
         {
             // the UUIDs here will be generated in the same sequence as above because we reset the random
-            if ( idMapper.get( id, GLOBAL ) == -1 )
+            if ( idMapper.get( id, GLOBAL ) == ID_NOT_FOUND )
             {
                 fail( "Couldn't find " + id + " even though I added it just previously" );
             }
@@ -162,7 +157,7 @@ public class EncodingIdMapperTest
         long id = idMapper.get( "123", GLOBAL );
 
         // THEN
-        assertEquals( -1L, id );
+        assertEquals( ID_NOT_FOUND, id );
     }
 
     @Test
@@ -177,7 +172,7 @@ public class EncodingIdMapperTest
         long id = idMapper.get( "123", GLOBAL );
 
         // THEN
-        assertEquals( -1L, id );
+        assertEquals( ID_NOT_FOUND, id );
         verify( progress, times( 3 ) ).started( anyString() );
         verify( progress, times( 3 ) ).done();
     }
@@ -414,15 +409,15 @@ public class EncodingIdMapperTest
 
         // WHEN/THEN
         assertEquals( 0L, mapper.get( "8", firstGroup ) );
-        assertEquals( -1L, mapper.get( "8", secondGroup ) );
-        assertEquals( -1L, mapper.get( "8", thirdGroup ) );
+        assertEquals( ID_NOT_FOUND, mapper.get( "8", secondGroup ) );
+        assertEquals( ID_NOT_FOUND, mapper.get( "8", thirdGroup ) );
 
-        assertEquals( -1L, mapper.get( "9", firstGroup ) );
+        assertEquals( ID_NOT_FOUND, mapper.get( "9", firstGroup ) );
         assertEquals( 1L, mapper.get( "9", secondGroup ) );
-        assertEquals( -1L, mapper.get( "9", thirdGroup ) );
+        assertEquals( ID_NOT_FOUND, mapper.get( "9", thirdGroup ) );
 
-        assertEquals( -1L, mapper.get( "10", firstGroup ) );
-        assertEquals( -1L, mapper.get( "10", secondGroup ) );
+        assertEquals( ID_NOT_FOUND, mapper.get( "10", firstGroup ) );
+        assertEquals( ID_NOT_FOUND, mapper.get( "10", secondGroup ) );
         assertEquals( 2L, mapper.get( "10", thirdGroup ) );
     }
 
@@ -582,11 +577,6 @@ public class EncodingIdMapperTest
                 any( Object.class ), anyLong(), anyString(), anyString(), anyString() );
     }
 
-    private List<Object> ids( Object... ids )
-    {
-        return Arrays.asList( ids );
-    }
-
     private IdMapper mapper( Encoder encoder, Factory<Radix> radix, Monitor monitor )
     {
         return mapper( encoder, radix, monitor, ParallelSort.DEFAULT );
@@ -594,8 +584,20 @@ public class EncodingIdMapperTest
 
     private IdMapper mapper( Encoder encoder, Factory<Radix> radix, Monitor monitor, Comparator comparator )
     {
-        return new EncodingIdMapper( NumberArrayFactory.HEAP, encoder, radix, monitor, 1_000, processors, comparator );
+        return new EncodingIdMapper( NumberArrayFactory.HEAP, encoder, radix, monitor, RANDOM_TRACKER_FACTORY,
+                1_000, processors, comparator );
     }
+
+    private static final TrackerFactory RANDOM_TRACKER_FACTORY = new TrackerFactory()
+    {
+        @Override
+        public Tracker create( NumberArrayFactory arrayFactory, long size )
+        {
+            return System.currentTimeMillis() % 2 == 0
+                    ? new IntTracker( arrayFactory.newIntArray( size, AbstractTracker.DEFAULT_VALUE ) )
+                    : new LongTracker( arrayFactory.newLongArray( size, AbstractTracker.DEFAULT_VALUE ) );
+        }
+    };
 
     private class ValueGenerator implements InputIterable<Object>
     {

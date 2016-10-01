@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,6 +22,7 @@ package org.neo4j.visualization.asciidoc;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
 import org.neo4j.graphdb.GraphDatabaseService;
@@ -155,9 +156,9 @@ public class AsciidocHelper
             try
             {
                 return "." + title + "\n[\"dot\", \""
-                        + (safeTitle + "-" + identifier).replace( " ", "-" )
-                        + ".svg\", \"neoviz\", \"" + graphvizOptions + "\"]\n"
-                        + "----\n" + out.toString( "UTF-8" ) + "----\n";
+                       + (safeTitle + "-" + identifier).replace( " ", "-" )
+                       + ".svg\", \"neoviz\", \"" + graphvizOptions + "\"]\n"
+                       + "----\n" + out.toString( StandardCharsets.UTF_8.name() ) + "----\n";
             }
             catch ( UnsupportedEncodingException e )
             {

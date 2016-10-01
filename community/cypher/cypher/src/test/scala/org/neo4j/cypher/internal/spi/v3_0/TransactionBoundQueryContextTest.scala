@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,127 +25,150 @@ import org.mockito.Mockito._
 import org.neo4j.cypher.internal.compiler.v3_0.helpers.DynamicIterable
 import org.neo4j.cypher.internal.frontend.v3_0.SemanticDirection
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.spi.TransactionalContextWrapper
+import org.neo4j.cypher.internal.spi.v3_0.TransactionBoundQueryContext.IndexSearchMonitor
+import org.neo4j.cypher.javacompat.internal.GraphDatabaseCypherService
 import org.neo4j.graphdb._
+import org.neo4j.graphdb.config.Setting
 import org.neo4j.graphdb.factory.GraphDatabaseSettings
 import org.neo4j.kernel.api._
+import org.neo4j.kernel.api.security.AccessMode
 import org.neo4j.kernel.impl.api.{KernelStatement, KernelTransactionImplementation}
 import org.neo4j.kernel.impl.core.ThreadToStatementContextBridge
-import org.neo4j.test.ImpermanentGraphDatabase
+import org.neo4j.kernel.impl.coreapi.{InternalTransaction, PropertyContainerLocker}
+import org.neo4j.kernel.impl.proc.Procedures
+import org.neo4j.kernel.impl.query.Neo4jTransactionalContext
+import org.neo4j.test.TestGraphDatabaseFactory
 
 import scala.collection.JavaConverters._
 
 class TransactionBoundQueryContextTest extends CypherFunSuite {
 
-  var graph: ImpermanentGraphDatabase = null
-  var outerTx: Transaction = null
+  var graph: GraphDatabaseCypherService = null
+  var outerTx: InternalTransaction = null
   var statement: Statement = null
+  val indexSearchMonitor = mock[IndexSearchMonitor]
+  val locker = mock[PropertyContainerLocker]
 
   override def beforeEach() {
     super.beforeEach()
-    graph = new ImpermanentGraphDatabase
-    outerTx = mock[Transaction]
-    statement = new KernelStatement(mock[KernelTransactionImplementation], null, null, null, null, null, null)
+    graph = new GraphDatabaseCypherService(new TestGraphDatabaseFactory().newImpermanentDatabase())
+    outerTx = mock[InternalTransaction]
+    val kernelTransaction = mock[KernelTransactionImplementation]
+    when(kernelTransaction.mode()).thenReturn(AccessMode.Static.FULL)
+    statement = new KernelStatement(kernelTransaction, null, null, null, new Procedures() )
   }
 
   override def afterEach() {
-    graph.shutdown()
+    graph.getGraphDatabaseService.shutdown()
   }
 
-  test ("should_mark_transaction_successful_if_successful") {
+  test("should_mark_transaction_successful_if_successful") {
     // GIVEN
-    when (outerTx.failure () ).thenThrow (new AssertionError ("Shouldn't be called") )
-    val context = new TransactionBoundQueryContext(graph, outerTx, isTopLevelTx = true, statement)
+    when(outerTx.failure()).thenThrow(new AssertionError("Shouldn't be called"))
+    val transactionalContext = new TransactionalContextWrapper(new Neo4jTransactionalContext(graph, outerTx, statement, locker))
+    val context = new TransactionBoundQueryContext(transactionalContext)(indexSearchMonitor)
 
     // WHEN
-    context.close(success = true)
+    context.transactionalContext.close(success = true)
 
     // THEN
-    verify (outerTx).success ()
-    verify (outerTx).close ()
-    verifyNoMoreInteractions (outerTx)
+    verify(outerTx).transactionType()
+    verify(outerTx).mode()
+    verify(outerTx).success()
+    verify(outerTx).close()
+    verifyNoMoreInteractions(outerTx)
   }
 
-  test ("should_mark_transaction_failed_if_not_successful") {
+  test("should_mark_transaction_failed_if_not_successful") {
     // GIVEN
-    when (outerTx.success () ).thenThrow (new AssertionError ("Shouldn't be called") )
-    val context = new TransactionBoundQueryContext(graph, outerTx, isTopLevelTx = true, statement)
-
+    when(outerTx.success()).thenThrow(new AssertionError("Shouldn't be called"))
+    val transactionalContext = new TransactionalContextWrapper(new Neo4jTransactionalContext(graph, outerTx, statement, locker))
+    val context = new TransactionBoundQueryContext(transactionalContext)(indexSearchMonitor)
     // WHEN
-    context.close(success = false)
+    context.transactionalContext.close(success = false)
 
     // THEN
-    verify (outerTx).failure ()
-    verify (outerTx).close ()
-    verifyNoMoreInteractions (outerTx)
+    verify(outerTx).transactionType()
+    verify(outerTx).mode()
+    verify(outerTx).failure()
+    verify(outerTx).close()
+    verifyNoMoreInteractions(outerTx)
   }
 
-  test ("should_return_fresh_but_equal_iterators") {
+  test("should_return_fresh_but_equal_iterators") {
     // GIVEN
     val relTypeName = "LINK"
     val node = createMiniGraph(relTypeName)
 
-    val tx = graph.beginTx()
+    val tx = graph.beginTransaction(KernelTransaction.Type.explicit, AccessMode.Static.READ)
     val stmt = graph.getDependencyResolver.resolveDependency(classOf[ThreadToStatementContextBridge]).get()
-    val context = new TransactionBoundQueryContext(graph, tx, isTopLevelTx = true, stmt)
+    val transactionalContext = new TransactionalContextWrapper(new Neo4jTransactionalContext(graph, outerTx, stmt, locker))
+    val context = new TransactionBoundQueryContext(transactionalContext)(indexSearchMonitor)
 
     // WHEN
-    val iterable = DynamicIterable( context.getRelationshipsForIds(node, SemanticDirection.BOTH, None) )
+    val iterable = DynamicIterable(context.getRelationshipsForIds(node, SemanticDirection.BOTH, None))
 
     // THEN
     val iteratorA: Iterator[Relationship] = iterable.iterator
     val iteratorB: Iterator[Relationship] = iterable.iterator
     iteratorA should not equal iteratorB
-    iteratorA.toList should equal (iteratorB.toList)
-    2 should equal (iterable.size)
+    iteratorA.toList should equal(iteratorB.toList)
+    2 should equal(iterable.size)
 
     tx.success()
     tx.close()
   }
 
-  test ("should deny non-whitelisted URL protocols for loading") {
+  test("should deny non-whitelisted URL protocols for loading") {
     // GIVEN
-    val tx = graph.beginTx()
+    val tx = graph.beginTransaction(KernelTransaction.Type.explicit, AccessMode.Static.READ)
     val stmt = graph.getDependencyResolver.resolveDependency(classOf[ThreadToStatementContextBridge]).get()
-    val context = new TransactionBoundQueryContext(graph, tx, isTopLevelTx = true, stmt)
+    val transactionalContext = new TransactionalContextWrapper(new Neo4jTransactionalContext(graph, outerTx, stmt, locker))
+    val context = new TransactionBoundQueryContext(transactionalContext)(indexSearchMonitor)
 
     // THEN
-    context.getImportURL(new URL("http://localhost:7474/data.csv")) should equal (Right(new URL("http://localhost:7474/data.csv")))
-    context.getImportURL(new URL("file:///tmp/foo/data.csv")) should equal (Right(new URL("file:///tmp/foo/data.csv")))
-    context.getImportURL(new URL("jar:file:/tmp/blah.jar!/tmp/foo/data.csv")) should equal (Left("loading resources via protocol 'jar' is not permitted"))
+    context.getImportURL(new URL("http://localhost:7474/data.csv")) should equal(Right(new URL("http://localhost:7474/data.csv")))
+    context.getImportURL(new URL("file:///tmp/foo/data.csv")) should equal(Right(new URL("file:///tmp/foo/data.csv")))
+    context.getImportURL(new URL("jar:file:/tmp/blah.jar!/tmp/foo/data.csv")) should equal(Left("loading resources via protocol 'jar' is not permitted"))
 
     tx.success()
-    tx.finish()
+    tx.close()
   }
 
-  test ("should deny file URLs when not allowed by config") {
+  test("should deny file URLs when not allowed by config") {
     // GIVEN
-    graph.shutdown()
-    graph = new ImpermanentGraphDatabase(Map(GraphDatabaseSettings.allow_file_urls.name() -> "false").asJava)
-    val tx = graph.beginTx()
+    graph.getGraphDatabaseService.shutdown()
+    val config = Map[Setting[_], String](GraphDatabaseSettings.allow_file_urls -> "false")
+    graph = new GraphDatabaseCypherService(new TestGraphDatabaseFactory().newImpermanentDatabase(config.asJava))
+    val tx = graph.beginTransaction(KernelTransaction.Type.explicit, AccessMode.Static.READ)
     val stmt = graph.getDependencyResolver.resolveDependency(classOf[ThreadToStatementContextBridge]).get()
-    val context = new TransactionBoundQueryContext(graph, tx, isTopLevelTx = true, stmt)
+    val transactionalContext = new TransactionalContextWrapper(new Neo4jTransactionalContext(graph, outerTx, stmt, locker))
+    val context = new TransactionBoundQueryContext(transactionalContext)(indexSearchMonitor)
 
     // THEN
     context.getImportURL(new URL("http://localhost:7474/data.csv")) should equal (Right(new URL("http://localhost:7474/data.csv")))
-    context.getImportURL(new URL("file:///tmp/foo/data.csv")) should equal (Left("configuration property 'allow_file_urls' is false"))
+    context.getImportURL(new URL("file:///tmp/foo/data.csv")) should equal (Left("configuration property 'dbms.security.allow_csv_import_from_file_urls' is false"))
 
     tx.success()
-    tx.finish()
+    tx.close()
   }
 
   private def createMiniGraph(relTypeName: String): Node = {
-    val relType: DynamicRelationshipType = DynamicRelationshipType.withName(relTypeName)
-    val tx = graph.beginTx()
+    val relType = RelationshipType.withName(relTypeName)
+    val tx = graph.beginTransaction(KernelTransaction.Type.explicit, AccessMode.Static.WRITE)
     try {
       val node = graph.createNode()
       val other1 = graph.createNode()
       val other2 = graph.createNode()
 
-      node.createRelationshipTo( other1, relType )
-      other2.createRelationshipTo( node, relType )
+      node.createRelationshipTo(other1, relType)
+      other2.createRelationshipTo(node, relType)
       tx.success()
       node
     }
-    finally { tx.close() }
+    finally {
+      tx.close()
+    }
   }
 }

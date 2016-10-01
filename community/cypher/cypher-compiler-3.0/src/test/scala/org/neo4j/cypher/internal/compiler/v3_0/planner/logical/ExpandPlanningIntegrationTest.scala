@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,7 +22,7 @@ package org.neo4j.cypher.internal.compiler.v3_0.planner.logical
 import org.neo4j.cypher.internal.compiler.v3_0.commands.SingleQueryExpression
 import org.neo4j.cypher.internal.compiler.v3_0.planner.BeLikeMatcher._
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans._
-import org.neo4j.cypher.internal.compiler.v3_0.planner.{LogicalPlanningTestSupport2, PlannerQuery}
+import org.neo4j.cypher.internal.compiler.v3_0.planner.{LogicalPlanningTestSupport2, PlannerQuery, RegularPlannerQuery}
 import org.neo4j.cypher.internal.frontend.v3_0.ast._
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
 import org.neo4j.cypher.internal.frontend.v3_0.{LabelId, PropertyKeyId, SemanticDirection}
@@ -42,10 +42,10 @@ class ExpandPlanningIntegrationTest extends CypherFunSuite with LogicalPlanningT
 
     (new given {
       cardinality = mapCardinality {
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.patternNodes == Set(IdName("a")) => 1000.0
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.patternNodes == Set(IdName("b")) => 2000.0
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.patternNodes == Set(IdName("c")) => 3000.0
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.patternNodes == Set(IdName("d")) => 4000.0
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes == Set(IdName("a")) => 1000.0
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes == Set(IdName("b")) => 2000.0
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes == Set(IdName("c")) => 3000.0
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes == Set(IdName("d")) => 4000.0
         case _ => 100.0
       }
     } planFor "MATCH (a)-[r1]->(b), (c)-[r2]->(d) RETURN r1, r2").plan should beLike {
@@ -75,17 +75,17 @@ class ExpandPlanningIntegrationTest extends CypherFunSuite with LogicalPlanningT
     (new given {
       cardinality = mapCardinality {
         // all node scans
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.patternNodes.size == 1 => 1000.0
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes.size == 1 => 1000.0
         case _                                                                   => 1.0
       }
 
     } planFor "MATCH (a)-[r1]->(b)<-[r2]-(a) RETURN r1, r2").plan should equal(
-      Selection(Seq(Not(Equals(Identifier("r1")_,Identifier("r2")_)_)_),
+      Selection(Seq(Not(Equals(Variable("r1")_,Variable("r2")_)_)_),
         Expand(
           Expand(
             AllNodesScan(IdName("b"),Set.empty)(solved),
-            IdName("b"), SemanticDirection.INCOMING, Seq.empty, IdName("a"), IdName("r1"),ExpandAll)(solved),
-          IdName("b"), SemanticDirection.INCOMING, Seq.empty, IdName("a"), IdName("r2"), ExpandInto)(solved)
+            IdName("b"), SemanticDirection.INCOMING, Seq.empty, IdName("a"), IdName("r2"),ExpandAll)(solved),
+          IdName("a"), SemanticDirection.OUTGOING, Seq.empty, IdName("b"), IdName("r1"), ExpandInto)(solved)
         )(solved)
     )
   }
@@ -93,7 +93,7 @@ class ExpandPlanningIntegrationTest extends CypherFunSuite with LogicalPlanningT
   test("Should build plans expanding from the cheaper side for single relationship pattern") {
 
     def myCardinality(plan: PlannerQuery): Cardinality = Cardinality(plan match {
-      case PlannerQuery(queryGraph, _, _, _) if !queryGraph.selections.isEmpty  => 10
+      case RegularPlannerQuery(queryGraph, _, _) if !queryGraph.selections.isEmpty  => 10
       case _ => 1000
     })
 
@@ -102,7 +102,7 @@ class ExpandPlanningIntegrationTest extends CypherFunSuite with LogicalPlanningT
     } planFor "MATCH (start)-[rel:x]-(a) WHERE a.name = 'Andres' return a").plan should equal(
         Expand(
           Selection(
-            Seq(In(Property(Identifier("a")_, PropertyKeyName("name")_)_, Collection(Seq(StringLiteral("Andres")_))_)_),
+            Seq(In(Property(Variable("a")_, PropertyKeyName("name")_)_, ListLiteral(Seq(StringLiteral("Andres")_))_)_),
             AllNodesScan("a", Set.empty)(solved)
           )(solved),
           "a", SemanticDirection.BOTH, Seq(RelTypeName("x")_), "start", "rel"
@@ -113,7 +113,7 @@ class ExpandPlanningIntegrationTest extends CypherFunSuite with LogicalPlanningT
   test("Should build plans expanding from the more expensive side if that is requested by using a hint") {
     (new given {
       cardinality = mapCardinality {
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.selections.predicates.size == 2 => 1000.0
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.selections.predicates.size == 2 => 1000.0
         case _                => 10.0
       }
 

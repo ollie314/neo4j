@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,13 +19,6 @@
  */
 package org.neo4j.server.rest.paging;
 
-import java.net.URI;
-import java.util.Map;
-import java.util.concurrent.Callable;
-import java.util.concurrent.TimeUnit;
-
-import javax.ws.rs.core.MediaType;
-
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -33,8 +26,15 @@ import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
-import org.neo4j.graphdb.DynamicRelationshipType;
+
+import java.net.URI;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.TimeUnit;
+import javax.ws.rs.core.MediaType;
+
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.helpers.FakeClock;
 import org.neo4j.kernel.impl.annotations.Documented;
@@ -88,18 +88,13 @@ public class PagedTraverserDocIT extends ExclusiveServerTestBase
     {
         clock = new FakeClock();
         server = CommunityServerBuilder.server()
-                .usingDatabaseDir( staticFolder.getRoot().getAbsolutePath() )
+                .usingDataDir( staticFolder.getRoot().getAbsolutePath() )
                 .withClock( clock )
                 .build();
 
-        suppressAll().call( new Callable<Void>()
-        {
-            @Override
-            public Void call() throws Exception
-            {
-                server.start();
-                return null;
-            }
+        suppressAll().call( (Callable<Void>) () -> {
+            server.start();
+            return null;
         } );
         functionalTestHelper = new FunctionalTestHelper( server );
     }
@@ -113,14 +108,9 @@ public class PagedTraverserDocIT extends ExclusiveServerTestBase
     @AfterClass
     public static void stopServer() throws Exception
     {
-        suppressAll().call( new Callable<Void>()
-        {
-            @Override
-            public Void call() throws Exception
-            {
-                server.stop();
-                return null;
-            }
+        suppressAll().call( (Callable<Void>) () -> {
+            server.stop();
+            return null;
         } );
     }
 
@@ -139,14 +129,12 @@ public class PagedTraverserDocIT extends ExclusiveServerTestBase
                         + "/paged/traverse/{returnType}{?pageSize,leaseTime}" ) );
     }
 
-    /**
-     * Creating a paged traverser. Paged traversers are created by ++POST++-ing a
-     * traversal description to the link identified by the +paged_traverser+ key
-     * in a node representation. When creating a paged traverser, the same
-     * options apply as for a regular traverser, meaning that +node+, +path+,
-     * or +fullpath+, can be targeted.
-     */
-    @Documented
+    @Documented( "Creating a paged traverser.\n\n" +
+                 "Paged traversers are created by ++POST++-ing a\n" +
+                 "traversal description to the link identified by the +paged_traverser+ key\n" +
+                 "in a node representation. When creating a paged traverser, the same\n" +
+                 "options apply as for a regular traverser, meaning that +node+, +path+,\n" +
+                 "or +fullpath+, can be targeted." )
     @Test
     public void shouldPostATraverserWithDefaultOptionsAndReceiveTheFirstPageOfResults() throws Exception
     {
@@ -169,23 +157,20 @@ public class PagedTraverserDocIT extends ExclusiveServerTestBase
                 .toString() );
     }
 
-    /**
-     * Paging through the results of a paged traverser. Paged traversers hold
-     * state on the server, and allow clients to page through the results of a
-     * traversal. To progress to the next page of traversal results, the client
-     * issues a HTTP GET request on the paged traversal URI which causes the
-     * traversal to fill the next page (or partially fill it if insufficient
-     * results are available).
-     * 
-     * Note that if a traverser expires through inactivity it will cause a 404
-     * response on the next +GET+ request. Traversers' leases are renewed on
-     * every successful access for the same amount of time as originally
-     * specified.
-     * 
-     * When the paged traverser reaches the end of its results, the client can
-     * expect a 404 response as the traverser is disposed by the server.
-     */
-    @Documented
+    @Documented( "Paging through the results of a paged traverser.\n\n" +
+                 "Paged traversers holdstate on the server, and allow clients to page through\n" +
+                 "the results of a traversal. To progress to the next page of traversal results,\n" +
+                 "the client issues a HTTP GET request on the paged traversal URI which causes the\n" +
+                 "traversal to fill the next page (or partially fill it if insufficient\n" +
+                 "results are available).\n" +
+                 " \n" +
+                 "Note that if a traverser expires through inactivity it will cause a 404\n" +
+                 "response on the next +GET+ request. Traversers' leases are renewed on\n" +
+                 "every successful access for the same amount of time as originally\n" +
+                 "specified.\n" +
+                 " \n" +
+                 "When the paged traverser reaches the end of its results, the client can\n" +
+                 "expect a 404 response as the traverser is disposed by the server." )
     @Test
     public void shouldBeAbleToTraverseAllThePagesWithDefaultPageSize()
     {
@@ -224,12 +209,10 @@ public class PagedTraverserDocIT extends ExclusiveServerTestBase
         assertEquals( 404, getResponse.getStatus() );
     }
 
-    /**
-     * Paged traverser page size. The default page size is 50 items, but
-     * depending on the application larger or smaller pages sizes might be
-     * appropriate. This can be set by adding a +pageSize+ query parameter.
-     */
-    @Documented
+    @Documented( "Paged traverser page size.\n\n" +
+                 "The default page size is 50 items, but\n" +
+                 "depending on the application larger or smaller pages sizes might be\n" +
+                 "appropriate. This can be set by adding a +pageSize+ query parameter." )
     @Test
     public void shouldBeAbleToTraverseAllThePagesWithNonDefaultPageSize()
     {
@@ -249,13 +232,11 @@ public class PagedTraverserDocIT extends ExclusiveServerTestBase
         assertEquals( 404, response.getStatus() );
     }
 
-    /**
-     * Paged traverser timeout. The default timeout for a paged traverser is 60
-     * seconds, but depending on the application larger or smaller timeouts
-     * might be appropriate. This can be set by adding a +leaseTime+ query
-     * parameter with the number of seconds the paged traverser should last.
-     */
-    @Documented
+    @Documented( "Paged traverser timeout.\n\n" +
+                 "The default timeout for a paged traverser is 60\n" +
+                 "seconds, but depending on the application larger or smaller timeouts\n" +
+                 "might be appropriate. This can be set by adding a +leaseTime+ query\n" +
+                 "parameter with the number of seconds the paged traverser should last." )
     @Test
     public void shouldExpireTraverserWithNonDefaultTimeout()
     {
@@ -494,7 +475,7 @@ public class PagedTraverserDocIT extends ExclusiveServerTestBase
 
                 if ( previous != null )
                 {
-                    previous.createRelationshipTo( current, DynamicRelationshipType.withName( "NEXT" ) );
+                    previous.createRelationshipTo( current, RelationshipType.withName( "NEXT" ) );
                 }
                 else
                 {

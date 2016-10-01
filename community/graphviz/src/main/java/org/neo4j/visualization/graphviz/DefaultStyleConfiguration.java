@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,8 +22,8 @@ package org.neo4j.visualization.graphviz;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Predicate;
 
-import org.neo4j.function.Predicate;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
@@ -35,12 +35,9 @@ class DefaultStyleConfiguration implements StyleConfiguration
 
     DefaultStyleConfiguration( StyleParameter... parameters )
 	{
-		this.nodeHeader = new HashMap<String, String>(
-		    GraphStyle.header().nodeHeader );
-		this.edgeHeader = new HashMap<String, String>(
-		    GraphStyle.header().edgeHeader );
-		this.header = new HashMap<String, String>(
-		    GraphStyle.header().graphHeader );
+		this.nodeHeader = new HashMap<>( GraphStyle.header().nodeHeader );
+		this.edgeHeader = new HashMap<>( GraphStyle.header().edgeHeader );
+		this.header = new HashMap<>( GraphStyle.header().graphHeader );
 		for ( StyleParameter parameter : parameters )
 		{
 			parameter.configure( this );
@@ -196,11 +193,6 @@ class DefaultStyleConfiguration implements StyleConfiguration
 			    + type.typeName + "\\l" );
 		}
 	}
-
-    public void setRelationshipReverseOrderPredicate( org.neo4j.helpers.Predicate<Relationship> reversed )
-    {
-		setRelationshipReverseOrderPredicate( org.neo4j.helpers.Predicates.upgrade( reversed ) );
-    }
 
 	public void setRelationshipReverseOrderPredicate( Predicate<Relationship> reversed )
 	{

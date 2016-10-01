@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,21 +27,21 @@ import java.rmi.RemoteException;
 import java.util.HashMap;
 import java.util.Stack;
 
+import org.neo4j.doc.tools.AsciiDocGenerator;
 import org.neo4j.helpers.Exceptions;
 import org.neo4j.shell.impl.CollectingOutput;
 import org.neo4j.shell.impl.RemoteOutput;
 import org.neo4j.shell.impl.SameJvmClient;
-import org.neo4j.test.AsciiDocGenerator;
 
 import static org.junit.Assert.*;
 
 public class Documenter
 {
-    public class DocOutput implements Output, Serializable
+    public static class DocOutput implements Output, Serializable
     {
         private static final long serialVersionUID = 1L;
-        private final ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        private final PrintWriter out = new PrintWriter( baos );
+        private ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        private PrintWriter out = new PrintWriter( baos );
 
         @Override
         public Appendable append( final CharSequence csq, final int start, final int end )
@@ -102,7 +102,7 @@ public class Documenter
     }
 
     private final String title;
-    private final Stack<Job> stack = new Stack<Documenter.Job>();
+    private final Stack<Job> stack = new Stack<>();
     private final ShellClient client;
 
     public Documenter( final String title, final ShellServer server )

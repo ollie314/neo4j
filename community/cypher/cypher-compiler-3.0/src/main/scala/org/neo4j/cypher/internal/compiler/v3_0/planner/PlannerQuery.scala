@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,23 +22,34 @@ package org.neo4j.cypher.internal.compiler.v3_0.planner
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.Cardinality
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.{IdName, PatternRelationship, StrictnessMode}
 import org.neo4j.cypher.internal.frontend.v3_0.InternalException
-import org.neo4j.cypher.internal.frontend.v3_0.ast.{Hint, LabelName}
-import org.neo4j.cypher.internal.frontend.v3_0.perty._
+import org.neo4j.cypher.internal.frontend.v3_0.ast.{Variable, PeriodicCommitHint, Hint, LabelName}
 
 import scala.annotation.tailrec
 import scala.collection.GenTraversableOnce
 
-case class UnionQuery(queries: Seq[PlannerQuery], distinct: Boolean, returns: Seq[IdName])
+case class UnionQuery(queries: Seq[PlannerQuery], distinct: Boolean, returns: Seq[IdName], periodicCommit: Option[PeriodicCommit])
 
-case class PlannerQuery(queryGraph: QueryGraph = QueryGraph.empty,
-                        updateGraph: UpdateGraph = UpdateGraph.empty,
-                        horizon: QueryHorizon = QueryProjection.empty,
-                        tail: Option[PlannerQuery] = None)
-  extends PageDocFormatting {
-  // with ToPrettyString[PlannerQuery] {
+object PeriodicCommit {
+  def apply(periodicCommitHint: Option[PeriodicCommitHint]): Option[PeriodicCommit] =
+    periodicCommitHint.map(hint => new PeriodicCommit(hint.size.map(_.value)))
+}
 
-  //  def toDefaultPrettyString(formatter: DocFormatter) =
-  //    toPrettyString(formatter)(InternalDocHandler.docGen)
+case class PeriodicCommit(batchSize: Option[Long])
+
+case class RegularPlannerQuery(queryGraph: QueryGraph = QueryGraph.empty,
+                               horizon: QueryHorizon = QueryProjection.empty,
+                               tail: Option[PlannerQuery] = None) extends PlannerQuery {
+  // This is here to stop usage of copy from the outside
+  override protected def copy(queryGraph: QueryGraph = queryGraph,
+                              horizon: QueryHorizon = horizon,
+                              tail: Option[PlannerQuery] = tail) =
+    RegularPlannerQuery(queryGraph, horizon, tail)
+}
+
+sealed trait PlannerQuery {
+  val queryGraph: QueryGraph
+  val horizon: QueryHorizon
+  val tail: Option[PlannerQuery]
 
   def preferredStrictness: Option[StrictnessMode] =
     horizon.preferredStrictness orElse tail.flatMap(_.preferredStrictness)
@@ -46,7 +57,6 @@ case class PlannerQuery(queryGraph: QueryGraph = QueryGraph.empty,
   def last: PlannerQuery = tail.map(_.last).getOrElse(this)
 
   def lastQueryGraph: QueryGraph = last.queryGraph
-  def lastUpdateGraph: UpdateGraph = last.updateGraph
   def lastQueryHorizon: QueryHorizon = last.horizon
 
   def withTail(newTail: PlannerQuery): PlannerQuery = tail match {
@@ -54,23 +64,11 @@ case class PlannerQuery(queryGraph: QueryGraph = QueryGraph.empty,
     case Some(_) => throw new InternalException("Attempt to set a second tail on a query graph")
   }
 
-  def readOnly: Boolean = updateGraph.isEmpty && queryGraph.nonEmpty
-
-  def writeOnly: Boolean = queryGraph.isEmpty && updateGraph.nonEmpty
-
-  def writes: Boolean = exists(_.updateGraph.nonEmpty)
-
-  def writesNodes: Boolean = exists(_.updateGraph.nodePatterns.nonEmpty)
-
-  def writesRelationships: Boolean = exists(_.updateGraph.relPatterns.nonEmpty)
-
   def withoutHints(hintsToIgnore: GenTraversableOnce[Hint]) = copy(queryGraph = queryGraph.withoutHints(hintsToIgnore))
 
   def withHorizon(horizon: QueryHorizon): PlannerQuery = copy(horizon = horizon)
 
   def withQueryGraph(queryGraph: QueryGraph): PlannerQuery = copy(queryGraph = queryGraph)
-
-  def withUpdateGraph(updateGraph: UpdateGraph) = copy(updateGraph = updateGraph)
 
   def isCoveredByHints(other: PlannerQuery) = allHints.forall(other.allHints.contains)
 
@@ -85,8 +83,6 @@ case class PlannerQuery(queryGraph: QueryGraph = QueryGraph.empty,
   }
 
   def amendQueryGraph(f: QueryGraph => QueryGraph): PlannerQuery = withQueryGraph(f(queryGraph))
-
-  def amendUpdateGraph(f: UpdateGraph => UpdateGraph): PlannerQuery = withUpdateGraph(f(updateGraph))
 
   def updateHorizon(f: QueryHorizon => QueryHorizon): PlannerQuery = withHorizon(f(horizon))
 
@@ -108,13 +104,14 @@ case class PlannerQuery(queryGraph: QueryGraph = QueryGraph.empty,
   def exists(f: PlannerQuery => Boolean): Boolean =
     f(this) || tail.exists(_.exists(f))
 
+  def all(f: PlannerQuery => Boolean): Boolean = !exists(x => !f(x))
+
   def ++(other: PlannerQuery): PlannerQuery = {
     (this.horizon, other.horizon) match {
       case (a: RegularQueryProjection, b: RegularQueryProjection) =>
-        PlannerQuery(
+        RegularPlannerQuery(
           horizon = a ++ b,
           queryGraph = queryGraph ++ other.queryGraph,
-          updateGraph = updateGraph ++ other.updateGraph,
           tail = either(tail, other.tail)
         )
 
@@ -130,10 +127,9 @@ case class PlannerQuery(queryGraph: QueryGraph = QueryGraph.empty,
   }
 
   // This is here to stop usage of copy from the outside
-  private def copy(queryGraph: QueryGraph = queryGraph,
-                   updateGraph: UpdateGraph = updateGraph,
-                   horizon: QueryHorizon = horizon,
-                   tail: Option[PlannerQuery] = tail) = PlannerQuery(queryGraph, updateGraph, horizon, tail)
+  protected def copy(queryGraph: QueryGraph = queryGraph,
+                     horizon: QueryHorizon = horizon,
+                     tail: Option[PlannerQuery] = tail): PlannerQuery
 
   def foldMap(f: (PlannerQuery, PlannerQuery) => PlannerQuery): PlannerQuery = tail match {
     case None => this
@@ -157,9 +153,8 @@ case class PlannerQuery(queryGraph: QueryGraph = QueryGraph.empty,
     recurse(in, this)
   }
 
-  //Returns list of querygraph of planner query and all of its tails
+  //Returns a list of query graphs from this plannerquery and all of its tails
   def allQueryGraphs: Seq[QueryGraph] = allPlannerQueries.map(_.queryGraph)
-
 
   //Returns list of planner query and all of its tails
   def allPlannerQueries: Seq[PlannerQuery] = {
@@ -172,11 +167,22 @@ case class PlannerQuery(queryGraph: QueryGraph = QueryGraph.empty,
     loop(Seq.empty, Some(this))
   }
 
-  def labelInfo: Map[IdName, Set[LabelName]] = lastQueryGraph.selections.labelInfo
+  def labelInfo: Map[IdName, Set[LabelName]] = {
+    val labelInfo = lastQueryGraph.selections.labelInfo
+    val projectedLabelInfo = lastQueryHorizon match {
+      case projection: QueryProjection =>
+        projection.projections.collect {
+          case (projectedName, Variable(name)) if labelInfo.contains(IdName(name)) =>
+              IdName(projectedName) -> labelInfo(IdName(name))
+        }
+      case _ => Map.empty[IdName, Set[LabelName]]
+    }
+    labelInfo ++ projectedLabelInfo
+  }
 }
 
 object PlannerQuery {
-  val empty = PlannerQuery()
+  val empty = RegularPlannerQuery()
 
   def coveredIdsForPatterns(patternNodeIds: Set[IdName], patternRels: Set[PatternRelationship]) = {
     val patternRelIds = patternRels.flatMap(_.coveredIds)
@@ -191,8 +197,12 @@ trait CardinalityEstimation {
 }
 
 object CardinalityEstimation {
-  def lift(plannerQuery: PlannerQuery, cardinality: Cardinality) =
-    new PlannerQuery(plannerQuery.queryGraph, plannerQuery.updateGraph, plannerQuery.horizon, plannerQuery.tail) with CardinalityEstimation {
-      val estimatedCardinality = cardinality
-    }
+
+  def lift(plannerQuery: PlannerQuery, cardinality: Cardinality) = plannerQuery match {
+    case _: RegularPlannerQuery =>
+      new RegularPlannerQuery(plannerQuery.queryGraph, plannerQuery.horizon, plannerQuery.tail)
+        with CardinalityEstimation {
+        val estimatedCardinality = cardinality
+      }
+  }
 }

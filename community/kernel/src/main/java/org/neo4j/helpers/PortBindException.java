@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,6 +30,12 @@ public class PortBindException extends BindException
     public PortBindException( HostnamePort address, BindException original )
     {
         super( String.format("Address %s is already in use, cannot bind to it.", address) );
+        setStackTrace( original.getStackTrace() );
+    }
+
+    public PortBindException( HostnamePort address, HostnamePort other, BindException original )
+    {
+        super( String.format("At least one of the addresses %s or %s is already in use, cannot bind to it.", address, other) );
         setStackTrace( original.getStackTrace() );
     }
 }

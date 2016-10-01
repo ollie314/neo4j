@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,14 +20,14 @@
 package org.neo4j.cypher.internal.compiler.v3_0.commands.expressions
 
 import org.neo4j.cypher.internal.compiler.v3_0._
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.{CastSupport, CollectionSupport, IsCollection, IsMap}
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.{CastSupport, ListSupport, IsList, IsMap}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
-import org.neo4j.cypher.internal.frontend.v3_0.CypherTypeException
+import org.neo4j.cypher.internal.frontend.v3_0.{CypherTypeException, InvalidArgumentException}
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 
 case class ContainerIndex(expression: Expression, index: Expression) extends NullInNullOutExpression(expression)
-with CollectionSupport {
+with ListSupport {
   def arguments = Seq(expression, index)
 
   def compute(value: Any, ctx: ExecutionContext)(implicit state: QueryState): Any = {
@@ -36,8 +36,20 @@ with CollectionSupport {
         val idx = CastSupport.castOrFail[String](index(ctx))
         m(state.query).getOrElse(idx, null)
 
-      case IsCollection(collection) =>
-        var idx = CastSupport.castOrFail[Number](index(ctx)).intValue()
+      case IsList(collection) =>
+        val number = CastSupport.castOrFail[Number](index(ctx))
+
+        val longValue = number match {
+          case _ : java.lang.Double | _: java.lang.Float =>
+            throw new CypherTypeException(s"Cannot index an array with an non-integer number, got $number")
+          case _ => number.longValue()
+        }
+
+        if (longValue > Int.MaxValue || longValue < Int.MinValue)
+          throw new InvalidArgumentException(s"Cannot index an array using a value bigger than ${Int.MaxValue} or smaller than ${Int.MinValue}, got $number")
+
+        var idx = longValue.toInt
+
         val collectionValue = collection.toVector
 
         if (idx < 0)
@@ -57,7 +69,7 @@ with CollectionSupport {
     val exprT = expression.evaluateType(CTAny, symbols)
     val indexT = index.evaluateType(CTAny, symbols)
 
-    val isColl = CTCollection(CTAny).isAssignableFrom(exprT)
+    val isColl = CTList(CTAny).isAssignableFrom(exprT)
     val isMap = CTMap.isAssignableFrom(exprT)
     val isInteger = CTInteger.isAssignableFrom(indexT)
     val isString = CTString.isAssignableFrom(indexT)
@@ -67,8 +79,8 @@ with CollectionSupport {
 
     if (collectionLookup && !mapLookup) {
       index.evaluateType(CTInteger, symbols)
-      expression.evaluateType(CTCollection(CTAny), symbols) match {
-        case collectionType: CollectionType => collectionType.innerType
+      expression.evaluateType(CTList(CTAny), symbols) match {
+        case collectionType: ListType => collectionType.innerType
         case x if x.isInstanceOf[AnyType]   => CTAny
         case x                              => throw new CypherTypeException("Expected a collection, but was " + x)
       }

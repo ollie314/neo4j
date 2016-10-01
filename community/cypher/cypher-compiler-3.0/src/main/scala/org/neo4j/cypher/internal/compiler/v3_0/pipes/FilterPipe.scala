@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -34,7 +34,7 @@ case class FilterPipe(source: Pipe, predicate: Predicate)(val estimatedCardinali
     input.filter(ctx => predicate.isTrue(ctx)(state))
   }
 
-  def planDescriptionWithoutCardinality = source.planDescription.andThen(this.id, "Filter", identifiers, LegacyExpression(predicate))
+  def planDescriptionWithoutCardinality = source.planDescription.andThen(this.id, "Filter", variables, LegacyExpression(predicate))
 
   def dup(sources: List[Pipe]): Pipe = {
     val (source :: Nil) = sources

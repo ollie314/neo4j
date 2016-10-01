@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -32,7 +32,6 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import org.neo4j.graphdb.DynamicRelationshipType;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.RelationshipType;
@@ -45,7 +44,6 @@ import org.neo4j.server.rest.RestRequest;
 import org.neo4j.server.rest.domain.JsonHelper;
 import org.neo4j.server.rest.domain.JsonParseException;
 import org.neo4j.test.server.ExclusiveServerTestBase;
-import org.neo4j.tooling.GlobalGraphOperations;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -54,8 +52,8 @@ import static org.junit.Assert.assertTrue;
 
 public class CloneSubgraphPluginTest extends ExclusiveServerTestBase
 {
-    private static final RelationshipType KNOWS = DynamicRelationshipType.withName( "knows" );
-    private static final RelationshipType WORKED_FOR = DynamicRelationshipType.withName( "worked_for" );
+    private static final RelationshipType KNOWS = RelationshipType.withName( "knows" );
+    private static final RelationshipType WORKED_FOR = RelationshipType.withName( "worked_for" );
 
     private static NeoServer server;
     private static FunctionalTestHelper functionalTestHelper;
@@ -192,8 +190,7 @@ public class CloneSubgraphPluginTest extends ExclusiveServerTestBase
         try ( Transaction tx = server.getDatabase().getGraph().beginTx() )
         {
             int count = 0;
-            for ( @SuppressWarnings("unused") Node node : GlobalGraphOperations.at( server.getDatabase().getGraph() )
-                                                                               .getAllNodes() )
+            for ( @SuppressWarnings("unused") Node node : server.getDatabase().getGraph().getAllNodes() )
             {
                 count++;
             }

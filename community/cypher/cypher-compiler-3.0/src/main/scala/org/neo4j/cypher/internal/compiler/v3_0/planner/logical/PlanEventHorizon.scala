@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,27 +19,24 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner.logical
 
-import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.steps.{projection, sortSkipAndLimit, aggregation}
 import org.neo4j.cypher.internal.compiler.v3_0.planner._
-import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.{RelationshipCountFromCountStore, NodeCountFromCountStore, LogicalPlan}
+import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.LogicalPlan
+import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.steps.{aggregation, projection, sortSkipAndLimit}
 
 /*
 Planning event horizons means planning the WITH clauses between query patterns. Some of these clauses are inlined
 away when going from a string query to a QueryGraph. The remaining WITHs are the ones containing ORDER BY/LIMIT,
 aggregation and UNWIND.
  */
-case class PlanEventHorizon(config: QueryPlannerConfiguration = QueryPlannerConfiguration.default)
+case object PlanEventHorizon
   extends LogicalPlanningFunction2[PlannerQuery, LogicalPlan, LogicalPlan] {
 
   override def apply(query: PlannerQuery, plan: LogicalPlan)(implicit context: LogicalPlanningContext): LogicalPlan = {
-    val selectedPlan = config.applySelections(plan, query.queryGraph)
-    val projectedPlan = query.horizon match {
+    val selectedPlan = context.config.applySelections(plan, query.queryGraph)
+
+    query.horizon match {
       case aggregatingProjection: AggregatingQueryProjection =>
-        val aggregationPlan = plan match {
-          case n: NodeCountFromCountStore => projection(selectedPlan, aggregatingProjection.projections)
-          case r: RelationshipCountFromCountStore => projection(selectedPlan, aggregatingProjection.projections)
-          case _ => aggregation(plan, aggregatingProjection)
-        }
+        val aggregationPlan = aggregation(selectedPlan, aggregatingProjection)
         sortSkipAndLimit(aggregationPlan, query)
 
       case queryProjection: RegularQueryProjection =>
@@ -49,13 +46,20 @@ case class PlanEventHorizon(config: QueryPlannerConfiguration = QueryPlannerConf
         else
           projection(sortedAndLimited, queryProjection.projections)
 
-      case UnwindProjection(identifier, expression) =>
-        context.logicalPlanProducer.planUnwind(plan, identifier, expression)
+      case UnwindProjection(variable, expression) =>
+        context.logicalPlanProducer.planUnwind(plan, variable, expression)
+
+      case ProcedureCallProjection(call) =>
+        context.logicalPlanProducer.planCallProcedure(plan, call)
+
+      case LoadCSVProjection(variableName, url, format, fieldTerminator) =>
+        context.logicalPlanProducer.planLoadCSV(plan, variableName, url, format, fieldTerminator)
+
+      case PassthroughAllHorizon() =>
+        context.logicalPlanProducer.planPassAll(plan)
 
       case _ =>
         throw new CantHandleQueryException
     }
-
-    projectedPlan
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,8 +24,9 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 
-import org.neo4j.function.Function;
-import org.neo4j.kernel.GraphDatabaseAPI;
+import java.util.concurrent.locks.LockSupport;
+
+import org.neo4j.kernel.api.security.AccessMode;
 import org.neo4j.kernel.api.KernelAPI;
 import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.api.Statement;
@@ -35,8 +36,10 @@ import org.neo4j.kernel.api.exceptions.TransactionFailureException;
 import org.neo4j.kernel.api.exceptions.index.IndexNotFoundKernelException;
 import org.neo4j.kernel.api.index.IndexDescriptor;
 import org.neo4j.kernel.impl.api.index.SchemaIndexTestHelper;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import org.neo4j.test.ImpermanentDatabaseRule;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.junit.Assert.assertEquals;
 
 public class KernelSchemaStateFlushingTest
@@ -70,7 +73,7 @@ public class KernelSchemaStateFlushingTest
 
         IndexDescriptor descriptor = createIndex();
 
-        awaitIndexOnline( descriptor );
+        awaitIndexOnline( descriptor, "test" );
 
         // when
         String after = commitToSchemaState( "test", "after" );
@@ -84,7 +87,7 @@ public class KernelSchemaStateFlushingTest
     {
         IndexDescriptor descriptor = createIndex();
 
-        awaitIndexOnline( descriptor );
+        awaitIndexOnline( descriptor, "test" );
 
         commitToSchemaState( "test", "before" );
 
@@ -132,7 +135,7 @@ public class KernelSchemaStateFlushingTest
     private UniquenessConstraint createConstraint() throws KernelException
     {
 
-        try ( KernelTransaction transaction = kernel.newTransaction();
+        try ( KernelTransaction transaction = kernel.newTransaction( KernelTransaction.Type.implicit, AccessMode.Static.FULL );
               Statement statement = transaction.acquireStatement() )
         {
             UniquenessConstraint descriptor = statement.schemaWriteOperations().uniquePropertyConstraintCreate( 1, 1 );
@@ -143,8 +146,8 @@ public class KernelSchemaStateFlushingTest
 
     private void dropConstraint( UniquenessConstraint descriptor ) throws KernelException
     {
-        try ( KernelTransaction transaction = kernel.newTransaction();
-             Statement statement = transaction.acquireStatement() )
+        try ( KernelTransaction transaction = kernel.newTransaction( KernelTransaction.Type.implicit, AccessMode.Static.FULL );
+              Statement statement = transaction.acquireStatement() )
         {
             statement.schemaWriteOperations().constraintDrop( descriptor );
             transaction.success();
@@ -153,8 +156,8 @@ public class KernelSchemaStateFlushingTest
 
     private IndexDescriptor createIndex() throws KernelException
     {
-        try ( KernelTransaction transaction = kernel.newTransaction();
-             Statement statement = transaction.acquireStatement() )
+        try ( KernelTransaction transaction = kernel.newTransaction( KernelTransaction.Type.implicit, AccessMode.Static.FULL );
+              Statement statement = transaction.acquireStatement() )
         {
             IndexDescriptor descriptor = statement.schemaWriteOperations().indexCreate( 1, 1 );
             transaction.success();
@@ -164,28 +167,42 @@ public class KernelSchemaStateFlushingTest
 
     private void dropIndex( IndexDescriptor descriptor ) throws KernelException
     {
-        try ( KernelTransaction transaction = kernel.newTransaction();
-             Statement statement = transaction.acquireStatement() )
+        try ( KernelTransaction transaction = kernel.newTransaction( KernelTransaction.Type.implicit, AccessMode.Static.FULL );
+              Statement statement = transaction.acquireStatement() )
         {
             statement.schemaWriteOperations().indexDrop( descriptor );
             transaction.success();
         }
     }
 
-    private void awaitIndexOnline( IndexDescriptor descriptor )
+    private void awaitIndexOnline( IndexDescriptor descriptor, String keyForProbing )
             throws IndexNotFoundKernelException, TransactionFailureException
     {
-        try ( KernelTransaction transaction = kernel.newTransaction();
-             Statement statement = transaction.acquireStatement() )
+        try ( KernelTransaction transaction = kernel.newTransaction( KernelTransaction.Type.implicit, AccessMode.Static.FULL );
+              Statement statement = transaction.acquireStatement() )
         {
             SchemaIndexTestHelper.awaitIndexOnline( statement.readOperations(), descriptor );
+            transaction.success();
+        }
+        awaitSchemaStateCleared( keyForProbing );
+    }
+
+    private void awaitSchemaStateCleared( String keyForProbing ) throws TransactionFailureException
+    {
+        try ( KernelTransaction transaction = kernel.newTransaction( KernelTransaction.Type.implicit, AccessMode.Static.FULL );
+              Statement statement = transaction.acquireStatement() )
+        {
+            while ( statement.readOperations().schemaStateGetOrCreate( keyForProbing, (ignored) -> null ) != null )
+            {
+                LockSupport.parkNanos( MILLISECONDS.toNanos( 10 ) );
+            }
             transaction.success();
         }
     }
 
     private String commitToSchemaState( String key, String value ) throws TransactionFailureException
     {
-        try ( KernelTransaction transaction = kernel.newTransaction() )
+        try ( KernelTransaction transaction = kernel.newTransaction( KernelTransaction.Type.implicit, AccessMode.Static.FULL ) )
         {
             String result = getOrCreateFromState( transaction, key, value );
             transaction.success();
@@ -197,14 +214,7 @@ public class KernelSchemaStateFlushingTest
     {
         try ( Statement statement = tx.acquireStatement() )
         {
-            return statement.readOperations().schemaStateGetOrCreate( key, new Function<String, String>()
-            {
-                @Override
-                public String apply( String from )
-                {
-                    return value;
-                }
-            } );
+            return statement.readOperations().schemaStateGetOrCreate( key, from -> value );
         }
     }
 

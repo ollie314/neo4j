@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,6 +26,7 @@ import org.neo4j.cypher.internal.compiler.v3_0._
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryStateHelper
 import org.neo4j.cypher.internal.compiler.v3_0.spi.{Operations, QueryContext}
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.{FakeExpression, SymbolTable}
+import org.neo4j.cypher.internal.frontend.v3_0.{CypherTypeException, InvalidArgumentException}
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
 import org.neo4j.graphdb.{Node, Relationship}
@@ -51,7 +52,7 @@ class ContainerIndexTest extends CypherFunSuite {
   }
 
   test("handles empty collections") {
-    implicit val collection = Collection()
+    implicit val collection = ListLiteral()
 
     idx(0) should equal(expectedNull)
     idx(-1) should equal(expectedNull)
@@ -117,14 +118,27 @@ class ContainerIndexTest extends CypherFunSuite {
   test("when collection is a CTAny then type is a collection of CTAny") {
     val collection = new FakeExpression(CTAny)
     val symbols = new SymbolTable()
-    val result = ContainerIndex(collection, Literal(2)).evaluateType(CTCollection(CTAny), symbols)
+    val result = ContainerIndex(collection, Literal(2)).evaluateType(CTList(CTAny), symbols)
 
     result should equal(CTAny)
   }
 
-  private def idx(value: Int)(implicit collection: Expression) =
-    ContainerIndex(collection, Literal(value))(ctx)(state)
+  test("should fail when not integer values are passed") {
+    implicit val collection = Literal(Seq(1, 2, 3, 4))
 
-  private def idx(value: String)(implicit collection: Expression) =
+    a[CypherTypeException] should be thrownBy idx(1.0f)
+    a[CypherTypeException] should be thrownBy idx(1.0d)
+    a[CypherTypeException] should be thrownBy idx("bad value")
+  }
+
+  test("should fail when too big values are used to access the array") {
+    implicit val collection = Literal(Seq(1, 2, 3, 4))
+
+    val index = Int.MaxValue + 1L
+
+    an[InvalidArgumentException] should be thrownBy idx(index)
+  }
+
+  private def idx(value: Any)(implicit collection: Expression) =
     ContainerIndex(collection, Literal(value))(ctx)(state)
 }

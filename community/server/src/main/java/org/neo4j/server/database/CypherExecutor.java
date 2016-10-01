@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,21 +19,48 @@
  */
 package org.neo4j.server.database;
 
-import org.neo4j.cypher.javacompat.internal.ServerExecutionEngine;
+import javax.servlet.http.HttpServletRequest;
+
+import org.neo4j.cypher.internal.javacompat.ExecutionEngine;
+import org.neo4j.graphdb.DependencyResolver;
+import org.neo4j.graphdb.factory.GraphDatabaseSettings;
+import org.neo4j.kernel.GraphDatabaseQueryService;
+import org.neo4j.kernel.api.KernelTransaction;
+import org.neo4j.kernel.api.security.AccessMode;
+import org.neo4j.kernel.configuration.Config;
+import org.neo4j.kernel.impl.core.ThreadToStatementContextBridge;
+import org.neo4j.kernel.impl.coreapi.InternalTransaction;
+import org.neo4j.kernel.impl.coreapi.PropertyContainerLocker;
+import org.neo4j.kernel.impl.query.Neo4jTransactionalContext;
 import org.neo4j.kernel.impl.query.QueryExecutionEngine;
+import org.neo4j.kernel.impl.query.QuerySession;
+import org.neo4j.kernel.impl.query.TransactionalContext;
 import org.neo4j.kernel.lifecycle.LifecycleAdapter;
+import org.neo4j.logging.Log;
+import org.neo4j.logging.LogProvider;
+import org.neo4j.server.rest.web.ServerQuerySession;
+
+import static org.neo4j.server.web.HttpHeaderUtils.getTransactionTimeout;
 
 public class CypherExecutor extends LifecycleAdapter
 {
     private final Database database;
-    private ServerExecutionEngine executionEngine;
+    private ExecutionEngine executionEngine;
+    private GraphDatabaseQueryService service;
+    private ThreadToStatementContextBridge txBridge;
 
-    public CypherExecutor( Database database )
+    private static final PropertyContainerLocker locker = new PropertyContainerLocker();
+    private final boolean guardEnabled;
+    private final Log log;
+
+    public CypherExecutor( Database database, Config config, LogProvider logProvider )
     {
         this.database = database;
+        log = logProvider.getLog( getClass() );
+        guardEnabled = config.get( GraphDatabaseSettings.execution_guard_enabled );
     }
 
-    public ServerExecutionEngine getExecutionEngine()
+    public ExecutionEngine getExecutionEngine()
     {
         return executionEngine;
     }
@@ -41,13 +68,47 @@ public class CypherExecutor extends LifecycleAdapter
     @Override
     public void start() throws Throwable
     {
-        this.executionEngine = (ServerExecutionEngine) database.getGraph().getDependencyResolver()
-                                                               .resolveDependency( QueryExecutionEngine.class );
+        DependencyResolver dependencyResolver = database.getGraph().getDependencyResolver();
+        this.executionEngine = (ExecutionEngine) dependencyResolver.resolveDependency( QueryExecutionEngine.class );
+        this.service = executionEngine.queryService();
+        this.txBridge = dependencyResolver.resolveDependency( ThreadToStatementContextBridge.class );
     }
 
     @Override
     public void stop() throws Throwable
     {
         this.executionEngine = null;
+        this.service = null;
+        this.txBridge = null;
+    }
+
+    public QuerySession createSession( HttpServletRequest request )
+    {
+        InternalTransaction transaction = getInternalTransaction( request );
+        TransactionalContext context = new Neo4jTransactionalContext( service, transaction, txBridge.get(), locker );
+        return new ServerQuerySession( request, context );
+    }
+
+    private InternalTransaction getInternalTransaction( HttpServletRequest request )
+    {
+        if ( guardEnabled )
+        {
+            long customTimeout = getTransactionTimeout( request, log );
+            if ( customTimeout > 0 )
+            {
+                return beginCustomTransaction( customTimeout );
+            }
+        }
+        return beginDefaultTransaction();
+    }
+
+    private InternalTransaction beginCustomTransaction( long customTimeout )
+    {
+        return service.beginTransaction( KernelTransaction.Type.implicit, AccessMode.Static.FULL, customTimeout );
+    }
+
+    private InternalTransaction beginDefaultTransaction()
+    {
+        return service.beginTransaction( KernelTransaction.Type.implicit, AccessMode.Static.FULL );
     }
 }

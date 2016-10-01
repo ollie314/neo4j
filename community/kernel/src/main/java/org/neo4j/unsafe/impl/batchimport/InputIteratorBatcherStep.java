@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,10 +28,13 @@ import org.neo4j.unsafe.impl.batchimport.staging.StageControl;
  */
 public class InputIteratorBatcherStep<T> extends IteratorBatcherStep<T>
 {
+    private final InputIterator<T> data;
+
     public InputIteratorBatcherStep( StageControl control, Configuration config,
             InputIterator<T> data, Class<T> itemClass )
     {
         super( control, config, data, itemClass );
+        this.data = data;
     }
 
     @SuppressWarnings( { "unchecked", "rawtypes" } )
@@ -40,5 +43,24 @@ public class InputIteratorBatcherStep<T> extends IteratorBatcherStep<T>
     {
         Object batch = super.nextBatchOrNull( ticket, batchSize );
         return batch != null ? new Batch( (Object[]) batch ) : null;
+    }
+
+    @Override
+    public void close() throws Exception
+    {
+        data.close();
+        super.close();
+    }
+
+    @Override
+    protected long position()
+    {
+        return data.position();
+    }
+
+    @Override
+    public int processors( int delta )
+    {
+        return data.processors( delta );
     }
 }

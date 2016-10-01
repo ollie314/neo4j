@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,11 +20,11 @@
 package org.neo4j.cypher.internal.compiler.v3_0.mutation
 
 import org.neo4j.cypher.internal.compiler.v3_0._
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Identifier}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{ContainerIndex, Expression, Variable}
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{Effects, _}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
-import org.neo4j.cypher.internal.frontend.v3_0.{SemanticDirection, CypherTypeException}
+import org.neo4j.cypher.internal.frontend.v3_0.CypherTypeException
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 import org.neo4j.graphdb
 
@@ -46,23 +46,19 @@ case class DeleteEntityAction(elementToDelete: Expression, forced: Boolean)
 
   private def delete(x: graphdb.PropertyContainer, state: QueryState, forced: Boolean) {
     x match {
-      case n: graphdb.Node if !state.query.nodeOps.isDeleted(n) && forced =>
-        val rels = state.query.getRelationshipsForIds(n, SemanticDirection.BOTH, None)
-        rels.foreach(r => delete(r, state, forced))
-        state.query.nodeOps.delete(n)
+      case n: graphdb.Node if !state.query.nodeOps.isDeletedInThisTx(n) =>
+        if (forced) state.query.detachDeleteNode(n)
+        else state.query.nodeOps.delete(n)
 
-      case n: graphdb.Node if !state.query.nodeOps.isDeleted(n) =>
-        state.query.nodeOps.delete(n)
-
-      case r: graphdb.Relationship if !state.query.relationshipOps.isDeleted(r) =>
+      case r: graphdb.Relationship if !state.query.relationshipOps.isDeletedInThisTx(r) =>
         state.query.relationshipOps.delete(r)
 
       case _ =>
-        // Entity is already deleted. No need to do anything
+      // Entity is already deleted. No need to do anything
     }
   }
 
-  def identifiers: Seq[(String, CypherType)] = Nil
+  def variables: Seq[(String, CypherType)] = Nil
 
   def rewrite(f: (Expression) => Expression) =
     DeleteEntityAction(elementToDelete.rewrite(f), forced)
@@ -72,10 +68,20 @@ case class DeleteEntityAction(elementToDelete: Expression, forced: Boolean)
   def symbolTableDependencies = elementToDelete.symbolTableDependencies
 
   def localEffects(symbols: SymbolTable) = elementToDelete match {
-    case i: Identifier => symbols.identifiers(i.entityName) match {
-      case _: NodeType         => Effects(DeletesNode)
-      case _: RelationshipType => Effects(DeletesRelationship)
-      case _: PathType         => Effects(DeletesNode, DeletesRelationship)
+    case i: Variable => effectsFromCypherType(symbols.variables(i.entityName))
+    case ContainerIndex(i: Variable, _) => symbols.variables(i.entityName) match {
+      case ListType(innerType) => effectsFromCypherType(innerType)
     }
+    // There could be a nested map/collection expression here, so we'll
+    // just say that we don't know what type the entity has
+    case _ =>
+      Effects(DeletesNode, DeletesRelationship)
+  }
+
+  private def effectsFromCypherType(cypherType: CypherType) = cypherType match {
+    case _: NodeType         => Effects(DeletesNode)
+    case _: RelationshipType => Effects(DeletesRelationship)
+    case _: PathType         => Effects(DeletesNode, DeletesRelationship)
+    case _                   => Effects(DeletesNode, DeletesRelationship)
   }
 }

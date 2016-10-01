@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,14 +30,14 @@ public class IndexPopulationFailedKernelException extends KernelException
     public IndexPopulationFailedKernelException( IndexDescriptor descriptor, String indexUserDescription,
                                                  Throwable cause )
     {
-        super( Status.Schema.IndexCreationFailure, cause, FORMAT_MESSAGE, indexUserDescription,
+        super( Status.Schema.IndexCreationFailed, cause, FORMAT_MESSAGE, indexUserDescription,
                 descriptor.getLabelId(), descriptor.getPropertyKeyId() );
     }
 
     public IndexPopulationFailedKernelException( IndexDescriptor descriptor, String indexUserDescription,
                                                  String message )
     {
-        super( Status.Schema.IndexCreationFailure, FORMAT_MESSAGE + ", due to " + message,
+        super( Status.Schema.IndexCreationFailed, FORMAT_MESSAGE + ", due to " + message,
                indexUserDescription, descriptor.getLabelId(), descriptor.getPropertyKeyId() );
     }
 }

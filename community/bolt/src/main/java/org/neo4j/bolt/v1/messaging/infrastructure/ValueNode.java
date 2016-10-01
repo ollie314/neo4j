@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,18 +27,15 @@ import java.util.List;
 import java.util.Map;
 
 import org.neo4j.bolt.v1.messaging.BoltIOException;
+import org.neo4j.bolt.v1.messaging.Neo4jPack;
 import org.neo4j.graphdb.Direction;
-import org.neo4j.graphdb.DynamicLabel;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.NotFoundException;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
-import org.neo4j.graphdb.ReturnableEvaluator;
-import org.neo4j.graphdb.StopEvaluator;
-import org.neo4j.graphdb.Traverser;
 import org.neo4j.helpers.collection.Iterables;
-import org.neo4j.bolt.v1.messaging.Neo4jPack;
 import org.neo4j.kernel.api.exceptions.Status;
 
 public class ValueNode
@@ -50,15 +47,29 @@ public class ValueNode
     public static void pack( Neo4jPack.Packer packer, Node node )
             throws IOException
     {
+        //TODO: We should mark deleted nodes properly but that requires updates to protocol and
+        //clients. Until that we merely don't fail and return a node with neither labels nor properties
         packer.packStructHeader( STRUCT_FIELD_COUNT, Neo4jPack.NODE );
         packer.pack( node.getId() );
-        Collection<Label> collectedLabels = Iterables.toList( node.getLabels() );
-        packer.packListHeader( collectedLabels.size() );
-        for ( Label label : collectedLabels )
+        try
         {
-            packer.pack( label.name() );
+            //read labels and properties, will fail if node has been deleted
+            Collection<Label> collectedLabels = Iterables.asList( node.getLabels() );
+            Map<String, Object> props = node.getAllProperties();
+
+            packer.packListHeader( collectedLabels.size() );
+            for ( Label label : collectedLabels )
+            {
+                packer.pack( label.name() );
+            }
+            packer.packRawMap( props );
         }
-        packer.packProperties( node );
+        catch ( NotFoundException e )
+        {
+            //node is deleted, just send along an empty node
+            packer.packListHeader( 0 );
+            packer.packRawMap( Collections.emptyMap() );
+        }
     }
 
     public static ValueNode unpack( Neo4jPack.Unpacker unpacker )
@@ -67,7 +78,7 @@ public class ValueNode
         long numFields = unpacker.unpackStructHeader();
         char signature = unpacker.unpackStructSignature();
         if( signature != Neo4jPack.NODE ) {
-            throw new BoltIOException( Status.Request.InvalidFormat, "Expected a node structure, recieved 0x" + Integer.toHexString( signature ) );
+            throw new BoltIOException( Status.Request.InvalidFormat, "Expected a node structure, received 0x" + Integer.toHexString( signature ) );
         }
         if( numFields != STRUCT_FIELD_COUNT ) {
             throw new BoltIOException( Status.Request.InvalidFormat, "Node structures should have " + STRUCT_FIELD_COUNT
@@ -88,7 +99,7 @@ public class ValueNode
             labels = new ArrayList<>( numLabels );
             for ( int i = 0; i < numLabels; i++ )
             {
-                labels.add( DynamicLabel.label( unpacker.unpackText() ) );
+                labels.add( Label.label( unpacker.unpackString() ) );
             }
         }
         else
@@ -228,28 +239,6 @@ public class ValueNode
 
     @Override
     public int getDegree( RelationshipType relationshipType, Direction direction )
-    {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Traverser traverse( Traverser.Order order, StopEvaluator stopEvaluator,
-            ReturnableEvaluator returnableEvaluator, RelationshipType relationshipType, Direction direction )
-    {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Traverser traverse( Traverser.Order order, StopEvaluator stopEvaluator,
-            ReturnableEvaluator returnableEvaluator, RelationshipType relationshipType, Direction direction,
-            RelationshipType relationshipType2, Direction direction2 )
-    {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Traverser traverse( Traverser.Order order, StopEvaluator stopEvaluator,
-            ReturnableEvaluator returnableEvaluator, Object... objects )
     {
         throw new UnsupportedOperationException();
     }

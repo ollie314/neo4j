@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,6 +28,7 @@ import java.util.Map;
 
 import org.neo4j.bolt.v1.runtime.Session;
 import org.neo4j.bolt.v1.runtime.StatementMetadata;
+import org.neo4j.bolt.v1.runtime.spi.RecordStream;
 
 public class TransactionIT
 {
@@ -41,8 +42,8 @@ public class TransactionIT
     {
         // Given
         RecordingCallback<StatementMetadata, ?> responses = new RecordingCallback<>();
-        Session session = env.newSession();
-        session.init( "TestClient", null, null );
+        Session session = env.newSession( "<test>" );
+        session.init( "TestClient",  Collections.<String, Object>emptyMap(), null, null );
 
         // When
         session.run( "BEGIN", EMPTY_PARAMS, null, responses );
@@ -65,8 +66,8 @@ public class TransactionIT
     {
         // Given
         RecordingCallback<StatementMetadata, ?> responses = new RecordingCallback<>();
-        Session session = env.newSession();
-        session.init( "TestClient", null, null );
+        Session session = env.newSession( "<test>" );
+        session.init( "TestClient",  Collections.<String, Object>emptyMap(), null, null );
 
         // When
         session.run( "BEGIN", EMPTY_PARAMS, null, responses );
@@ -82,5 +83,24 @@ public class TransactionIT
         MatcherAssert.assertThat( responses.next(), SessionMatchers.success() );
         MatcherAssert.assertThat( responses.next(), SessionMatchers.success() );
         MatcherAssert.assertThat( responses.next(), SessionMatchers.success() );
+    }
+
+    @Test
+    public void shouldFailNicelyWhenOutOfOrderRollback() throws Throwable
+    {
+        // Given
+        RecordingCallback<StatementMetadata, ?> runResponse = new RecordingCallback<>();
+        RecordingCallback<RecordStream, Object> pullResponse = new RecordingCallback<>();
+        Session session = env.newSession( "<test>" );
+        session.init( "TestClient",  Collections.<String, Object>emptyMap(), null, null );
+
+        // When
+        session.run( "ROLLBACK", EMPTY_PARAMS, null, runResponse );
+        session.pullAll( null, pullResponse );
+
+        // Then
+        MatcherAssert.assertThat( runResponse.next(),
+                SessionMatchers.failedWith( "rollback cannot be done when there is no open transaction in the session."));
+        MatcherAssert.assertThat( pullResponse.next(), SessionMatchers.ignored());
     }
 }

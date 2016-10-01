@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,13 +23,11 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.Objects;
 
 import org.neo4j.graphdb.TransactionFailureException;
 import org.neo4j.graphdb.TransientDatabaseFailureException;
+import org.neo4j.kernel.api.exceptions.Status;
 import org.neo4j.kernel.impl.util.LazySingleReference;
-import org.neo4j.logging.Log;
-import org.neo4j.logging.LogProvider;
 
 /**
  * InvocationHandler for dynamic proxies that delegate calls to a given backing implementation. This is mostly
@@ -47,10 +45,7 @@ public class DelegateInvocationHandler<T> implements InvocationHandler
     // the next call to setDelegate and will never change since.
     private final LazySingleReference<T> concrete;
 
-    private final Log log;
-    private final String componentName;
-
-    public DelegateInvocationHandler( final Class<T> interfaceClass, LogProvider logProvider )
+    public DelegateInvocationHandler( final Class<T> interfaceClass )
     {
         concrete = new LazySingleReference<T>()
         {
@@ -62,8 +57,6 @@ public class DelegateInvocationHandler<T> implements InvocationHandler
                         new Class[] {interfaceClass}, new Concrete<>() );
             }
         };
-        log = logProvider.getLog( getClass() );
-        componentName = interfaceClass.getSimpleName();
     }
 
     /**
@@ -73,13 +66,16 @@ public class DelegateInvocationHandler<T> implements InvocationHandler
      * such that future calls to {@link #harden()} cannot affect any reference received
      * from {@link #cement()} prior to this call.
      * @param delegate the new delegate to set.
+     *
+     * @return the old delegate
      */
-    public void setDelegate( T delegate )
+    public T setDelegate( T delegate )
     {
-        log( "Delegate updated from %s to %s", this.delegate, delegate );
-        this.delegate = Objects.requireNonNull( delegate, "delegate should not be null" );
+        T oldDelegate = this.delegate;
+        this.delegate = delegate;
         harden();
         concrete.invalidate();
+        return oldDelegate;
     }
 
     /**
@@ -90,7 +86,6 @@ public class DelegateInvocationHandler<T> implements InvocationHandler
     @SuppressWarnings( "unchecked" )
     void harden()
     {
-        log( "Delegate hardened to %s", delegate );
         ((Concrete<T>) Proxy.getInvocationHandler( concrete.get() )).set( delegate );
     }
 
@@ -99,7 +94,13 @@ public class DelegateInvocationHandler<T> implements InvocationHandler
     {
         if ( delegate == null )
         {
-            throw new TransactionFailureException( "Instance state changed after this transaction started." );
+            throw new StateChangedTransactionFailureException(
+                    "This transaction made assumptions about the instance it is executing " +
+                    "on that no longer hold true. This normally happens when a transaction " +
+                    "expects the instance it is executing on to be in some specific cluster role" +
+                    "(such as 'master' or 'slave') and the instance " +
+                    "changing state while the transaction is executing. Simply retry your " +
+                    "transaction and you should see a successful outcome." );
         }
         return proxyInvoke( delegate, method, args );
     }
@@ -123,7 +124,6 @@ public class DelegateInvocationHandler<T> implements InvocationHandler
      */
     public T cement()
     {
-        log( "Delegate cemented" );
         return concrete.get();
     }
 
@@ -131,14 +131,6 @@ public class DelegateInvocationHandler<T> implements InvocationHandler
     public String toString()
     {
         return "Delegate[" + delegate + "]";
-    }
-
-    private void log( String format, Object... arguments )
-    {
-        if ( log.isDebugEnabled() )
-        {
-            log.debug( "[" + componentName + "]" + format, arguments );
-        }
     }
 
     private static class Concrete<T> implements InvocationHandler
@@ -156,8 +148,9 @@ public class DelegateInvocationHandler<T> implements InvocationHandler
             if ( delegate == null )
             {
                 throw new TransientDatabaseFailureException(
-                        "Transaction state is not valid. Perhaps a state change of" +
-                        "the database has happened while this transaction was running?" );
+                        "Instance state is not valid. There is no master currently available. Possible causes " +
+                                "include unavailability of a majority of the cluster members or network failure " +
+                                "that caused this instance to be partitioned away from the cluster" );
             }
 
             return proxyInvoke( delegate, method, args );
@@ -167,6 +160,25 @@ public class DelegateInvocationHandler<T> implements InvocationHandler
         public String toString()
         {
             return "Concrete[" + delegate + "]";
+        }
+    }
+
+    /**
+     * Because we don't want the public API to implement `HasStatus`, and because
+     * we don't want to change the API from throwing `TransactionFailureException` for
+     * backwards compat reasons, we throw this sub-class that adds a status code.
+     */
+    static class StateChangedTransactionFailureException extends TransactionFailureException implements Status.HasStatus
+    {
+        public StateChangedTransactionFailureException( String msg )
+        {
+            super( msg );
+        }
+
+        @Override
+        public Status status()
+        {
+            return Status.Transaction.InstanceStateChanged;
         }
     }
 }

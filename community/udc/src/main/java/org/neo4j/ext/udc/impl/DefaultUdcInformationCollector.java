@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,8 +19,6 @@
  */
 package org.neo4j.ext.udc.impl;
 
-import com.sun.management.OperatingSystemMXBean;
-
 import java.io.File;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
@@ -35,9 +33,10 @@ import java.util.regex.Pattern;
 
 import org.neo4j.ext.udc.UdcSettings;
 import org.neo4j.graphdb.config.Setting;
+import org.neo4j.kernel.impl.util.OsBeanUtil;
 import org.neo4j.helpers.collection.MapUtil;
-import org.neo4j.kernel.IdGeneratorFactory;
-import org.neo4j.kernel.IdType;
+import org.neo4j.kernel.impl.store.id.IdGeneratorFactory;
+import org.neo4j.kernel.impl.store.id.IdType;
 import org.neo4j.kernel.NeoStoreDataSource;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.impl.core.StartupStatistics;
@@ -49,6 +48,7 @@ import static org.neo4j.ext.udc.UdcConstants.CLUSTER_HASH;
 import static org.neo4j.ext.udc.UdcConstants.DATABASE_MODE;
 import static org.neo4j.ext.udc.UdcConstants.DISTRIBUTION;
 import static org.neo4j.ext.udc.UdcConstants.EDITION;
+import static org.neo4j.ext.udc.UdcConstants.FEATURES;
 import static org.neo4j.ext.udc.UdcConstants.HEAP_SIZE;
 import static org.neo4j.ext.udc.UdcConstants.ID;
 import static org.neo4j.ext.udc.UdcConstants.LABEL_IDS_IN_USE;
@@ -73,7 +73,6 @@ public class DefaultUdcInformationCollector implements UdcInformationCollector
 {
     private final Config config;
     private final UsageData usageData;
-    @SuppressWarnings("deprecation")
     private final IdGeneratorFactory idGeneratorFactory;
 
     private String storeId;
@@ -95,7 +94,7 @@ public class DefaultUdcInformationCollector implements UdcInformationCollector
                 public void registered( NeoStoreDataSource ds )
                 {
                     crashPing = startupStatistics.numberOfRecoveredTransactions() > 0;
-                    storeId = Long.toHexString( ds.getRandomIdentifier() );
+                    storeId = Long.toHexString( ds.getStoreId().getRandomId() );
                 }
 
                 @Override
@@ -148,6 +147,8 @@ public class DefaultUdcInformationCollector implements UdcInformationCollector
         add( udcFields, RELATIONSHIP_IDS_IN_USE, determineRelationshipIdsInUse() );
         add( udcFields, LABEL_IDS_IN_USE, determineLabelIdsInUse() );
         add( udcFields, PROPERTY_IDS_IN_USE, determinePropertyIdsInUse() );
+
+        add( udcFields, FEATURES, usageData.get( UsageDataKeys.features ).asHex() );
 
         udcFields.putAll( determineSystemProperties() );
         return udcFields;
@@ -269,26 +270,7 @@ public class DefaultUdcInformationCollector implements UdcInformationCollector
 
     private long determineTotalMemory()
     {
-        java.lang.management.OperatingSystemMXBean operatingSystemMXBean = ManagementFactory.getOperatingSystemMXBean();
-        try
-        {
-            return ((OperatingSystemMXBean) operatingSystemMXBean).getTotalPhysicalMemorySize();
-        }
-        catch ( Throwable e )
-        {
-            // If not running on Oracle JDK
-
-            // Try IBM JDK method
-            try
-            {
-                return (Long)operatingSystemMXBean.getClass().getMethod( "getTotalPhysicalMemory" ).invoke( operatingSystemMXBean );
-            }
-            catch ( Throwable e1 )
-            {
-                // Give up
-                return -1;
-            }
-        }
+        return OsBeanUtil.getTotalPhysicalMemory();
     }
 
     private long determineHeapSize()

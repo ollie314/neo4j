@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,19 +23,22 @@ import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 
 class ToStringTest extends FunctionTestBase("toString")  {
 
-  test("should accept correct types") {
+  test("should accept correct types or types that could be correct at runtime") {
     testValidTypes(CTString)(CTString)
     testValidTypes(CTFloat)(CTString)
     testValidTypes(CTInteger)(CTString)
+    testValidTypes(CTBoolean)(CTString)
+    testValidTypes(CTAny.covariant)(CTString)
+    testValidTypes(CTNumber.covariant)(CTString)
   }
 
   test("should fail type check for incompatible arguments") {
-    testInvalidApplication(CTCollection(CTAny))(
-      "Type mismatch: expected Float, Integer or String but was Collection<Any>"
+    testInvalidApplication(CTRelationship)(
+      "Type mismatch: expected Boolean, Float, Integer or String but was Relationship"
     )
 
     testInvalidApplication(CTNode)(
-      "Type mismatch: expected Float, Integer or String but was Node"
+      "Type mismatch: expected Boolean, Float, Integer or String but was Node"
     )
   }
 

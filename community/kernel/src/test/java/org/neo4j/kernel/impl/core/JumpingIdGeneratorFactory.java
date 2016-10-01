@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,17 +24,17 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.neo4j.kernel.IdGeneratorFactory;
-import org.neo4j.kernel.IdType;
 import org.neo4j.kernel.impl.store.id.IdGenerator;
-import org.neo4j.kernel.impl.store.id.IdGeneratorImpl;
+import org.neo4j.kernel.impl.store.id.IdGeneratorFactory;
 import org.neo4j.kernel.impl.store.id.IdRange;
+import org.neo4j.kernel.impl.store.id.IdType;
+import org.neo4j.kernel.impl.store.id.validation.IdValidator;
 import org.neo4j.test.impl.EphemeralIdGenerator;
 
 public class JumpingIdGeneratorFactory implements IdGeneratorFactory
 {
     private final Map<IdType, IdGenerator> generators = new EnumMap<>( IdType.class );
-    private final IdGenerator forTheRest = new EphemeralIdGenerator( null );
+    private final IdGenerator forTheRest = new EphemeralIdGenerator( null, null );
 
     private final int sizePerJump;
 
@@ -44,7 +44,13 @@ public class JumpingIdGeneratorFactory implements IdGeneratorFactory
     }
 
     @Override
-    public IdGenerator open( File fileName, int grabSize, IdType idType, long highId )
+    public IdGenerator open( File fileName, int grabSize, IdType idType, long highId, long maxId )
+    {
+        return get( idType );
+    }
+
+    @Override
+    public IdGenerator open( File filename, IdType idType, long highId, long maxId )
     {
         return get( idType );
     }
@@ -92,7 +98,7 @@ public class JumpingIdGeneratorFactory implements IdGeneratorFactory
         private long tryNextId()
         {
             long result = nextId.getAndIncrement();
-            if ( result == IdGeneratorImpl.INTEGER_MINUS_ONE )
+            if ( IdValidator.isReservedId( result ) )
             {
                 result = nextId.getAndIncrement();
                 leftToNextJump--;

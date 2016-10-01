@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,12 +20,12 @@
 package org.neo4j.cypher.internal.compiler.v3_0.planner
 
 import org.neo4j.cypher.internal.frontend.v3_0.SemanticTable
-import org.neo4j.cypher.internal.frontend.v3_0.ast.{PropertyKeyName, RelTypeName, LabelName, Query}
+import org.neo4j.cypher.internal.frontend.v3_0.ast._
 import org.neo4j.cypher.internal.frontend.v3_0.notification.{MissingPropertyNameNotification, MissingRelTypeNotification, MissingLabelNotification, InternalNotification}
 
 /**
- * Parses ast and looks for unresolved tokens
- */
+  * Parses ast and looks for unresolved tokens
+  */
 object checkForUnresolvedTokens extends ((Query, SemanticTable) => Seq[InternalNotification]) {
 
   def apply(ast: Query, table: SemanticTable) = {
@@ -34,16 +34,14 @@ object checkForUnresolvedTokens extends ((Query, SemanticTable) => Seq[InternalN
     def isEmptyPropertyName(name: String) = !table.resolvedPropertyKeyNames.contains(name)
 
     ast.treeFold(Seq.empty[InternalNotification]) {
+      case label@LabelName(name) if isEmptyLabel(name) => acc =>
+        (acc :+ MissingLabelNotification(label.position, name), Some(identity))
 
-      case label@LabelName(name) if isEmptyLabel(name) => (acc, children) => children(
-        acc :+ MissingLabelNotification(label.position, name))
+      case rel@RelTypeName(name) if isEmptyRelType(name) => acc =>
+        (acc :+ MissingRelTypeNotification(rel.position, name), Some(identity))
 
-      case rel@RelTypeName(name) if isEmptyRelType(name) => (acc, children) => children(
-        acc :+ MissingRelTypeNotification(rel.position, name))
-
-      case prop@PropertyKeyName(name) if isEmptyPropertyName(name) => (acc, children) => children(
-        acc :+ MissingPropertyNameNotification(prop.position, name))
-
+      case Property(_, prop@PropertyKeyName(name)) if isEmptyPropertyName(name) => acc =>
+        (acc :+ MissingPropertyNameNotification(prop.position, name), Some(identity))
     }
   }
 }

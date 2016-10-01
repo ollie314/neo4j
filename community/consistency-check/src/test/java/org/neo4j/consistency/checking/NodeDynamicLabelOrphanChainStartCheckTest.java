@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,14 +26,13 @@ import java.util.ArrayList;
 import java.util.Collection;
 
 import org.neo4j.consistency.report.ConsistencyReport.DynamicLabelConsistencyReport;
+import org.neo4j.helpers.collection.Iterators;
 import org.neo4j.kernel.impl.store.PreAllocatedRecords;
 import org.neo4j.kernel.impl.store.record.DynamicRecord;
 import org.neo4j.kernel.impl.store.record.NodeRecord;
 
 import static org.mockito.Mockito.verify;
-
-import static org.neo4j.helpers.collection.IteratorUtil.iterator;
-import static org.neo4j.helpers.collection.IteratorUtil.single;
+import static org.neo4j.helpers.collection.Iterators.iterator;
 import static org.neo4j.kernel.impl.store.DynamicArrayStore.allocateFromNumbers;
 import static org.neo4j.kernel.impl.store.DynamicNodeLabels.dynamicPointer;
 
@@ -122,7 +121,7 @@ public class NodeDynamicLabelOrphanChainStartCheckTest
         add( nodeRecord );
 
         // when
-        DynamicLabelConsistencyReport report = check( single( validLabelRecords.iterator() ) );
+        DynamicLabelConsistencyReport report = check( Iterators.single( validLabelRecords.iterator() ) );
 
         // then
         verify( report ).orphanDynamicLabelRecordDueToInvalidOwner( nodeRecord );

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,27 +25,27 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
-import org.neo4j.function.Function;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.ResourceIterator;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.helpers.ArrayUtil;
-import org.neo4j.helpers.ObjectUtil;
+import org.neo4j.helpers.Strings;
+import org.neo4j.helpers.collection.Iterables;
+import org.neo4j.helpers.collection.Iterators;
 import org.neo4j.test.TestGraphDatabaseFactory;
 
 import static org.junit.Assert.assertEquals;
-import static org.neo4j.graphdb.DynamicLabel.label;
+import static org.neo4j.graphdb.Label.label;
 import static org.neo4j.graphdb.Neo4jMatchers.createConstraint;
-import static org.neo4j.helpers.collection.Iterables.map;
-import static org.neo4j.helpers.collection.IteratorUtil.asCollection;
-import static org.neo4j.helpers.collection.IteratorUtil.asIterable;
-import static org.neo4j.helpers.collection.IteratorUtil.asSet;
+import static org.neo4j.helpers.collection.Iterators.asSet;
 
 /*
  * The purpose of this test class is to make sure all index providers produce the same results.
@@ -112,17 +112,9 @@ public abstract class SchemaConstraintProviderApprovalTest
     }
 
     @Parameters(name = "{0}")
-    public static Collection<Object[]> data()
+    public static Collection<TestValue> data()
     {
-        Iterable<TestValue> testValues = asIterable( TestValue.values() );
-        return asCollection( map( new Function<TestValue, Object[]>()
-        {
-            @Override
-            public Object[] apply( TestValue testValue )
-            {
-                return new Object[]{testValue};
-            }
-        }, testValues ) );
+        return Arrays.asList( TestValue.values() );
     }
 
     @BeforeClass
@@ -142,25 +134,20 @@ public abstract class SchemaConstraintProviderApprovalTest
 
     public static final String LABEL = "Person";
     public static final String PROPERTY_KEY = "name";
-    public static final Function<Node, Object> PROPERTY_EXTRACTOR = new Function<Node, Object>()
-    {
-        @Override
-        public Object apply( Node node )
+    public static final Function<Node, Object> PROPERTY_EXTRACTOR = node -> {
+        Object value = node.getProperty( PROPERTY_KEY );
+        if ( value.getClass().isArray() )
         {
-            Object value = node.getProperty( PROPERTY_KEY );
-            if ( value.getClass().isArray() )
-            {
-                return new ArrayEqualityObject( value );
-            }
-            return value;
+            return new ArrayEqualityObject( value );
         }
+        return value;
     };
 
     @Test
     public void test()
     {
-        Set<Object> noIndexResult = asSet( noIndexRun.get( currentValue ) );
-        Set<Object> constraintResult = asSet( constraintRun.get( currentValue ) );
+        Set<Object> noIndexResult = Iterables.asSet( noIndexRun.get( currentValue ) );
+        Set<Object> constraintResult = Iterables.asSet( constraintRun.get( currentValue ) );
 
         String errorMessage = currentValue.toString();
 
@@ -196,7 +183,7 @@ public abstract class SchemaConstraintProviderApprovalTest
                                       TestValue value )
     {
         ResourceIterator<Node> foundNodes = db.findNodes( label( LABEL ), PROPERTY_KEY, value.value );
-        Set<Object> propertyValues = asSet( map( PROPERTY_EXTRACTOR, foundNodes ) );
+        Set<Object> propertyValues = asSet( Iterators.map( PROPERTY_EXTRACTOR, foundNodes ) );
         results.put( value, propertyValues );
     }
 
@@ -224,7 +211,7 @@ public abstract class SchemaConstraintProviderApprovalTest
         @Override
         public String toString()
         {
-            return ObjectUtil.toString( array );
+            return Strings.prettyPrint( array );
         }
     }
 }

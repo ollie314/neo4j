@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -193,7 +193,7 @@ abstract class DynamicOwner<RECORD extends AbstractBaseRecord> implements Owner
 
         PropertyKey( PropertyKeyTokenRecord record )
         {
-            this.id = record.getId();
+            this.id = record.getIntId();
         }
 
         @Override
@@ -209,7 +209,7 @@ abstract class DynamicOwner<RECORD extends AbstractBaseRecord> implements Owner
 
         LabelToken( LabelTokenRecord record )
         {
-            this.id = record.getId();
+            this.id = record.getIntId();
         }
 
         @Override
@@ -225,7 +225,7 @@ abstract class DynamicOwner<RECORD extends AbstractBaseRecord> implements Owner
 
         RelationshipTypeToken( RelationshipTypeTokenRecord record )
         {
-            this.id = record.getId();
+            this.id = record.getIntId();
         }
 
         @Override
@@ -249,6 +249,7 @@ abstract class DynamicOwner<RECORD extends AbstractBaseRecord> implements Owner
             return skipReference();
         }
 
+        @Override
         public void checkOrphanage()
         {
             PendingReferenceCheck<AbstractBaseRecord> reporter = pop();

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,12 +22,11 @@ package org.neo4j.concurrencytest;
 import org.junit.Rule;
 import org.junit.Test;
 
-import org.neo4j.function.Function;
-import org.neo4j.function.Supplier;
-import org.neo4j.graphdb.GraphDatabaseService;
+import java.util.function.Supplier;
+
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.kernel.GraphDatabaseAPI;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import org.neo4j.kernel.api.Statement;
 import org.neo4j.kernel.api.exceptions.schema.UniquePropertyConstraintViolationKernelException;
 import org.neo4j.kernel.api.index.IndexDescriptor;
@@ -38,7 +37,7 @@ import org.neo4j.test.ThreadingRule;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
-import static org.neo4j.graphdb.DynamicLabel.label;
+import static org.neo4j.graphdb.Label.label;
 import static org.neo4j.kernel.api.properties.Property.property;
 
 public class ConstraintIndexConcurrencyTest
@@ -79,7 +78,14 @@ public class ConstraintIndexConcurrencyTest
                     "The value is irrelevant, we just want to perform some sort of lookup against this index" );
 
             // then let another thread come in and create a node
-            threads.execute( createNode( label, propertyKey, conflictingValue ), graphDb ).get();
+            threads.execute( db -> {
+                try ( Transaction transaction = db.beginTx() )
+                {
+                    db.createNode( label ).setProperty( propertyKey, conflictingValue );
+                    transaction.success();
+                }
+                return null;
+            }, graphDb ).get();
 
             // before we create a node with the same property ourselves - using the same statement that we have
             // already used for lookup against that very same index
@@ -101,23 +107,5 @@ public class ConstraintIndexConcurrencyTest
 
             tx.success();
         }
-    }
-
-    private static Function<GraphDatabaseService,Void> createNode(
-            final Label label, final String key, final Object value )
-    {
-        return new Function<GraphDatabaseService,Void>()
-        {
-            @Override
-            public Void apply( GraphDatabaseService graphDb )
-            {
-                try ( Transaction tx = graphDb.beginTx() )
-                {
-                    graphDb.createNode( label ).setProperty( key, value );
-                    tx.success();
-                }
-                return null;
-            }
-        };
     }
 }

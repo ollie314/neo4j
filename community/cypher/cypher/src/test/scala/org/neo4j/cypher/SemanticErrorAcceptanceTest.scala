@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,16 +19,44 @@
  */
 package org.neo4j.cypher
 
-import org.neo4j.graphdb.QueryExecutionException
+import java.util
 
-import scala.collection.JavaConverters._
+import org.neo4j.graphdb.QueryExecutionException
 
 class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
 
   test("return node that's not there") {
     executeAndEnsureError(
       "match (n) where id(n) = 0 return bar",
-      "bar not defined (line 1, column 34 (offset: 33))"
+      "Variable `bar` not defined (line 1, column 34 (offset: 33))"
+    )
+  }
+
+  test("don't allow a string after IN") {
+    executeAndEnsureError(
+      "MATCH (n) where id(n) IN '' return 1",
+      "Type mismatch: expected Collection<T> but was String (line 1, column 26 (offset: 25))"
+    )
+  }
+
+  test("don't allow a integer after IN") {
+    executeAndEnsureError(
+      "MATCH (n) WHERE id(n) IN 1 RETURN 1",
+      "Type mismatch: expected Collection<T> but was Integer (line 1, column 26 (offset: 25))"
+    )
+  }
+
+  test("don't allow a float after IN") {
+    executeAndEnsureError(
+      "MATCH (n) WHERE id(n) IN 1.0 RETURN 1",
+      "Type mismatch: expected Collection<T> but was Float (line 1, column 26 (offset: 25))"
+    )
+  }
+
+  test("don't allow a boolean after IN") {
+    executeAndEnsureError(
+      "MATCH (n) WHERE id(n) IN true RETURN 1",
+      "Type mismatch: expected Collection<T> but was Boolean (line 1, column 26 (offset: 25))"
     )
   }
 
@@ -45,10 +73,38 @@ class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
     )
   }
 
-  test("cant use TYPE on nodes") {
+  test("cant use type() on nodes") {
     executeAndEnsureError(
-      "match (r) where id(r) = 0 return type(r)",
-      "Type mismatch: expected Relationship but was Node (line 1, column 39 (offset: 38))"
+      "MATCH (r) RETURN type(r)",
+      "Type mismatch: expected Relationship but was Node (line 1, column 23 (offset: 22))"
+    )
+  }
+
+  test("cant use labels() on relationships") {
+    executeAndEnsureError(
+      "MATCH ()-[r]-() RETURN labels(r)",
+      "Type mismatch: expected Node but was Relationship (line 1, column 31 (offset: 30))"
+    )
+  }
+
+  test("cant use toInt() on booleans") {
+    executeAndEnsureError(
+      "RETURN toInt(true)",
+      "Type mismatch: expected Float, Integer, Number or String but was Boolean (line 1, column 14 (offset: 13))"
+    )
+  }
+
+  test("cant use toFloat() on booleans") {
+    executeAndEnsureError(
+      "RETURN toFloat(false)",
+      "Type mismatch: expected Float, Integer, Number or String but was Boolean (line 1, column 16 (offset: 15))"
+    )
+  }
+
+  test("cant use toString() on nodes") {
+    executeAndEnsureError(
+      "MATCH (n) RETURN toString(n)",
+      "Type mismatch: expected Boolean, Float, Integer or String but was Node (line 1, column 27 (offset: 26))"
     )
   }
 
@@ -59,10 +115,10 @@ class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
     )
   }
 
-  test("cant re-use relationship identifier") {
+  test("cant re-use relationship variable") {
     executeAndEnsureError(
       "match (a)-[r]->(b)-[r]->(a) where id(a) = 0 return r",
-      "Cannot use the same relationship identifier 'r' for multiple patterns (line 1, column 21 (offset: 20))"
+      "Cannot use the same relationship variable 'r' for multiple patterns (line 1, column 21 (offset: 20))"
     )
   }
 
@@ -80,10 +136,10 @@ class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
     )
   }
 
-  test("should complain about unknown identifier") {
+  test("should complain about unknown variable") {
     executeAndEnsureError(
       "match (s) where s.name = Name and s.age = 10 return s",
-      "Name not defined (line 1, column 26 (offset: 25))"
+      "Variable `Name` not defined (line 1, column 26 (offset: 25))"
     )
   }
 
@@ -159,10 +215,10 @@ class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
     )
   }
 
-  test("should be semantically incorrect to refer to unknown identifier in create constraint") {
+  test("should be semantically incorrect to refer to unknown variable in create constraint") {
     executeAndEnsureError(
       "create constraint on (foo:Foo) assert bar.name is unique",
-      "bar not defined (line 1, column 39 (offset: 38))"
+      "Variable `bar` not defined (line 1, column 39 (offset: 38))"
     )
   }
 
@@ -173,10 +229,10 @@ class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
     )
   }
 
-  test("should be semantically incorrect to refer to unknown identifier in drop constraint") {
+  test("should be semantically incorrect to refer to unknown variable in drop constraint") {
     executeAndEnsureError(
       "drop constraint on (foo:Foo) assert bar.name is unique",
-      "bar not defined (line 1, column 37 (offset: 36))"
+      "Variable `bar` not defined (line 1, column 37 (offset: 36))"
     )
   }
 
@@ -195,43 +251,43 @@ class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
     )
   }
 
-  test("should not allow identifier to be overwritten by create") {
+  test("should not allow variable to be overwritten by create") {
     executeAndEnsureError(
       "match (a) where id(a) = 0 create (a)",
-      "a already declared (line 1, column 35 (offset: 34))"
+      "Variable `a` already declared (line 1, column 35 (offset: 34))"
     )
   }
 
-  test("should not allow identifier to be overwritten by merge") {
+  test("should not allow variable to be overwritten by merge") {
     executeAndEnsureError(
       "match (a) where id(a) = 0 merge (a)",
-      "a already declared (line 1, column 34 (offset: 33))"
+      "Variable `a` already declared (line 1, column 34 (offset: 33))"
     )
   }
 
-  test("should not allow identifier to be overwritten by create relationship") {
+  test("should not allow variable to be overwritten by create relationship") {
     executeAndEnsureError(
       "match (a), ()-[r]-() where id(a) = 0 and id(r) = 1 create (a)-[r:TYP]->()",
-      "r already declared (line 1, column 64 (offset: 63))"
+      "Variable `r` already declared (line 1, column 64 (offset: 63))"
     )
   }
 
-  test("should not allow identifier to be overwritten by merge relationship") {
+  test("should not allow variable to be overwritten by merge relationship") {
     executeAndEnsureError(
       "match (a), ()-[r]-() where id(a) = 0 and id(r) = 1 merge (a)-[r:TYP]->()",
-      "r already declared (line 1, column 63 (offset: 62))"
+      "Variable `r` already declared (line 1, column 63 (offset: 62))"
     )
   }
 
-  test("should not allow identifier to be introduced in pattern expression") {
+  test("should not allow variable to be introduced in pattern expression") {
     executeAndEnsureError(
       "match (n) return (n)-[:TYP]->(b)",
-      "b not defined (line 1, column 31 (offset: 30))"
+      "Variable `b` not defined (line 1, column 31 (offset: 30))"
     )
 
     executeAndEnsureError(
       "match (n) return (n)-[r:TYP]->()",
-      "r not defined (line 1, column 23 (offset: 22))"
+      "Variable `r` not defined (line 1, column 23 (offset: 22))"
     )
   }
 
@@ -315,10 +371,10 @@ class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
     )
   }
 
-  test("should fail if using an hint with an unknown identifier") {
+  test("should fail if using an hint with an unknown variable") {
     executeAndEnsureError(
       "match (n:Person)-->() using index m:Person(name) where n.name = \"kabam\" return n",
-      "m not defined (line 1, column 35 (offset: 34))"
+      "Variable `m` not defined (line 1, column 35 (offset: 34))"
     )
   }
 
@@ -345,14 +401,14 @@ class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
     )
   }
 
-  test("should fail if unknown identifier in merge action set clause") {
+  test("should fail if unknown variable in merge action set clause") {
     executeAndEnsureError(
       "MERGE (n:Person) ON CREATE SET x.foo = 1",
-      "x not defined (line 1, column 32 (offset: 31))"
+      "Variable `x` not defined (line 1, column 32 (offset: 31))"
     )
     executeAndEnsureError(
       "MERGE (n:Person) ON MATCH SET x.foo = 1",
-      "x not defined (line 1, column 31 (offset: 30))")
+      "Variable `x` not defined (line 1, column 31 (offset: 30))")
   }
 
   test("should fail if using legacy optionals match") {
@@ -390,17 +446,55 @@ class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
     )
   }
 
+  test("should warn when addition overflows") {
+    executeAndEnsureError(
+      s"RETURN ${Long.MaxValue} + 1",
+      "result of 9223372036854775807 + 1 cannot be represented as an integer (line 1, column 28 (offset: 27))"
+    )
+  }
+
+  test("should fail nicely when addition overflows in runtime") {
+    executeAndEnsureError(
+      s"RETURN {t1} + {t2}",
+      "result of 9223372036854775807 + 1 cannot be represented as an integer",
+      "t1" -> Long.MaxValue, "t2" -> 1
+    )
+  }
+
+  test("should warn when subtraction underflows") {
+    executeAndEnsureError(
+      s"RETURN ${Long.MinValue} - 1",
+      "result of -9223372036854775808 - 1 cannot be represented as an integer (line 1, column 29 (offset: 28))"
+    )
+  }
+
+  test("should fail nicely when subtraction underflows in runtime") {
+    executeAndEnsureError(
+      s"RETURN {t1} - {t2}",
+      "result of -9223372036854775808 - 1 cannot be represented as an integer",
+      "t1" -> Long.MinValue, "t2" -> 1
+    )
+  }
+
+  test("should warn when multiplication overflows") {
+    executeAndEnsureError(
+      s"RETURN ${Long.MaxValue} * 10",
+      "result of 9223372036854775807 * 10 cannot be represented as an integer (line 1, column 28 (offset: 27))"
+    )
+  }
+
+  test("should fail nicely when multiplication overflows in runtime") {
+    executeAndEnsureError(
+      s"RETURN {t1} + {t2}",
+      "result of 9223372036854775807 + 1 cannot be represented as an integer",
+      "t1" -> Long.MaxValue, "t2" -> 1
+    )
+  }
+
   test("should warn on over sized double") {
     executeAndEnsureError(
       "RETURN 1.34E999",
       "floating point number is too large (line 1, column 8 (offset: 7))"
-    )
-  }
-
-  test("should give type error for actions on mixed collection") {
-    executeAndEnsureError(
-      "RETURN (['a', 1][0]).prop",
-      "Type mismatch: expected Map, Node or Relationship but was Any (line 1, column 19 (offset: 18))"
     )
   }
 
@@ -458,7 +552,7 @@ class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
   test("should reject unicode versions of hyphens") {
     executeAndEnsureError(
       "RETURN 42 — 41",
-      """Invalid input '—': expected whitespace, comment, '.', node labels, '[', "=~", IN, STARTS, ENDS, CONTAINS, IS, '^', '*', '/', '%', '+', '-', '=', "<>", "!=", '<', '>', "<=", ">=", AND, XOR, OR, AS, ',', ORDER, SKIP, LIMIT, LOAD CSV, START, MATCH, UNWIND, MERGE, CREATE, SET, DELETE, REMOVE, FOREACH, WITH, RETURN, UNION, ';' or end of input (line 1, column 11 (offset: 10))""")
+      """Invalid input '—': expected whitespace, comment, '.', node labels, '[', "=~", IN, STARTS, ENDS, CONTAINS, IS, '^', '*', '/', '%', '+', '-', '=', "<>", "!=", '<', '>', "<=", ">=", AND, XOR, OR, AS, ',', ORDER, SKIP, LIMIT, LOAD CSV, START, MATCH, UNWIND, MERGE, CREATE, SET, DELETE, REMOVE, FOREACH, WITH, CALL, RETURN, UNION, ';' or end of input (line 1, column 11 (offset: 10))""")
   }
 
   test("fail when parsing larger than 64 bit integers") {
@@ -474,7 +568,7 @@ class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
 
   test("aggregation inside looping queries is not allowed") {
 
-    val mess = "Can't use aggregating expressions inside of expressions executing over collections"
+    val mess = "Can't use aggregating expressions inside of expressions executing over lists"
     executeAndEnsureError(
       "MATCH (n) RETURN [x in [1,2,3,4,5] | count(*)]",
       s"$mess (line 1, column 24 (offset: 23))")
@@ -513,21 +607,21 @@ class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
     val error = intercept[QueryExecutionException](graph.execute(query))
 
     val first :: second :: third :: Nil = error.getMessage.lines.toList
-    first should equal("o not defined (line 1, column 37 (offset: 36))")
+    first should equal("Variable `o` not defined (line 1, column 37 (offset: 36))")
     second should equal(s""""$query"""")
     third should startWith(" "*37 + "^")
   }
 
   test("positions should not be cached") {
     executeAndEnsureError("EXPLAIN MATCH (m), (n) RETURN m, n, o LIMIT 25",
-      "o not defined (line 1, column 37 (offset: 36))")
+      "Variable `o` not defined (line 1, column 37 (offset: 36))")
     executeAndEnsureError("MATCH (m), (n) RETURN m, n, o LIMIT 25",
-      "o not defined (line 1, column 29 (offset: 28))")
+      "Variable `o` not defined (line 1, column 29 (offset: 28))")
   }
 
-  test("not allowed to refer to identifiers in SKIP")(
+  test("not allowed to refer to variables in SKIP")(
     executeAndEnsureError("MATCH (n) RETURN n SKIP n.count",
-                          "It is not allowed to refer to identifiers in SKIP (line 1, column 25 (offset: 24))")
+                          "It is not allowed to refer to variables in SKIP (line 1, column 25 (offset: 24))")
   )
 
   test("only allowed to use positive integer literals in SKIP") (
@@ -535,9 +629,9 @@ class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
                           "Invalid input '-1' is not a valid value, must be a positive integer (line 1, column 25 (offset: 24))")
   )
 
-  test("not allowed to refer to identifiers in LIMIT")(
+  test("not allowed to refer to variables in LIMIT")(
     executeAndEnsureError("MATCH (n) RETURN n LIMIT n.count",
-                          "It is not allowed to refer to identifiers in LIMIT (line 1, column 26 (offset: 25))")
+                          "It is not allowed to refer to variables in LIMIT (line 1, column 26 (offset: 25))")
   )
 
   test("only allowed to use positive integer literals in LIMIT") (
@@ -545,12 +639,72 @@ class SemanticErrorAcceptanceTest extends ExecutionEngineFunSuite {
                           "Invalid input '1.7' is not a valid value, must be a positive integer (line 1, column 26 (offset: 25))")
   )
 
-  def executeAndEnsureError(query: String, expected: String) {
+  test("should fail when invalid percentile in percentileDisc") (
+    executeAndEnsureError("MATCH (n) RETURN percentileDisc(n.prop, 95)",
+      "Invalid input '95' is not a valid argument, must be a number in the range 0.0 to 1.0 (line 1, column 41 (offset: 40))")
+  )
+
+  test("should fail when floating number is not in range in percentileDisc") (
+    executeAndEnsureError("MATCH (n) RETURN percentileDisc(n.prop, 1.1)",
+      "Invalid input '1.1' is not a valid argument, must be a number in the range 0.0 to 1.0 (line 1, column 41 (offset: 40))")
+  )
+
+  test("should fail when invalid percentile in percentileCont") (
+    executeAndEnsureError("MATCH (n) RETURN percentileCont(n.prop, 95)",
+      "Invalid input '95' is not a valid argument, must be a number in the range 0.0 to 1.0 (line 1, column 41 (offset: 40))")
+  )
+
+  test("should fail when floating number is not in range in percentileCont") (
+    executeAndEnsureError("MATCH (n) RETURN percentileCont(n.prop, -0.1)",
+      "Invalid input '-0.1' is not a valid argument, must be a number in the range 0.0 to 1.0 (line 1, column 41 (offset: 40))")
+  )
+
+  test("should give a nice error message if a user tries to use HAS") (
+    executeAndEnsureError("MATCH (n) WHERE HAS(n.prop) RETURN n.prop",
+      "HAS is no longer supported in Cypher, please use EXISTS instead (line 1, column 17 (offset: 16))")
+  )
+
+  test("give a nice error message when creating a pattern with no relationship type") {
+    executeAndEnsureError("CREATE ()-->()", "A single relationship type must be specified for CREATE (line 1, column 10 (offset: 9))")
+  }
+
+  test("give a nice error message when merging a pattern with no relationship type") {
+    executeAndEnsureError("MERGE ()-->()", "A single relationship type must be specified for MERGE (line 1, column 9 (offset: 8))")
+  }
+
+  test("give a nice error message when merging a pattern with no relationship type -- missing colon") {
+    executeAndEnsureError("MATCH (a), (b) MERGE (a)-[NO_COLON]->(b)",
+                          "A single relationship type must be specified for MERGE (line 1, column 25 (offset: 24))")
+  }
+
+  test("give a nice error message when trying to create multiple relationship types") {
+    executeAndEnsureError("CREATE ()-[:A|:B]->()",
+      "A single relationship type must be specified for CREATE (line 1, column 10 (offset: 9))")
+  }
+
+  test("give a nice error message when trying to merge multiple relationship types") {
+    executeAndEnsureError("MERGE ()-[:A|:B]->()",
+      "A single relationship type must be specified for MERGE (line 1, column 9 (offset: 8))")
+  }
+
+  test("give a nice error message when using unknown arguments in point") {
+    executeAndEnsureError("RETURN point({xxx: 2.3, yyy: 4.5}) as point",
+                          "A map with keys 'xxx', 'yyy' is not describing a valid point, a point is described either by " +
+                            "using cartesian coordinates e.g. {x: 2.3, y: 4.5, crs: 'cartesian'} or using geographic " +
+                            "coordinates e.g. {latitude: 12.78, longitude: 56.7, crs: 'WGS-84'}. (line 1, column 14 (offset: 13))")
+  }
+
+  def executeAndEnsureError(query: String, expected: String, params: (String,Any)*) {
     import org.neo4j.cypher.internal.frontend.v3_0.helpers.StringHelper._
+
+    import scala.collection.JavaConverters._
 
     val fixedExpected = expected.fixPosition
     try {
-      graph.execute(query).asScala.size
+      val jParams = new util.HashMap[String, Object]()
+      params.foreach(kv => jParams.put(kv._1, kv._2.asInstanceOf[AnyRef]))
+
+      graph.execute(query, jParams).asScala.size
       fail(s"Did not get the expected syntax error, expected: $fixedExpected")
     } catch {
       case x: QueryExecutionException =>

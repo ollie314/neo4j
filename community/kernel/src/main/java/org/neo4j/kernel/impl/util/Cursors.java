@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,10 +21,10 @@ package org.neo4j.kernel.impl.util;
 
 import java.util.Iterator;
 import java.util.NoSuchElementException;
+import java.util.function.ToIntFunction;
 
 import org.neo4j.collection.primitive.PrimitiveIntIterator;
 import org.neo4j.cursor.Cursor;
-import org.neo4j.function.ToIntFunction;
 import org.neo4j.graphdb.Resource;
 
 public class Cursors
@@ -187,7 +187,7 @@ public class Cursors
             {
                 try
                 {
-                    return map.apply( cursor.get() );
+                    return map.applyAsInt( cursor.get() );
                 }
                 finally
                 {

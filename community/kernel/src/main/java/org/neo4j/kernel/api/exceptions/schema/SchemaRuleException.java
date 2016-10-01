@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,7 +25,6 @@ import static java.lang.String.format;
 
 public class SchemaRuleException extends SchemaKernelException
 {
-
     protected final int ruleEntityId;
     protected final int propertyKeyId;
     protected final String messageTemplate;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,8 +24,8 @@ import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 import org.neo4j.cypher.internal.frontend.v3_0.{InputPosition, SemanticCheck, SemanticCheckResult, SemanticState, _}
 
 case class And(lhs: Expression, rhs: Expression)(val position: InputPosition) extends Expression with BinaryOperatorExpression with InfixFunctionTyping {
-  val signatures = Vector(
-    Signature(argumentTypes = Vector(CTBoolean, CTBoolean), outputType = CTBoolean)
+  override val signatures = Vector(
+    ExpressionSignature(argumentTypes = Vector(CTBoolean, CTBoolean), outputType = CTBoolean)
   )
 }
 
@@ -41,8 +41,8 @@ case class Ands(exprs: Set[Expression])(val position: InputPosition) extends Exp
 }
 
 case class Or(lhs: Expression, rhs: Expression)(val position: InputPosition) extends Expression with BinaryOperatorExpression with InfixFunctionTyping {
-  val signatures = Vector(
-    Signature(argumentTypes = Vector(CTBoolean, CTBoolean), outputType = CTBoolean)
+  override val signatures = Vector(
+    ExpressionSignature(argumentTypes = Vector(CTBoolean, CTBoolean), outputType = CTBoolean)
   )
 }
 
@@ -53,28 +53,30 @@ case class Ors(exprs: Set[Expression])(val position: InputPosition) extends Expr
 }
 
 case class Xor(lhs: Expression, rhs: Expression)(val position: InputPosition) extends Expression with BinaryOperatorExpression with InfixFunctionTyping {
-  val signatures = Vector(
-    Signature(Vector(CTBoolean, CTBoolean), outputType = CTBoolean)
+  override val signatures = Vector(
+    ExpressionSignature(Vector(CTBoolean, CTBoolean), outputType = CTBoolean)
   )
 }
 
 case class Not(rhs: Expression)(val position: InputPosition) extends Expression with LeftUnaryOperatorExpression with PrefixFunctionTyping {
-  val signatures = Vector(
-    Signature(Vector(CTBoolean), outputType = CTBoolean)
+  override val signatures = Vector(
+    ExpressionSignature(Vector(CTBoolean), outputType = CTBoolean)
   )
 }
 
 case class Equals(lhs: Expression, rhs: Expression)(val position: InputPosition) extends Expression with BinaryOperatorExpression with InfixFunctionTyping {
-  val signatures = Vector(
-    Signature(argumentTypes = Vector(CTAny, CTAny), outputType = CTBoolean)
+  override val signatures = Vector(
+    ExpressionSignature(argumentTypes = Vector(CTAny, CTAny), outputType = CTBoolean)
   )
 
   override def canonicalOperatorSymbol = "="
+
+  def switchSides: Equals = copy(rhs, lhs)(position)
 }
 
 case class NotEquals(lhs: Expression, rhs: Expression)(val position: InputPosition) extends Expression with BinaryOperatorExpression with InfixFunctionTyping {
-  val signatures = Vector(
-    Signature(argumentTypes = Vector(CTAny, CTAny), outputType = CTBoolean)
+  override val signatures = Vector(
+    ExpressionSignature(argumentTypes = Vector(CTAny, CTAny), outputType = CTBoolean)
   )
 
   override def canonicalOperatorSymbol = "<>"
@@ -88,8 +90,8 @@ case class InvalidNotEquals(lhs: Expression, rhs: Expression)(val position: Inpu
 }
 
 case class RegexMatch(lhs: Expression, rhs: Expression)(val position: InputPosition) extends Expression with BinaryOperatorExpression with InfixFunctionTyping {
-  val signatures = Vector(
-    Signature(argumentTypes = Vector(CTString, CTString), outputType = CTBoolean)
+  override val signatures = Vector(
+    ExpressionSignature(argumentTypes = Vector(CTString, CTString), outputType = CTBoolean)
   )
 
   override def canonicalOperatorSymbol = "=~"
@@ -100,7 +102,7 @@ case class In(lhs: Expression, rhs: Expression)(val position: InputPosition) ext
     lhs.semanticCheck(ctx) chain
     lhs.expectType(CTAny.covariant) chain
     rhs.semanticCheck(ctx) chain
-    rhs.expectType(lhs.types(_).wrapInCollection) chain
+    rhs.expectType(CTList(CTAny).covariant) chain
     specifyType(CTBoolean)
 }
 
@@ -127,45 +129,47 @@ object PartialPredicate {
 }
 
 case class StartsWith(lhs: Expression, rhs: Expression)(val position: InputPosition) extends Expression with BinaryOperatorExpression with InfixFunctionTyping {
-  val signatures = Vector(
-    Signature(argumentTypes = Vector(CTString, CTString), outputType = CTBoolean)
+  override val signatures = Vector(
+    ExpressionSignature(argumentTypes = Vector(CTString, CTString), outputType = CTBoolean)
   )
 }
 
 case class EndsWith(lhs: Expression, rhs: Expression)(val position: InputPosition) extends Expression with BinaryOperatorExpression with InfixFunctionTyping {
-  val signatures = Vector(
-    Signature(argumentTypes = Vector(CTString, CTString), outputType = CTBoolean)
+  override val signatures = Vector(
+    ExpressionSignature(argumentTypes = Vector(CTString, CTString), outputType = CTBoolean)
   )
 }
 
 case class Contains(lhs: Expression, rhs: Expression)(val position: InputPosition) extends Expression with BinaryOperatorExpression with InfixFunctionTyping {
-  val signatures = Vector(
-    Signature(argumentTypes = Vector(CTString, CTString), outputType = CTBoolean)
+  override val signatures = Vector(
+    ExpressionSignature(argumentTypes = Vector(CTString, CTString), outputType = CTBoolean)
   )
 }
 
 case class IsNull(lhs: Expression)(val position: InputPosition) extends Expression with RightUnaryOperatorExpression with PostfixFunctionTyping {
-  val signatures = Vector(
-    Signature(argumentTypes = Vector(CTAny), outputType = CTBoolean)
+  override val signatures = Vector(
+    ExpressionSignature(argumentTypes = Vector(CTAny), outputType = CTBoolean)
   )
 
   override def canonicalOperatorSymbol = "IS NULL"
 }
 
 case class IsNotNull(lhs: Expression)(val position: InputPosition) extends Expression with RightUnaryOperatorExpression with PostfixFunctionTyping {
-  val signatures = Vector(
-    Signature(argumentTypes = Vector(CTAny), outputType = CTBoolean)
+  override val signatures = Vector(
+    ExpressionSignature(argumentTypes = Vector(CTAny), outputType = CTBoolean)
   )
 
   override def canonicalOperatorSymbol = "IS NOT NULL"
 }
 
 sealed trait InequalityExpression extends Expression with BinaryOperatorExpression with InfixFunctionTyping {
-  val signatures = Vector(
-    Signature(argumentTypes = Vector(CTInteger, CTInteger), outputType = CTBoolean),
-    Signature(argumentTypes = Vector(CTFloat, CTFloat), outputType = CTBoolean),
-    Signature(argumentTypes = Vector(CTString, CTString), outputType = CTBoolean)
+  override val signatures = Vector(
+    ExpressionSignature(argumentTypes = Vector(CTInteger, CTInteger), outputType = CTBoolean),
+    ExpressionSignature(argumentTypes = Vector(CTFloat, CTFloat), outputType = CTBoolean),
+    ExpressionSignature(argumentTypes = Vector(CTString, CTString), outputType = CTBoolean)
   )
+
+  def includeEquality: Boolean
 
   def negated: InequalityExpression
   def swapped: InequalityExpression
@@ -175,29 +179,37 @@ sealed trait InequalityExpression extends Expression with BinaryOperatorExpressi
 }
 
 final case class LessThan(lhs: Expression, rhs: Expression)(val position: InputPosition) extends InequalityExpression {
-  override def canonicalOperatorSymbol = "<"
+  override val canonicalOperatorSymbol = "<"
 
-  def negated: InequalityExpression = GreaterThanOrEqual(lhs, rhs)(position)
-  def swapped: InequalityExpression = GreaterThan(rhs, lhs)(position)
+  override val includeEquality = false
+
+  override def negated: InequalityExpression = GreaterThanOrEqual(lhs, rhs)(position)
+  override def swapped: InequalityExpression = GreaterThan(rhs, lhs)(position)
 }
 
 final case class LessThanOrEqual(lhs: Expression, rhs: Expression)(val position: InputPosition) extends InequalityExpression {
-  override def canonicalOperatorSymbol = "<="
+  override val canonicalOperatorSymbol = "<="
 
-  def negated: InequalityExpression = GreaterThan(lhs, rhs)(position)
-  def swapped: InequalityExpression = GreaterThanOrEqual(rhs, lhs)(position)
+  override val includeEquality = true
+
+  override def negated: InequalityExpression = GreaterThan(lhs, rhs)(position)
+  override def swapped: InequalityExpression = GreaterThanOrEqual(rhs, lhs)(position)
 }
 
 final case class GreaterThan(lhs: Expression, rhs: Expression)(val position: InputPosition) extends InequalityExpression {
-  override def canonicalOperatorSymbol = ">"
+  override val canonicalOperatorSymbol = ">"
 
-  def negated: InequalityExpression = LessThanOrEqual(lhs, rhs)(position)
-  def swapped: InequalityExpression = LessThan(rhs, lhs)(position)
+  override val includeEquality = false
+
+  override def negated: InequalityExpression = LessThanOrEqual(lhs, rhs)(position)
+  override def swapped: InequalityExpression = LessThan(rhs, lhs)(position)
 }
 
 final case class GreaterThanOrEqual(lhs: Expression, rhs: Expression)(val position: InputPosition) extends InequalityExpression {
-  override def canonicalOperatorSymbol = ">="
+  override val canonicalOperatorSymbol = ">="
 
-  def negated: InequalityExpression = LessThan(lhs, rhs)(position)
-  def swapped: InequalityExpression = LessThanOrEqual(rhs, lhs)(position)
+  override val includeEquality = true
+
+  override def negated: InequalityExpression = LessThan(lhs, rhs)(position)
+  override def swapped: InequalityExpression = LessThanOrEqual(rhs, lhs)(position)
 }

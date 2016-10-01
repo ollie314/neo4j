@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,21 +23,24 @@ import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Map;
 
 import org.neo4j.graphdb.factory.GraphDatabaseBuilder;
 import org.neo4j.graphdb.factory.GraphDatabaseFactory;
 import org.neo4j.io.fs.DefaultFileSystemAbstraction;
 import org.neo4j.io.fs.FileUtils;
+import org.neo4j.kernel.configuration.Config;
 
 /**
  * JUnit @Rule for configuring, creating and managing an EmbeddedGraphDatabase instance.
  *
  * The database instance is created lazily, so configurations can be injected prior to calling
- * {@link #getGraphDatabaseService()}.
+ * {@link #getGraphDatabaseAPI()}.
  */
 public class EmbeddedDatabaseRule extends DatabaseRule
 {
     private final TempDirectory temp;
+    private Config config = Config.empty();
 
     public EmbeddedDatabaseRule()
     {
@@ -126,6 +129,12 @@ public class EmbeddedDatabaseRule extends DatabaseRule
         return (EmbeddedDatabaseRule) super.startLazily();
     }
 
+    public EmbeddedDatabaseRule withConfig(Config config )
+    {
+        this.config = config;
+        return this;
+    }
+
     @Override
     public String getStoreDir()
     {
@@ -145,9 +154,10 @@ public class EmbeddedDatabaseRule extends DatabaseRule
     }
 
     @Override
-    protected GraphDatabaseBuilder newBuilder(GraphDatabaseFactory factory )
+    protected GraphDatabaseBuilder newBuilder( GraphDatabaseFactory factory )
     {
-        return factory.newEmbeddedDatabaseBuilder( temp.root().getAbsolutePath() );
+        return factory.newEmbeddedDatabaseBuilder( temp.root().getAbsoluteFile() )
+                .setConfig( config.getParams() );
     }
 
     @Override

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,6 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -32,15 +31,13 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.factory.GraphDatabaseBuilder;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
-import org.neo4j.kernel.IdGeneratorFactory;
-import org.neo4j.kernel.IdType;
 import org.neo4j.kernel.impl.MyRelTypes;
-import org.neo4j.kernel.impl.locking.AcquireLockTimeoutException;
-import org.neo4j.kernel.impl.locking.Locks;
 import org.neo4j.kernel.impl.locking.NoOpClient;
 import org.neo4j.kernel.impl.locking.ResourceTypes;
+import org.neo4j.kernel.impl.storageengine.impl.recordstorage.RecordStorageEngine;
 import org.neo4j.kernel.impl.store.NeoStores;
-import org.neo4j.kernel.impl.store.record.DynamicRecord;
+import org.neo4j.kernel.impl.store.id.IdGeneratorFactory;
+import org.neo4j.kernel.impl.store.id.IdType;
 import org.neo4j.kernel.impl.store.record.LabelTokenRecord;
 import org.neo4j.kernel.impl.store.record.NodeRecord;
 import org.neo4j.kernel.impl.store.record.PrimitiveRecord;
@@ -49,7 +46,10 @@ import org.neo4j.kernel.impl.store.record.PropertyRecord;
 import org.neo4j.kernel.impl.store.record.RelationshipGroupRecord;
 import org.neo4j.kernel.impl.store.record.RelationshipRecord;
 import org.neo4j.kernel.impl.store.record.RelationshipTypeTokenRecord;
-import org.neo4j.kernel.impl.store.record.SchemaRule;
+import org.neo4j.kernel.impl.store.record.SchemaRecord;
+import org.neo4j.storageengine.api.lock.AcquireLockTimeoutException;
+import org.neo4j.storageengine.api.lock.ResourceType;
+import org.neo4j.storageengine.api.schema.SchemaRule;
 import org.neo4j.test.DatabaseRule;
 import org.neo4j.test.ImpermanentDatabaseRule;
 import org.neo4j.unsafe.batchinsert.DirectRecordAccessSet;
@@ -69,11 +69,11 @@ public class RelationshipCreatorTest
 
         Tracker tracker = new Tracker( neoStores );
         RelationshipGroupGetter groupGetter = new RelationshipGroupGetter( neoStores.getRelationshipGroupStore() );
-        RelationshipCreator relationshipCreator = new RelationshipCreator( tracker, groupGetter, 5 );
+        RelationshipCreator relationshipCreator = new RelationshipCreator( groupGetter, 5 );
 
         // WHEN
         relationshipCreator.relationshipCreate( idGeneratorFactory.get( IdType.RELATIONSHIP ).nextId(), 0,
-                nodeId, nodeId, tracker );
+                nodeId, nodeId, tracker, tracker );
 
         // THEN
         assertEquals( tracker.relationshipLocksAcquired.size(), tracker.changedRelationships.size() );
@@ -83,12 +83,12 @@ public class RelationshipCreatorTest
     private NeoStores flipToNeoStores()
     {
         return dbRule.getGraphDatabaseAPI().getDependencyResolver().resolveDependency(
-                NeoStoresSupplier.class ).get();
+                RecordStorageEngine.class ).testAccessNeoStores();
     }
 
     private long createNodeWithRelationships( int count )
     {
-        GraphDatabaseService db = dbRule.getGraphDatabaseService();
+        GraphDatabaseService db = dbRule.getGraphDatabaseAPI();
         try ( Transaction tx = db.beginTx() )
         {
             Node node = db.createNode();
@@ -115,11 +115,14 @@ public class RelationshipCreatorTest
         }
 
         @Override
-        public void acquireExclusive( Locks.ResourceType resourceType, long resourceId )
+        public void acquireExclusive( ResourceType resourceType, long... resourceIds )
                 throws AcquireLockTimeoutException
         {
             assertEquals( ResourceTypes.RELATIONSHIP, resourceType );
-            relationshipLocksAcquired.add( resourceId );
+            for ( long resourceId : resourceIds )
+            {
+                relationshipLocksAcquired.add( resourceId );
+            }
         }
 
         protected void changingRelationship( long relId )
@@ -154,7 +157,7 @@ public class RelationshipCreatorTest
         }
 
         @Override
-        public RecordAccess<Long, Collection<DynamicRecord>, SchemaRule> getSchemaRuleChanges()
+        public RecordAccess<Long, SchemaRecord, SchemaRule> getSchemaRuleChanges()
         {
             return delegate.getSchemaRuleChanges();
         }
@@ -187,6 +190,12 @@ public class RelationshipCreatorTest
         public boolean hasChanges()
         {
             return delegate.hasChanges();
+        }
+
+        @Override
+        public int changeSize()
+        {
+            return delegate.changeSize();
         }
     }
 

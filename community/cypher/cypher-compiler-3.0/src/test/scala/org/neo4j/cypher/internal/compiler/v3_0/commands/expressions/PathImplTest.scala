@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,19 +19,15 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.commands.expressions
 
-import java.lang.Iterable
-import java.util
-
 import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
-import org.neo4j.graphdb.Traverser.Order
 import org.neo4j.graphdb._
 
 import scala.collection.JavaConverters._
 
-class PathImplTest extends CypherFunSuite {
+class PathImplTest extends CypherFunSuite with FakeEntityTestSupport {
 
-  val typ = DynamicRelationshipType.withName("a")
+  val typ = RelationshipType.withName("a")
 
   test("singleNodeTests") {
     val node = new FakeNode
@@ -83,118 +79,5 @@ class PathImplTest extends CypherFunSuite {
     val path = new PathImpl(nodA, rel1, nodB, rel2, nodC)
 
     path.lastRelationship() should equal(rel2)
-  }
-
-
-  class FakeRel(start: Node, end: Node, typ: RelationshipType) extends Relationship {
-    def getId: Long = 0L
-
-    def delete() {}
-
-    def getStartNode: Node = start
-
-    def getEndNode: Node = end
-
-    def getOtherNode(node: Node): Node = null
-
-    def getNodes: Array[Node] = null
-
-    def getType: RelationshipType = typ
-
-    def isType(`type` : RelationshipType): Boolean = false
-
-    def getGraphDatabase: GraphDatabaseService = null
-
-    def hasProperty(key: String): Boolean = false
-
-    def getProperty(key: String): AnyRef = null
-
-    def getProperty(key: String, defaultValue: AnyRef): AnyRef = null
-
-    def setProperty(key: String, value: AnyRef) {}
-
-    def removeProperty(key: String): AnyRef = null
-
-    def getPropertyKeys: Iterable[String] = null
-
-    def getProperties( keys: String* ): util.Map[String, AnyRef] = null
-
-    def getAllProperties: util.Map[String, AnyRef] = null
-
-    override def toString: String = "Rel"
-  }
-
-  class FakeNode extends Node {
-    def getId: Long = 0L
-
-    def getRelationships(types: RelationshipType*): Iterable[Relationship] = null
-
-    def delete() {}
-
-    def getRelationships: Iterable[Relationship] = null
-
-    def hasRelationship: Boolean = false
-
-    def getRelationships(direction: Direction, types: RelationshipType*): Iterable[Relationship] = null
-
-    def hasRelationship(types: RelationshipType*): Boolean = false
-
-    def hasRelationship(direction: Direction, types: RelationshipType*): Boolean = false
-
-    def getRelationships(dir: Direction): Iterable[Relationship] = null
-
-    def hasRelationship(dir: Direction): Boolean = false
-
-    def getRelationships(`type` : RelationshipType, dir: Direction): Iterable[Relationship] = null
-
-    def hasRelationship(`type` : RelationshipType, dir: Direction): Boolean = false
-
-    def getSingleRelationship(`type` : RelationshipType, dir: Direction): Relationship = null
-
-    def createRelationshipTo(otherNode: Node, `type` : RelationshipType): Relationship = null
-
-    def traverse(traversalOrder: Order, stopEvaluator: StopEvaluator, returnableEvaluator: ReturnableEvaluator, relationshipType: RelationshipType, direction: Direction): Traverser = null
-
-    def traverse(traversalOrder: Order, stopEvaluator: StopEvaluator, returnableEvaluator: ReturnableEvaluator, firstRelationshipType: RelationshipType, firstDirection: Direction, secondRelationshipType: RelationshipType, secondDirection: Direction): Traverser = null
-
-    def traverse(traversalOrder: Order, stopEvaluator: StopEvaluator, returnableEvaluator: ReturnableEvaluator, relationshipTypesAndDirections: AnyRef*): Traverser = null
-
-    def getGraphDatabase: GraphDatabaseService = null
-
-    def hasProperty(key: String): Boolean = false
-
-    def getProperty(key: String): AnyRef = null
-
-    def getProperty(key: String, defaultValue: AnyRef): AnyRef = null
-
-    def setProperty(key: String, value: AnyRef) {}
-
-    def removeProperty(key: String): AnyRef = null
-
-    def getPropertyKeys: Iterable[String] = null
-
-    def getProperties( keys: String* ): util.Map[String, AnyRef] = null
-
-    def getAllProperties: util.Map[String, AnyRef] = null
-
-    override def toString: String = "Node"
-
-    def addLabel(label: Label) { ??? }
-
-    def removeLabel(label: Label) { ??? }
-
-    def hasLabel(label: Label) = ???
-
-    def getLabels = ???
-
-    def getRelationshipTypes = ???
-
-    def getDegree:Int = ???
-
-    def getDegree( direction:Direction ):Int = ???
-
-    def getDegree( relType:RelationshipType ):Int = ???
-
-    def getDegree( relType:RelationshipType, direction:Direction ):Int = ???
   }
 }

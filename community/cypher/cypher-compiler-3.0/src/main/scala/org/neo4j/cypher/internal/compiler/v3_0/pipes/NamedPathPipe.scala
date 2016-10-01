@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -77,7 +77,7 @@ case class NamedPathPipe(source: Pipe, pathName: String, entities: Seq[AbstractP
   val symbols = source.symbols.add(pathName, CTPath)
 
   override def planDescription =
-    source.planDescription.andThen(this.id, "ExtractPath", identifiers)
+    source.planDescription.andThen(this.id, "ExtractPath", variables)
 
   def dup(sources: List[Pipe]): Pipe = {
     val (head :: Nil) = sources

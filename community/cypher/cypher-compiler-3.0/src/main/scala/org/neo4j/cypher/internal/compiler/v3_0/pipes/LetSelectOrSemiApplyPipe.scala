@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -52,7 +52,7 @@ case class LetSelectOrSemiApplyPipe(source: Pipe, inner: Pipe, letVarName: Strin
     name = name,
     children = TwoChildren(source.planDescription, inner.planDescription),
     arguments = Seq(LegacyExpression(predicate)),
-    identifiers)
+    variables)
 
   def symbols: SymbolTable = source.symbols.add(letVarName, CTBoolean)
 

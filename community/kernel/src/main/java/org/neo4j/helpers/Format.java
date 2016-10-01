@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -89,12 +89,7 @@ public class Format
         return TIME.format( date, timeZone );
     }
 
-    @Deprecated
-    public static int KB = (int) ByteUnit.kibiBytes( 1 );
-    @Deprecated
-    public static int MB = (int) ByteUnit.mebiBytes( 1 );
-    @Deprecated
-    public static int GB = (int) ByteUnit.gibiBytes( 1 );
+    private static int KB = (int) ByteUnit.kibiBytes( 1 );
 
     public static String bytes( long bytes )
     {

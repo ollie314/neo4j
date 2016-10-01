@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,14 +19,14 @@
  */
 package org.neo4j.cypher.docgen.refcard
 
-import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionResult
-import org.neo4j.cypher.{ ExecutionResult, QueryStatisticsTestSupport }
+import org.neo4j.cypher.QueryStatisticsTestSupport
 import org.neo4j.cypher.docgen.RefcardTest
+import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionResult
 
 class AggregationTest extends RefcardTest with QueryStatisticsTestSupport {
   val graphDescription = List("ROOT KNOWS A", "A KNOWS B", "B KNOWS C", "C KNOWS ROOT")
   val title = "Aggregation"
-  val css = "general c3-3 c4-3 c5-4 c6-6"
+  val css = "general c3-3 c4-1 c5-3 c6-6"
   override val linkId = "query-aggregation"
 
   override def assert(name: String, result: InternalExecutionResult) {
@@ -57,7 +57,7 @@ class AggregationTest extends RefcardTest with QueryStatisticsTestSupport {
 
   def text = """
 ###assertion=returns-one
-MATCH path=(n)-->(m)
+MATCH path = (n)-->(m)
 WHERE id(n) = %A% AND id(m) = %B%
 RETURN NODES(path),
 
@@ -67,21 +67,21 @@ count(*)
 The number of matching rows.
 
 ###assertion=returns-one
-MATCH path=(identifier)-->(m)
-WHERE id(identifier) = %A% AND id(m) = %B%
-RETURN NODES(path),
+MATCH path = (variable)-->(m)
+WHERE id(variable) = %A% AND id(m) = %B%
+RETURN nodes(path),
 
-count(identifier)
+count(variable)
 ###
 
 The number of non-++NULL++ values.
 
 ###assertion=returns-one
-MATCH path=(identifier)-->(m)
-WHERE id(identifier) = %A% AND id(m) = %B%
-RETURN NODES(path),
+MATCH path = (variable)-->(m)
+WHERE id(variable) = %A% AND id(m) = %B%
+RETURN nodes(path),
 
-count(DISTINCT identifier)
+count(DISTINCT variable)
 ###
 
 All aggregation functions also take the `DISTINCT` modifier,
@@ -94,7 +94,7 @@ RETURN
 collect(n.property)
 ###
 
-Collection from the values, ignores `NULL`.
+List from the values, ignores `NULL`.
 
 ###assertion=returns-one
 MATCH (n) WHERE id(n) IN [%A%, %B%, %C%]
@@ -102,7 +102,7 @@ RETURN
 
 sum(n.property)
 
-,avg(n.property),min(n.property),max(n.property)
+,avg(n.property), min(n.property), max(n.property)
 ###
 
 Sum numerical values. Similar functions are +avg+, +min+, +max+.

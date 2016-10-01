@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,10 +23,10 @@ import java.net.URI;
 import java.util.List;
 
 import org.neo4j.kernel.configuration.Config;
+import org.neo4j.server.configuration.ServerSettings;
 import org.neo4j.server.rest.management.JmxService;
 import org.neo4j.server.rest.management.RootService;
 import org.neo4j.server.rest.management.VersionAndEditionService;
-import org.neo4j.server.web.ServerInternalSettings;
 import org.neo4j.server.web.WebServer;
 
 import static java.util.Arrays.asList;
@@ -66,6 +66,6 @@ public class ManagementApiModule implements ServerModule
 
     private URI managementApiUri( )
     {
-        return config.get( ServerInternalSettings.management_api_path );
+        return config.get( ServerSettings.management_api_path );
     }
 }

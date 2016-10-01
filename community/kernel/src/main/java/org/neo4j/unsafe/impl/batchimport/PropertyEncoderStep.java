@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -52,8 +52,8 @@ public class PropertyEncoderStep<RECORD extends PrimitiveRecord,INPUT extends In
     {
         super( control, "PROPERTIES", config, 0 );
         this.propertyKeyHolder = propertyKeyHolder;
-        this.arrayDataSize = propertyStore.getArrayStore().dataSize();
-        this.stringDataSize = propertyStore.getStringStore().dataSize();
+        this.arrayDataSize = propertyStore.getArrayStore().getRecordDataSize();
+        this.stringDataSize = propertyStore.getStringStore().getRecordDataSize();
         this.averageBlocksPerBatch = new MovingAverage( config.movingAverageSize() );
     }
 

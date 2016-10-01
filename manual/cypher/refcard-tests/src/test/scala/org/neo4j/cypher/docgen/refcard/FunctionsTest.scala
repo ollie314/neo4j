@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,7 +26,7 @@ import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionRe
 class FunctionsTest extends RefcardTest with QueryStatisticsTestSupport {
   val graphDescription = List("ROOT KNOWS A", "A KNOWS B", "B KNOWS C", "C KNOWS ROOT")
   val title = "Functions"
-  val css = "general c2-2 c3-2 c4-2 c5-3 c6-5"
+  val css = "general c2-1 c3-2 c4-2 c5-3 c6-5"
   override val linkId = "query-function"
 
   override def assert(name: String, result: InternalExecutionResult) {
@@ -80,11 +80,11 @@ timestamp()###
 Milliseconds since midnight, January 1, 1970 UTC.
 
 ###assertion=returns-one
-MATCH (n)-[node_or_relationship]->(m)
+MATCH (n)-[nodeOrRelationship]->(m)
 WHERE id(n) = %A% AND id(m) = %B%
 RETURN
 
-id(node_or_relationship)###
+id(nodeOrRelationship)###
 
 The internal id of the relationship or node.
 
@@ -93,19 +93,19 @@ RETURN
 
 toInt({expr})###
 
-Converts the given input in an integer if possible; otherwise it returns +NULL+.
+Converts the given input into an integer if possible; otherwise it returns +NULL+.
 
 ###assertion=toFloat parameters=toFloat
 RETURN
 
 toFloat({expr})###
 
-Converts the given input in a floating point number if possible; otherwise it returns +NULL+.
+Converts the given input into a floating point number if possible; otherwise it returns +NULL+.
 
 ###assertion=returns-one parameters=map
 RETURN
 
 keys({expr})###
 
-Returns a collection of string representations for the property names of a node, relationship, or map."""
+Returns a list of string representations for the property names of a node, relationship, or map."""
 }

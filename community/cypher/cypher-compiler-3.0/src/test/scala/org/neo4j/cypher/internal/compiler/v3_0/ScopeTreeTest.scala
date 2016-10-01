@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -64,7 +64,7 @@ class ScopeTreeTest extends CypherFunSuite {
     val ast = parser.parse("match (a) with a as a order by a.name limit 1 match (a)-->(b) return a as a")
     val scopeTree = ast.scope
 
-    // TODO This looks suspicious; since we only use aliased items for identifierNamespacing, it should be ok though
+    // TODO This looks suspicious; since we only use aliased items for variableNamespacing, it should be ok though
 
     // Would rewrite to match a6 with a13 order by a13.name limit 1 match a13-->b49 return a13 as a63, which is wrong
 

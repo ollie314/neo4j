@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,14 +22,14 @@ package org.neo4j.cypher.internal.compiler.v3_0.mutation
 import org.neo4j.cypher.internal.compiler.v3_0._
 import commands.expressions.Expression
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.Effects
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.CollectionSupport
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.ListSupport
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import pipes.QueryState
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 
 case class ForeachAction(collection: Expression, id: String, actions: Seq[UpdateAction])
   extends UpdateAction
-  with CollectionSupport {
+  with ListSupport {
 
   def exec(context: ExecutionContext, state: QueryState) = {
     val seq = makeTraversable(collection(context)(state))
@@ -47,7 +47,7 @@ case class ForeachAction(collection: Expression, id: String, actions: Seq[Update
     Iterator(context)
   }
 
-  override def updateSymbols(symbol: SymbolTable) = addInnerIdentifier(symbol)
+  override def updateSymbols(symbol: SymbolTable) = addInnerVariable(symbol)
 
   def localEffects(symbols: SymbolTable) = Effects()
 
@@ -55,10 +55,10 @@ case class ForeachAction(collection: Expression, id: String, actions: Seq[Update
 
   def rewrite(f: (Expression) => Expression) = ForeachAction(f(collection), id, actions.map(_.rewrite(f)))
 
-  def identifiers = Nil
+  def variables = Nil
 
-  def addInnerIdentifier(symbols: SymbolTable): SymbolTable = {
-    val t = collection.evaluateType(CTCollection(CTAny), symbols).legacyIteratedType
+  def addInnerVariable(symbols: SymbolTable): SymbolTable = {
+    val t = collection.evaluateType(CTList(CTAny), symbols).legacyIteratedType
 
     val innerSymbols: SymbolTable = symbols.add(id, t)
     innerSymbols
@@ -66,9 +66,9 @@ case class ForeachAction(collection: Expression, id: String, actions: Seq[Update
 
   def symbolTableDependencies = {
     val updateActionsDeps: Set[String] = actions.flatMap(_.symbolTableDependencies).toSet
-    val updateActionIdentifiers: Set[String] = actions.flatMap(_.identifiers.map(_._1)).toSet
+    val updateActionVariables: Set[String] = actions.flatMap(_.variables.map(_._1)).toSet
     val collectionDeps = collection.symbolTableDependencies
 
-    (updateActionsDeps -- updateActionIdentifiers) ++ collectionDeps -- Some(id)
+    (updateActionsDeps -- updateActionVariables) ++ collectionDeps -- Some(id)
   }
 }

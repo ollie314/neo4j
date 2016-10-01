@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,34 +26,41 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.stream.Stream;
 
-import org.neo4j.helpers.Pair;
+import org.neo4j.helpers.collection.Iterables;
+import org.neo4j.helpers.collection.Pair;
+import org.neo4j.io.proc.ProcessUtil;
 import org.neo4j.logging.NullLogProvider;
 import org.neo4j.test.TargetDirectory;
 
 import static java.lang.Runtime.getRuntime;
-import static java.lang.System.getProperty;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeThat;
-import static org.neo4j.helpers.collection.IteratorUtil.asIterable;
-import static org.neo4j.helpers.collection.IteratorUtil.asSet;
-import static org.neo4j.helpers.collection.IteratorUtil.single;
+import static org.neo4j.helpers.collection.Iterators.asSet;
 
 public class DumpProcessInformationTest
 {
+    private static final String SIGNAL = "here";
+
+    @Rule
+    public final TargetDirectory.TestDirectory testDirectory = TargetDirectory.testDirForTest( getClass() );
+
     @Test
     public void shouldDumpProcessInformation() throws Exception
     {
         // GIVEN
         File directory = testDirectory.directory( "dump" );
         // a process spawned from this test which pauses at a specific point of execution
-        Process process = getRuntime().exec( new String[] { "java", "-cp", getProperty( "java.class.path" ),
+        String java = ProcessUtil.getJavaExecutable().toString();
+        Process process = getRuntime().exec( new String[] {java, "-cp", ProcessUtil.getClassPath(),
                 DumpableProcess.class.getName(), SIGNAL } );
         awaitSignal( process );
 
@@ -66,7 +73,7 @@ public class DumpProcessInformationTest
         // bail if our Java installation is wonky and `jps` doesn't work
         assumeThat( pids.size(), greaterThan( 0 ) );
 
-        Pair<Long, String> pid = single( pids );
+        Pair<Long, String> pid = Iterables.single( pids );
         File threaddumpFile = dumper.doThreadDump( pid );
         process.destroy();
 
@@ -75,28 +82,24 @@ public class DumpProcessInformationTest
         assertTrue( fileContains( threaddumpFile, "traceableMethod", DumpableProcess.class.getName() ) );
     }
 
-    @Rule
-    public final TargetDirectory.TestDirectory testDirectory = TargetDirectory.testDirForTest( getClass() );
-
-    private boolean fileContains( File file, String... expectedStrings )
+    private boolean fileContains( File file, String... expectedStrings ) throws IOException
     {
         Set<String> expectedStringSet = asSet( expectedStrings );
-        for ( String line : asIterable( file, "UTF-8" ) )
+        try ( Stream<String> lines = Files.lines( file.toPath() ) )
         {
-            Iterator<String> expectedStringIterator = expectedStringSet.iterator();
-            while ( expectedStringIterator.hasNext() )
-            {
-                if ( line.contains( expectedStringIterator.next() ) )
+            lines.forEach( line -> {
+                Iterator<String> expectedStringIterator = expectedStringSet.iterator();
+                while ( expectedStringIterator.hasNext() )
                 {
-                    expectedStringIterator.remove();
+                    if ( line.contains( expectedStringIterator.next() ) )
+                    {
+                        expectedStringIterator.remove();
+                    }
                 }
-            }
+            } );
         }
         return expectedStringSet.isEmpty();
     }
-
-    private static final String SIGNAL = "here";
-
 
     private void awaitSignal( Process process ) throws IOException
     {

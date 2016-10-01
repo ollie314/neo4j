@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,9 @@
  */
 package org.neo4j.server;
 
+import com.sun.jersey.api.core.HttpContext;
 import org.apache.commons.configuration.Configuration;
+import org.bouncycastle.operator.OperatorCreationException;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,17 +30,21 @@ import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
-import javax.servlet.Filter;
 
-import org.neo4j.function.Function;
-import org.neo4j.function.Supplier;
+import org.neo4j.bolt.security.ssl.Certificates;
+import org.neo4j.bolt.security.ssl.KeyStoreFactory;
+import org.neo4j.bolt.security.ssl.KeyStoreInformation;
 import org.neo4j.graphdb.DependencyResolver;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.helpers.Clock;
+import org.neo4j.helpers.HostnamePort;
 import org.neo4j.helpers.RunCarefully;
+import org.neo4j.io.fs.DefaultFileSystemAbstraction;
 import org.neo4j.kernel.configuration.Config;
-import org.neo4j.kernel.guard.Guard;
 import org.neo4j.kernel.impl.factory.GraphDatabaseFacadeFactory;
 import org.neo4j.kernel.impl.query.QueryExecutionEngine;
 import org.neo4j.kernel.impl.util.Dependencies;
@@ -47,20 +53,17 @@ import org.neo4j.kernel.info.DiagnosticsManager;
 import org.neo4j.kernel.lifecycle.LifeSupport;
 import org.neo4j.logging.Log;
 import org.neo4j.logging.LogProvider;
-import org.neo4j.server.configuration.ConfigWrappingConfiguration;
-import org.neo4j.server.configuration.ConfigurationBuilder;
-import org.neo4j.server.configuration.Configurator;
 import org.neo4j.server.configuration.ServerSettings;
+import org.neo4j.server.configuration.ServerSettings.HttpConnector;
 import org.neo4j.server.database.CypherExecutor;
 import org.neo4j.server.database.CypherExecutorProvider;
 import org.neo4j.server.database.Database;
 import org.neo4j.server.database.DatabaseProvider;
-import org.neo4j.server.database.ExecutionEngineProvider;
 import org.neo4j.server.database.GraphDatabaseServiceProvider;
 import org.neo4j.server.database.InjectableProvider;
-import org.neo4j.server.guard.GuardingRequestFilter;
 import org.neo4j.server.modules.RESTApiModule;
 import org.neo4j.server.modules.ServerModule;
+import org.neo4j.server.plugins.ConfigAdapter;
 import org.neo4j.server.plugins.PluginInvocatorProvider;
 import org.neo4j.server.plugins.PluginManager;
 import org.neo4j.server.rest.paging.LeaseManager;
@@ -74,31 +77,24 @@ import org.neo4j.server.rest.transactional.TransactionRegistry;
 import org.neo4j.server.rest.transactional.TransitionalPeriodTransactionMessContainer;
 import org.neo4j.server.rest.web.DatabaseActions;
 import org.neo4j.server.security.auth.AuthManager;
-import org.neo4j.server.security.auth.FileUserRepository;
-import org.neo4j.server.security.ssl.Certificates;
-import org.neo4j.server.security.ssl.KeyStoreFactory;
-import org.neo4j.server.security.ssl.KeyStoreInformation;
-import org.neo4j.server.web.ServerInternalSettings;
+import org.neo4j.server.web.AsyncRequestLog;
 import org.neo4j.server.web.SimpleUriBuilder;
 import org.neo4j.server.web.WebServer;
 import org.neo4j.server.web.WebServerProvider;
+import org.neo4j.udc.UsageData;
 
 import static java.lang.Math.round;
-import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.neo4j.helpers.Clock.SYSTEM_CLOCK;
 import static org.neo4j.helpers.collection.Iterables.map;
 import static org.neo4j.kernel.impl.util.JobScheduler.Groups.serverTransactionTimeout;
-import static org.neo4j.server.configuration.ServerSettings.http_log_config_file;
+import static org.neo4j.server.configuration.ServerSettings.httpConnector;
 import static org.neo4j.server.configuration.ServerSettings.http_logging_enabled;
+import static org.neo4j.server.configuration.ServerSettings.http_logging_rotation_keep_number;
+import static org.neo4j.server.configuration.ServerSettings.http_logging_rotation_size;
 import static org.neo4j.server.database.InjectableProvider.providerForSingleton;
 import static org.neo4j.server.exception.ServerStartupErrors.translateToServerStartupError;
 
-/**
- * @deprecated This class is for internal use only and will be moved to an internal package in a future release.
- * Please use Neo4j Server and plugins or un-managed extensions for bespoke solutions.
- */
-@Deprecated
 public abstract class AbstractNeoServer implements NeoServer
 {
     private static final long MINIMUM_TIMEOUT = 1000L;
@@ -111,7 +107,6 @@ public abstract class AbstractNeoServer implements NeoServer
 
     private static final Pattern[] DEFAULT_URI_WHITELIST = new Pattern[]{
             Pattern.compile( "/browser.*" ),
-            Pattern.compile( "/webadmin.*" ),
             Pattern.compile( "/" )
     };
 
@@ -122,18 +117,17 @@ public abstract class AbstractNeoServer implements NeoServer
 
     private final List<ServerModule> serverModules = new ArrayList<>();
     private final SimpleUriBuilder uriBuilder = new SimpleUriBuilder();
+    private final Config config;
     private final LifeSupport life = new LifeSupport();
-    private Config config;
+    private final HostnamePort httpAddress;
+    private final Optional<HostnamePort> httpsAddress;
 
     protected Database database;
     protected CypherExecutor cypherExecutor;
     protected WebServer webServer;
-
-    protected AuthManager authManager;
-    protected KeyStoreInformation keyStoreInfo;
-
+    protected Supplier<AuthManager> authManagerSupplier;
+    protected Optional<KeyStoreInformation> keyStoreInfo;
     private DatabaseActions databaseActions;
-
     private TransactionFacade transactionFacade;
     private TransactionHandleRegistry transactionRegistry;
 
@@ -151,6 +145,14 @@ public abstract class AbstractNeoServer implements NeoServer
         this.dependencies = dependencies;
         this.logProvider = logProvider;
         this.log = logProvider.getLog( getClass() );
+
+        httpAddress = httpConnector( config, HttpConnector.Encryption.NONE )
+                .orElseThrow( () ->
+                        new IllegalArgumentException( "An HTTP connector must be configured to run the server" ) )
+                .address
+                .from( config );
+        httpsAddress = httpConnector( config, HttpConnector.Encryption.TLS )
+                .map( (connector) -> connector.address.from( config ) );
     }
 
     @Override
@@ -163,9 +165,7 @@ public abstract class AbstractNeoServer implements NeoServer
 
         this.database = life.add( dependencyResolver.satisfyDependency(dbFactory.newDatabase( config, dependencies)) );
 
-        FileUserRepository users = life.add( new FileUserRepository( config.get( ServerInternalSettings.auth_store ).toPath(), logProvider ) );
-
-        this.authManager = life.add(new AuthManager( users, Clock.SYSTEM_CLOCK, config.get( ServerSettings.auth_enabled ) ));
+        this.authManagerSupplier = dependencyResolver.provideDependency( AuthManager.class );
         this.webServer = createWebServer();
 
         this.keyStoreInfo = createKeyStore();
@@ -195,7 +195,7 @@ public abstract class AbstractNeoServer implements NeoServer
 
             transactionFacade = createTransactionalActions();
 
-            cypherExecutor = new CypherExecutor( database );
+            cypherExecutor = new CypherExecutor( database, config, logProvider );
 
             configureWebServer();
 
@@ -225,7 +225,7 @@ public abstract class AbstractNeoServer implements NeoServer
     {
         return new DatabaseActions(
                 new LeaseManager( SYSTEM_CLOCK ),
-                config.get( ServerInternalSettings.script_sandboxing_enabled ), database.getGraph() );
+                config.get( ServerSettings.script_sandboxing_enabled ), database.getGraph() );
     }
 
     private TransactionFacade createTransactionalActions()
@@ -239,15 +239,9 @@ public abstract class AbstractNeoServer implements NeoServer
         // ensure that this is > 0
         long runEvery = round( timeoutMillis / 2.0 );
 
-        resolveDependency( JobScheduler.class ).scheduleRecurring( serverTransactionTimeout, new
-                Runnable()
-        {
-            @Override
-            public void run()
-            {
-                long maxAge = clock.currentTimeMillis() - timeoutMillis;
-                transactionRegistry.rollbackSuspendedTransactionsIdleSince( maxAge );
-            }
+        resolveDependency( JobScheduler.class ).scheduleRecurring( serverTransactionTimeout, () -> {
+            long maxAge = clock.currentTimeMillis() - timeoutMillis;
+            transactionRegistry.rollbackSuspendedTransactionsIdleSince( maxAge );
         }, runEvery, MILLISECONDS );
 
         return new TransactionFacade(
@@ -286,22 +280,7 @@ public abstract class AbstractNeoServer implements NeoServer
 
     private void stopModules()
     {
-        new RunCarefully( map( new Function<ServerModule, Runnable>()
-        {
-            @Override
-            public Runnable apply( final ServerModule module )
-            {
-                return new Runnable()
-                {
-                    @Override
-                    public void run()
-                    {
-                        module.stop();
-                    }
-                };
-            }
-        }, serverModules ) )
-                .run();
+        new RunCarefully( map( (Function<ServerModule,Runnable>) module -> module::stop, serverModules ) ).run();
     }
 
     @Override
@@ -310,40 +289,19 @@ public abstract class AbstractNeoServer implements NeoServer
         return config;
     }
 
-    @Override
-    public Configuration getConfiguration()
-    {
-        return new ConfigWrappingConfiguration( config );
-    }
-
     // TODO: Once WebServer is fully implementing LifeCycle,
     // it should manage all but static (eg. unchangeable during runtime)
     // configuration itself.
     private void configureWebServer() throws Exception
     {
-        int webServerPort = getWebServerPort();
-        String webServerAddr = getWebServerAddress();
-
-        int maxThreads = config.get( ServerSettings.webserver_max_threads );
-
-        int sslPort = getHttpsPort();
-        boolean sslEnabled = getHttpsEnabled();
-
-        log.info( "Starting HTTP on port %s (%d threads available)", webServerPort, maxThreads );
-        webServer.setPort( webServerPort );
-        webServer.setAddress( webServerAddr );
-        webServer.setMaxThreads( maxThreads );
-
-        webServer.setEnableHttps( sslEnabled );
-        webServer.setHttpsPort( sslPort );
-
-        webServer.setWadlEnabled( config.get( ServerInternalSettings.wadl_enabled ) );
+        webServer.setAddress( httpAddress );
+        webServer.setHttpsAddress( httpsAddress );
+        webServer.setMaxThreads( config.get( ServerSettings.webserver_max_threads ) );
+        webServer.setWadlEnabled( config.get( ServerSettings.wadl_enabled ) );
         webServer.setDefaultInjectables( createDefaultInjectables() );
-
-        if ( sslEnabled )
+        if ( keyStoreInfo.isPresent() )
         {
-            log.info( "Enabling HTTPS on port %s", sslPort );
-            webServer.setHttpsCertificateInformation( keyStoreInfo );
+            webServer.setHttpsCertificateInformation( keyStoreInfo.get() );
         }
     }
 
@@ -352,85 +310,38 @@ public abstract class AbstractNeoServer implements NeoServer
         try
         {
             setUpHttpLogging();
-
-            setUpTimeoutFilter();
-
             webServer.start();
-
-            log.info( "Remote interface ready and available at %s", baseUri() );
+            log.info( "Remote interface available at %s", baseUri() );
         }
         catch ( Exception e )
         {
-            //noinspection deprecation
-            log.error( "Failed to start Neo Server on port %d: %s",
-                    getWebServerPort(), e.getMessage() );
+            log.error( "Failed to start Neo4j on %s: %s", getAddress(), e.getMessage() );
             throw e;
         }
     }
 
-    private void setUpHttpLogging()
-    {
-        if ( !httpLoggingProperlyConfigured() )
+    private void setUpHttpLogging() throws IOException {
+        if ( !getConfig().get( http_logging_enabled ) )
         {
             return;
         }
 
-        webServer.setHttpLoggingConfiguration(config.get( http_log_config_file ), config.get( http_logging_enabled ));
+        AsyncRequestLog requestLog = new AsyncRequestLog(
+                new DefaultFileSystemAbstraction(),
+                new File( config.get( GraphDatabaseSettings.logs_directory ), "http.log" ).toString(),
+                config.get( http_logging_rotation_size ),
+                config.get( http_logging_rotation_keep_number ) );
+        webServer.setRequestLog( requestLog );
     }
 
-    private void setUpTimeoutFilter()
+    public HostnamePort getAddress()
     {
-        if ( getConfig().get( ServerSettings.webserver_limit_execution_time ) == null )
-        {
-            return;
-        }
-        //noinspection deprecation
-        Guard guard = resolveDependency( Guard.class );
-        if ( guard == null )
-        {
-            throw new RuntimeException( format("Inconsistent configuration. In order to use %s, you must set %s.",
-                    ServerSettings.webserver_limit_execution_time.name(),
-                    GraphDatabaseSettings.execution_guard_enabled.name()) );
-        }
-
-        Filter filter = new GuardingRequestFilter( guard, getConfig().get( ServerSettings.webserver_limit_execution_time ) );
-        webServer.addFilter( filter, "/*" );
+        return httpAddress;
     }
 
-    private boolean httpLoggingProperlyConfigured()
+    protected boolean httpsIsEnabled()
     {
-        return loggingEnabled() && configLocated();
-    }
-
-    private boolean configLocated()
-    {
-        final File logFile = getConfig().get( http_log_config_file );
-        return logFile != null && logFile.exists();
-    }
-
-    private boolean loggingEnabled()
-    {
-        return getConfig().get( http_logging_enabled );
-    }
-
-    protected int getWebServerPort()
-    {
-        return config.get( ServerSettings.webserver_port );
-    }
-
-    protected boolean getHttpsEnabled()
-    {
-        return config.get( ServerSettings.webserver_https_enabled );
-    }
-
-    protected int getHttpsPort()
-    {
-        return config.get( ServerSettings.webserver_https_port );
-    }
-
-    protected String getWebServerAddress()
-    {
-        return config.get( ServerSettings.webserver_address );
+        return httpsAddress.isPresent();
     }
 
     protected Pattern[] getUriWhitelist()
@@ -438,43 +349,57 @@ public abstract class AbstractNeoServer implements NeoServer
         return DEFAULT_URI_WHITELIST;
     }
 
-    protected KeyStoreInformation createKeyStore()
+    protected Optional<KeyStoreInformation> createKeyStore()
     {
-        File privateKeyPath = config.get( ServerSettings.tls_key_file ).getAbsoluteFile();
-        File certificatePath = config.get( ServerSettings.tls_certificate_file ).getAbsoluteFile();
-
-        try
+        if ( httpsIsEnabled() )
         {
-            // If neither file is specified
-            if ( (!certificatePath.exists() && !privateKeyPath.exists()) )
-            {
-                //noinspection deprecation
-                log.info( "No SSL certificate found, generating a self-signed certificate.." );
-                Certificates certFactory = new Certificates();
-                certFactory.createSelfSignedCertificate( certificatePath, privateKeyPath, getWebServerAddress() );
-            }
+            File privateKeyPath = config.get( ServerSettings.tls_key_file ).getAbsoluteFile();
+            File certificatePath = config.get( ServerSettings.tls_certificate_file ).getAbsoluteFile();
 
-            // Make sure both files were there, or were generated
-            if( !certificatePath.exists() )
+            try
+            {
+                // If neither file is specified
+                if ( (!certificatePath.exists() && !privateKeyPath.exists()) )
+                {
+                    //noinspection deprecation
+                    log.info( "No SSL certificate found, generating a self-signed certificate.." );
+                    Certificates certFactory = new Certificates();
+                    certFactory.createSelfSignedCertificate( certificatePath, privateKeyPath, httpAddress.getHost() );
+                }
+
+                // Make sure both files were there, or were generated
+                if ( !certificatePath.exists() )
+                {
+                    throw new ServerStartupException(
+                            String.format(
+                                    "TLS private key found, but missing certificate at '%s'. Cannot start server without certificate.",
+
+                                    certificatePath ) );
+                }
+                if ( !privateKeyPath.exists() )
+                {
+                    throw new ServerStartupException(
+                            String.format(
+                                    "TLS certificate found, but missing key at '%s'. Cannot start server without key.",
+                                    privateKeyPath ) );
+                }
+
+                return Optional.of( new KeyStoreFactory().createKeyStore( privateKeyPath, certificatePath ) );
+            }
+            catch ( GeneralSecurityException e )
             {
                 throw new ServerStartupException(
-                        String.format("TLS private key found, but missing certificate at '%s'. Cannot start server without certificate.", certificatePath ) );
+                        "TLS certificate error occurred, unable to start server: " + e.getMessage(), e );
             }
-            if( !privateKeyPath.exists() )
+            catch ( IOException | OperatorCreationException e )
             {
                 throw new ServerStartupException(
-                        String.format("TLS certificate found, but missing key at '%s'. Cannot start server without key.", privateKeyPath ) );
+                        "IO problem while loading or creating TLS certificates: " + e.getMessage(), e );
             }
-
-            return new KeyStoreFactory().createKeyStore( privateKeyPath, certificatePath );
         }
-        catch( GeneralSecurityException e )
+        else
         {
-            throw new ServerStartupException( "TLS certificate error occurred, unable to start server: " + e.getMessage(), e );
-        }
-        catch( IOException e )
-        {
-            throw new ServerStartupException( "IO problem while loading or creating TLS certificates: " + e.getMessage(), e );
+            return Optional.empty();
         }
     }
 
@@ -483,31 +408,10 @@ public abstract class AbstractNeoServer implements NeoServer
     {
         // TODO: All components should be moved over to the LifeSupport instance, life, in here.
         new RunCarefully(
-            new Runnable() {
-                @Override
-                public void run()
-                {
-                    stopWebServer();
-                }
-            },
-            new Runnable() {
-                @Override
-                public void run()
-                {
-                    stopModules();
-                }
-            },
-            new Runnable() {
-                @Override
-                public void run()
-                {
-                    life.stop();
-                }
-            }
+                this::stopWebServer,
+                this::stopModules,
+                life::stop
         ).run();
-
-        //noinspection deprecation
-        log.info( "Successfully shutdown database" );
     }
 
     private void stopWebServer()
@@ -533,23 +437,17 @@ public abstract class AbstractNeoServer implements NeoServer
     @Override
     public URI baseUri()
     {
-        return uriBuilder.buildURI( getWebServerAddress(), getWebServerPort(), false );
+        return uriBuilder.buildURI( httpAddress, false );
     }
 
-    public URI httpsUri()
+    public Optional<URI> httpsUri()
     {
-        return uriBuilder.buildURI( getWebServerAddress(), getHttpsPort(), true );
+        return httpsAddress.map( ( address ) -> uriBuilder.buildURI( address, true ) );
     }
 
     public WebServer getWebServer()
     {
         return webServer;
-    }
-
-    @Override
-    public Configurator getConfigurator()
-    {
-        return new ConfigurationBuilder.ConfigWrappingConfigurator( config );
     }
 
     @Override
@@ -575,7 +473,7 @@ public abstract class AbstractNeoServer implements NeoServer
         singletons.add( new DatabaseActions.Provider( databaseActions ) );
         singletons.add( new GraphDatabaseServiceProvider( database ) );
         singletons.add( new NeoServerProvider( this ) );
-        singletons.add( providerForSingleton( new ConfigWrappingConfiguration( getConfig() ), Configuration.class ) );
+        singletons.add( providerForSingleton( new ConfigAdapter( getConfig() ), Configuration.class ) );
         singletons.add( providerForSingleton( getConfig(), Config.class ) );
 
         singletons.add( new WebServerProvider( getWebServer() ) );
@@ -587,15 +485,32 @@ public abstract class AbstractNeoServer implements NeoServer
         singletons.add( new InputFormatProvider( repository ) );
         singletons.add( new OutputFormatProvider( repository ) );
         singletons.add( new CypherExecutorProvider( cypherExecutor ) );
-        singletons.add( new ExecutionEngineProvider( cypherExecutor ) );
 
         singletons.add( providerForSingleton( transactionFacade, TransactionFacade.class ) );
-        singletons.add( providerForSingleton( authManager, AuthManager.class ) );
+        singletons.add( new AuthManagerProvider(authManagerSupplier ) );
         singletons.add( new TransactionFilter( database ) );
         singletons.add( new LoggingProvider( logProvider ) );
         singletons.add( providerForSingleton( logProvider.getLog( NeoServer.class ), Log.class ) );
 
+        singletons.add( providerForSingleton( resolveDependency( UsageData.class ), UsageData.class ) );
+
         return singletons;
+    }
+
+    private static class AuthManagerProvider extends InjectableProvider<AuthManager>
+    {
+        private final Supplier<AuthManager> authManagerSupplier;
+        private AuthManagerProvider( Supplier<AuthManager> authManagerSupplier )
+        {
+            super(AuthManager.class);
+            this.authManagerSupplier = authManagerSupplier;
+        }
+
+        @Override
+        public AuthManager getValue( HttpContext httpContext )
+        {
+            return authManagerSupplier.get();
+        }
     }
 
     private boolean hasModule( Class<? extends ServerModule> clazz )
@@ -629,7 +544,7 @@ public abstract class AbstractNeoServer implements NeoServer
         return dependencyResolver.resolveDependency( type );
     }
 
-    private final Dependencies dependencyResolver = new Dependencies(new Supplier<DependencyResolver>()
+    private final Dependencies dependencyResolver = new Dependencies( new Supplier<DependencyResolver>()
     {
         @Override
         public DependencyResolver get()
@@ -637,5 +552,5 @@ public abstract class AbstractNeoServer implements NeoServer
             Database db = dependencyResolver.resolveDependency( Database.class );
             return db.getGraph().getDependencyResolver();
         }
-    });
+    } );
 }

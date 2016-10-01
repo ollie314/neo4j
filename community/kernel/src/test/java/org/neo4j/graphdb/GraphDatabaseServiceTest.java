@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,10 +19,9 @@
  */
 package org.neo4j.graphdb;
 
-import org.hamcrest.CoreMatchers;
-import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -36,11 +35,18 @@ import org.neo4j.test.OtherThreadExecutor;
 import org.neo4j.test.OtherThreadExecutor.WorkerCommand;
 import org.neo4j.test.TestGraphDatabaseFactory;
 
+import static org.hamcrest.CoreMatchers.instanceOf;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.iterableWithSize;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
 public class GraphDatabaseServiceTest
 {
+    @Rule
+    public ExpectedException exception = ExpectedException.none();
+
     @Test
     public void givenShutdownDatabaseWhenBeginTxThenExceptionIsThrown() throws Exception
     {
@@ -49,18 +55,11 @@ public class GraphDatabaseServiceTest
 
         db.shutdown();
 
+        // Expect
+        exception.expect( DatabaseShutdownException.class );
+
         // When
-        try
-        {
-            db.beginTx();
-            fail();
-        }
-        catch ( Exception e )
-        {
-            // Then
-            Assert.assertThat( e.getClass().getName(), CoreMatchers.equalTo( TransactionFailureException.class
-                    .getName() ) );
-        }
+        db.beginTx();
     }
 
     @Test
@@ -245,7 +244,7 @@ public class GraphDatabaseServiceTest
             }
         }
 
-        Assert.assertThat( result.get().getClass(), CoreMatchers.<Object>equalTo( TransactionFailureException.class ) );
+        assertThat( result.get(), instanceOf( DatabaseShutdownException.class ) );
     }
 
     @Test
@@ -296,6 +295,35 @@ public class GraphDatabaseServiceTest
             t2n2Wait.get();
             t2.execute( close( t2Tx ) );
             t2.close();
+        }
+    }
+
+    /**
+     * GitHub issue #5996
+     */
+    @Test
+    public void terminationOfClosedTransactionDoesNotInfluenceNextTransaction()
+    {
+        GraphDatabaseService db = cleanup.add( new TestGraphDatabaseFactory().newImpermanentDatabase() );
+
+        try ( Transaction tx = db.beginTx() )
+        {
+            db.createNode();
+            tx.success();
+        }
+
+        Transaction transaction = db.beginTx();
+        try ( Transaction tx = transaction )
+        {
+            db.createNode();
+            tx.success();
+        }
+        transaction.terminate();
+
+        try ( Transaction tx = db.beginTx() )
+        {
+            assertThat( db.getAllNodes(), is( iterableWithSize( 2 ) ) );
+            tx.success();
         }
     }
 

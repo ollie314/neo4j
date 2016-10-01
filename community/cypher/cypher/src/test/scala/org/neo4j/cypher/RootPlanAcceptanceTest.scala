@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,6 +20,7 @@
 package org.neo4j.cypher
 
 import org.neo4j.cypher.internal.compiler.v3_0._
+import scala.collection.JavaConverters._
 
 class RootPlanAcceptanceTest extends ExecutionEngineFunSuite {
 
@@ -96,23 +97,6 @@ class RootPlanAcceptanceTest extends ExecutionEngineFunSuite {
       .shouldHaveRuntime(InterpretedRuntimeName)
   }
 
-  test("query that lacks support from the compiled runtime") {
-    given("CREATE ()")
-      .withCypherVersion(CypherVersion.v3_0)
-      .withRuntime(CompiledRuntimeName)
-      .shouldHaveCypherVersion(CypherVersion.v3_0)
-      .shouldHaveRuntime(InterpretedRuntimeName)
-  }
-
-  test("query that should go through the compiled runtime") {
-    given("MATCH (a)-->(b) RETURN a")
-      .withCypherVersion(CypherVersion.v3_0)
-      .withRuntime(CompiledRuntimeName)
-      .shouldHaveCypherVersion(CypherVersion.v3_0)
-      .shouldHaveRuntime(CompiledRuntimeName)
-      .shouldHavePlanner(CostBasedPlannerName.default)
-  }
-
   test("AllNodesScan should be the only child of the plan") {
     val description = given("match (n) return n").planDescription
     var children = description.getChildren
@@ -123,22 +107,6 @@ class RootPlanAcceptanceTest extends ExecutionEngineFunSuite {
     }
 
     children.get(0).getName should be("AllNodesScan")
-  }
-
-  test("DbHits should contain proper values in compiled runtime") {
-    val description = given("match (n) return n")
-      .withRuntime(CompiledRuntimeName)
-      .planDescription
-    val children = description.getChildren
-    children should have size 1
-    description.getArguments.get("DbHits") should equal(0) // ProduceResults has no hits
-    children.get(0).getArguments.get("DbHits") should equal(1) // AllNodesScan has 1 hit
-  }
-
-  test("Rows should be properly formatted in compiled runtime") {
-    given("match (n) return n")
-      .withRuntime(CompiledRuntimeName)
-      .planDescription.getArguments.get("Rows") should equal(0)
   }
 
   test("DbHits should contain proper values in interpreted runtime") {
@@ -158,12 +126,11 @@ class RootPlanAcceptanceTest extends ExecutionEngineFunSuite {
   }
 
   test("EstimatedRows should be properly formatted") {
-    given("match (n) return n").planDescription.getArguments.get("EstimatedRows") should equal(0)
+    given("match (n) return n").planDescription.getArguments.get("EstimatedRows") should equal(1) // on missing statistics, we fake cardinality to one
   }
 
-  for(planner <- Seq(GreedyPlannerName, IDPPlannerName, DPPlannerName, RulePlannerName);
-      runtime <- Seq(CompiledRuntimeName, InterpretedRuntimeName)
-      if !(planner == RulePlannerName && runtime == CompiledRuntimeName)) {
+  for(planner <- Seq(IDPPlannerName, DPPlannerName, RulePlannerName);
+      runtime <- Seq(InterpretedRuntimeName)) {
 
     test(s"Should report correct planner and runtime used $planner + $runtime") {
       given("match (n) return n")
@@ -216,11 +183,10 @@ class RootPlanAcceptanceTest extends ExecutionEngineFunSuite {
           val runtimeString = runtime.map("runtime=" + _.name).getOrElse("")
           s"CYPHER $version $plannerString $runtimeString"
       }
-      val result = eengine.profile(s"$prepend $query")
+      val result = eengine.profile(s"$prepend $query", Map.empty[String, Object], graph.session())
       result.size
       val executionResult = result.executionPlanDescription()
       executionResult.asJava
     }
   }
-
 }

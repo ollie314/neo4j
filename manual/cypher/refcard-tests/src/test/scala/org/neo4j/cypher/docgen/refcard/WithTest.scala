@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,7 +26,7 @@ import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionRe
 class WithTest extends RefcardTest with QueryStatisticsTestSupport {
   val graphDescription = List("ROOT FRIEND A", "A FRIEND B", "B FRIEND C", "C FRIEND ROOT")
   val title = "WITH"
-  val css = "read c2-2 c3-3 c4-3 c5-3 c6-2"
+  val css = "read c2-2 c3-3 c4-2 c5-3 c6-2"
   override val linkId = "query-with"
 
   override def assert(name: String, result: InternalExecutionResult) {
@@ -65,7 +65,7 @@ RETURN user
 ###
 
 The `WITH` syntax is similar to `RETURN`.
-It separates query parts explicitly, allowing you to declare which identifiers to carry over to the next part.
+It separates query parts explicitly, allowing you to declare which variables to carry over to the next part.
 
 ###assertion=with-limit
 //

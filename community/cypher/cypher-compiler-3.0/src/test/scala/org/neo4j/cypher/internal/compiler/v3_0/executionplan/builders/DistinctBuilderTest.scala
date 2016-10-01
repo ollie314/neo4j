@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -59,10 +59,10 @@ class DistinctBuilderTest extends BuilderTest {
   test("should_rewrite_expressions_coming_after_return") {
     val query = PartiallySolvedQuery().
       copy(
-      returns = Seq(Unsolved(ReturnItem(IdFunction(Identifier("n")), "42"))),
+      returns = Seq(Unsolved(ReturnItem(IdFunction(Variable("n")), "42"))),
       aggregation = Seq.empty,
       aggregateToDo = true,
-      sort = Seq(Unsolved(SortItem(IdFunction(Identifier("n")), ascending = false))))
+      sort = Seq(Unsolved(SortItem(IdFunction(Variable("n")), ascending = false))))
 
     val pipe = new FakePipe(Iterator.empty, ("n", CTNode))
     val planInProgress: ExecutionPlanInProgress = plan(pipe, query)

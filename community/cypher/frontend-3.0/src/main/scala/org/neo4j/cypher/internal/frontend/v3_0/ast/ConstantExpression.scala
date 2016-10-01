@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,7 @@ object ConstantExpression {
   def unapply(v: AnyRef): Option[Expression] = v match {
     case expr: Literal => Some(expr)
     case expr: Parameter => Some(expr)
-    case expr@Collection(expressions) if expressions.forall(unapply(_).nonEmpty) => Some(expr)
+    case expr@ListLiteral(expressions) if expressions.forall(unapply(_).nonEmpty) => Some(expr)
     case _ => None
   }
 }

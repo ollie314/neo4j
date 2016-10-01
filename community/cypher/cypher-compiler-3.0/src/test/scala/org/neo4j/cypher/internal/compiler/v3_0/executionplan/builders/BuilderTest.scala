@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -33,10 +33,10 @@ trait BuilderTest extends CypherFunSuite {
   implicit val monitor = mock[PipeMonitor]
 
   def createPipe(nodes: Seq[String] = Seq(), relationships: Seq[String] = Seq()): FakePipe = {
-    val nodeIdentifiers = nodes.map(x => x -> CTNode)
-    val relIdentifiers = relationships.map(x => x -> CTRelationship)
+    val nodeVaribles = nodes.map(x => x -> CTNode)
+    val relVariables = relationships.map(x => x -> CTRelationship)
 
-    new FakePipe(Seq(MutableMaps.empty), (nodeIdentifiers ++ relIdentifiers): _*)
+    new FakePipe(Seq(MutableMaps.empty), nodeVaribles ++ relVariables: _*)
   }
 
   // for avoiding missing an override while refactoring

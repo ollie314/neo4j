@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,7 +27,7 @@ import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 import org.neo4j.graphdb.{Node, Relationship}
 
 case class IdFunction(inner: Expression) extends NullInNullOutExpression(inner) {
-  def compute(value: Any, m: ExecutionContext)(implicit state: QueryState) = value match {
+  def compute(value: Any, m: ExecutionContext)(implicit state: QueryState): Long = value match {
     case node: Node        => node.getId
     case rel: Relationship => rel.getId
     case x => throw new CypherTypeException("Expected `%s` to be a node or relationship, but it was ``".format(inner, x.getClass.getSimpleName))

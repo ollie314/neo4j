@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,11 +22,14 @@ package org.neo4j.cypher.internal.compiler.v3_0.spi
 import java.net.URL
 
 import org.neo4j.cypher.internal.compiler.v3_0.InternalQueryStatistics
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expander, KernelPredicate}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.matching.PatternNode
 import org.neo4j.cypher.internal.frontend.v3_0.SemanticDirection
-import org.neo4j.graphdb.{Path, PropertyContainer, Relationship, Node}
+import org.neo4j.graphdb.{Node, Path, PropertyContainer, Relationship}
 import org.neo4j.kernel.api.constraints.{NodePropertyExistenceConstraint, RelationshipPropertyExistenceConstraint, UniquenessConstraint}
 import org.neo4j.kernel.api.index.IndexDescriptor
+
+import scala.collection.Iterator
 
 /*
  * Developer note: This is an attempt at an internal graph database API, which defines a clean cut between
@@ -41,6 +44,15 @@ import org.neo4j.kernel.api.index.IndexDescriptor
  * the core layer, we can move that responsibility outside of the scope of cypher.
  */
 trait QueryContext extends TokenContext {
+
+  // See QueryContextAdaptation if you need a dummy that overrides all methods as ??? for writing a test
+
+  type EntityAccessor
+
+  def entityAccessor: EntityAccessor
+
+  def transactionalContext: QueryTransactionalContext
+
   def nodeOps: Operations[Node]
 
   def relationshipOps: Operations[Relationship]
@@ -69,31 +81,27 @@ trait QueryContext extends TokenContext {
 
   def getPropertiesForRelationship(relId: Long): Iterator[Int]
 
+  def detachDeleteNode(node: Node): Int
+
   def getOrCreatePropertyKeyId(propertyKey: String): Int
 
   def addIndexRule(labelId: Int, propertyKeyId: Int): IdempotentResult[IndexDescriptor]
 
   def dropIndexRule(labelId: Int, propertyKeyId: Int)
 
-  def isOpen: Boolean
-
-  def isTopLevelTx: Boolean
-
-  def close(success: Boolean)
-
   def indexSeek(index: IndexDescriptor, value: Any): Iterator[Node]
 
   def indexSeekByRange(index: IndexDescriptor, value: Any): Iterator[Node]
 
+  def indexScanByContains(index: IndexDescriptor, value: String): Iterator[Node]
+
+  def indexScanByEndsWith(index: IndexDescriptor, value: String): Iterator[Node]
+
   def indexScan(index: IndexDescriptor): Iterator[Node]
 
-  def uniqueIndexSeek(index: IndexDescriptor, value: Any): Option[Node]
+  def lockingUniqueIndexSeek(index: IndexDescriptor, value: Any): Option[Node]
 
   def getNodesByLabel(id: Int): Iterator[Node]
-
-  def upgradeToLockingQueryContext: LockingQueryContext = upgrade(this)
-
-  def upgrade(context: QueryContext): LockingQueryContext
 
   def getOrCreateFromSchemaState[K, V](key: K, creator: => V): V
 
@@ -118,8 +126,6 @@ trait QueryContext extends TokenContext {
    */
   def withAnyOpenQueryContext[T](work: (QueryContext) => T): T
 
-  def commitAndRestartTx()
-
   def relationshipStartNode(rel: Relationship): Node
 
   def relationshipEndNode(rel: Relationship): Node
@@ -138,14 +144,29 @@ trait QueryContext extends TokenContext {
                                direction: SemanticDirection,
                                relTypes: Seq[String]): Iterator[Path]
 
+  def singleShortestPath(left: Node, right: Node, depth: Int, expander: Expander, pathPredicate: KernelPredicate[Path],
+                         filters: Seq[KernelPredicate[PropertyContainer]]): Option[Path]
+
+  def allShortestPath(left: Node, right: Node, depth: Int, expander: Expander, pathPredicate: KernelPredicate[Path],
+                      filters: Seq[KernelPredicate[PropertyContainer]]): Iterator[Path]
+
   def nodeCountByCountStore(labelId: Int): Long
 
   def relationshipCountByCountStore(startLabelId: Int, typeId: Int, endLabelId: Int): Long
 
-}
+  def lockNodes(nodeIds: Long*)
 
-trait LockingQueryContext extends QueryContext {
-  def releaseLocks()
+  def lockRelationships(relIds: Long*)
+
+  def callReadOnlyProcedure(name: QualifiedProcedureName, args: Seq[Any]): Iterator[Array[AnyRef]]
+
+  def callReadWriteProcedure(name: QualifiedProcedureName, args: Seq[Any]): Iterator[Array[AnyRef]]
+
+  def callDbmsProcedure(name: QualifiedProcedureName, args: Seq[Any]): Iterator[Array[AnyRef]]
+
+  // Check if a runtime value is a node, relationship, path or some such value returned from
+  // other query context values by calling down to the underlying database
+  def isGraphKernelResultValue(v: Any): Boolean
 }
 
 trait Operations[T <: PropertyContainer] {
@@ -167,7 +188,28 @@ trait Operations[T <: PropertyContainer] {
 
   def indexQuery(name: String, query: Any): Iterator[T]
 
-  def isDeleted(obj: T): Boolean
+  def isDeletedInThisTx(obj: T): Boolean
 
   def all: Iterator[T]
+
+  def acquireExclusiveLock(obj: Long): Unit
+
+  def releaseExclusiveLock(obj: Long): Unit
 }
+
+trait QueryTransactionalContext {
+
+  type ReadOps
+  type DbmsOps
+
+  def readOperations: ReadOps
+
+  def dbmsOperations: DbmsOps
+
+  def isTopLevelTx: Boolean
+
+  def close(success: Boolean)
+
+  def commitAndRestartTx()
+}
+

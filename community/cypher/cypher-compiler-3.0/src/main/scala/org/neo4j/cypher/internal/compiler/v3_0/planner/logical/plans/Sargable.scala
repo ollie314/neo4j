@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,7 +26,6 @@ import org.neo4j.cypher.internal.compiler.v3_0.commands.{ManyQueryExpression, Qu
 import org.neo4j.cypher.internal.compiler.v3_0.helpers._
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.{ManySeekArgs, SeekArgs, SingleSeekArg}
 import org.neo4j.cypher.internal.frontend.v3_0.ast._
-import org.neo4j.cypher.internal.frontend.v3_0.parser.{LikePatternOp, LikePatternParser, MatchText, WildcardLikePatternOp}
 import org.neo4j.cypher.internal.frontend.v3_0.{ExclusiveBound, InclusiveBound}
 
 object WithSeekableArgs {
@@ -39,7 +38,7 @@ object WithSeekableArgs {
 
 object AsIdSeekable {
   def unapply(v: Any) = v match {
-    case WithSeekableArgs(func@FunctionInvocation(_, _, IndexedSeq(ident: Identifier)), rhs)
+    case WithSeekableArgs(func@FunctionInvocation(_, _, IndexedSeq(ident: Variable)), rhs)
       if func.function.contains(functions.Id) && !rhs.dependencies(ident) =>
       Some(IdSeekable(func, ident, rhs))
     case _ =>
@@ -49,7 +48,7 @@ object AsIdSeekable {
 
 object AsPropertySeekable {
   def unapply(v: Any) = v match {
-    case WithSeekableArgs(prop@Property(ident: Identifier, propertyKey), rhs)
+    case WithSeekableArgs(prop@Property(ident: Variable, propertyKey), rhs)
       if !rhs.dependencies(ident) =>
       Some(PropertySeekable(prop, ident, rhs))
     case _ =>
@@ -60,7 +59,7 @@ object AsPropertySeekable {
 object AsPropertyScannable {
   def unapply(v: Any): Option[Scannable[Expression]] = v match {
 
-    case func@FunctionInvocation(_, _, IndexedSeq(property@Property(ident: Identifier, _)))
+    case func@FunctionInvocation(_, _, IndexedSeq(property@Property(ident: Variable, _)))
       if func.function.contains(functions.Exists) =>
       Some(ExplicitlyPropertyScannable(func, ident, property))
 
@@ -84,7 +83,7 @@ object AsPropertyScannable {
   }
 
   private def partialPropertyPredicate[P <: Expression](predicate: P, lhs: Expression) = lhs match {
-    case property@Property(ident: Identifier, _) =>
+    case property@Property(ident: Variable, _) =>
       PartialPredicate.ifNotEqual(
         FunctionInvocation(FunctionName(functions.Exists.name)(predicate.position), property)(predicate.position),
         predicate
@@ -97,9 +96,9 @@ object AsPropertyScannable {
 
 object AsStringRangeSeekable {
   def unapply(v: Any): Option[PrefixRangeSeekable] = v match {
-    case startsWith@StartsWith(Property(ident: Identifier, propertyKey), lit@StringLiteral(prefix)) if prefix.nonEmpty =>
+    case startsWith@StartsWith(Property(ident: Variable, propertyKey), lit@StringLiteral(prefix)) if prefix.nonEmpty =>
       Some(PrefixRangeSeekable(PrefixRange(lit), startsWith, ident, propertyKey))
-    case startsWith@StartsWith(Property(ident: Identifier, propertyKey), rhs) =>
+    case startsWith@StartsWith(Property(ident: Variable, propertyKey), rhs) =>
       Some(PrefixRangeSeekable(PrefixRange(rhs), startsWith, ident, propertyKey))
     case _ =>
       None
@@ -108,8 +107,9 @@ object AsStringRangeSeekable {
 
 object AsValueRangeSeekable {
   def unapply(v: Any): Option[InequalityRangeSeekable] = v match {
-    case inequalities@AndedPropertyInequalities(ident, prop, _) =>
-      Some(InequalityRangeSeekable(ident, prop.propertyKey, inequalities))
+    case inequalities@AndedPropertyInequalities(ident, prop, innerInequalities)
+      if innerInequalities.forall( _.rhs.dependencies.isEmpty ) =>
+        Some(InequalityRangeSeekable(ident, prop.propertyKey, inequalities))
     case _ =>
       None
   }
@@ -117,26 +117,26 @@ object AsValueRangeSeekable {
 
 sealed trait Sargable[+T <: Expression] {
   def expr: T
-  def ident: Identifier
+  def ident: Variable
 
   def name = ident.name
 }
 
 sealed trait Seekable[T <: Expression] extends Sargable[T] {
-  def dependencies: Set[Identifier]
+  def dependencies: Set[Variable]
 }
 
 sealed trait EqualitySeekable[T <: Expression] extends Seekable[T] {
   def args: SeekableArgs
 }
 
-case class IdSeekable(expr: FunctionInvocation, ident: Identifier, args: SeekableArgs)
+case class IdSeekable(expr: FunctionInvocation, ident: Variable, args: SeekableArgs)
   extends EqualitySeekable[FunctionInvocation] {
 
   def dependencies = args.dependencies
 }
 
-case class PropertySeekable(expr: Property, ident: Identifier, args: SeekableArgs)
+case class PropertySeekable(expr: Property, ident: Variable, args: SeekableArgs)
   extends EqualitySeekable[Property] {
 
   def propertyKey = expr.propertyKey
@@ -147,7 +147,7 @@ sealed trait RangeSeekable[T <: Expression, V] extends Seekable[T] {
   def range: SeekRange[V]
 }
 
-case class PrefixRangeSeekable(override val range: PrefixRange[Expression], expr: StartsWith, ident: Identifier, propertyKey: PropertyKeyName)
+case class PrefixRangeSeekable(override val range: PrefixRange[Expression], expr: StartsWith, ident: Variable, propertyKey: PropertyKeyName)
   extends RangeSeekable[StartsWith, Expression] {
 
   def dependencies = Set.empty
@@ -156,7 +156,7 @@ case class PrefixRangeSeekable(override val range: PrefixRange[Expression], expr
     RangeQueryExpression(PrefixSeekRangeWrapper(range)(expr.rhs.position))
 }
 
-case class InequalityRangeSeekable(ident: Identifier, propertyKeyName: PropertyKeyName, expr: AndedPropertyInequalities)
+case class InequalityRangeSeekable(ident: Variable, propertyKeyName: PropertyKeyName, expr: AndedPropertyInequalities)
   extends RangeSeekable[AndedPropertyInequalities, Expression] {
 
   def dependencies = expr.inequalities.map(_.dependencies).toSet.flatten
@@ -169,28 +169,30 @@ case class InequalityRangeSeekable(ident: Identifier, propertyKeyName: PropertyK
       case LessThanOrEqual(_, value) => Right(InclusiveBound(value))
     })
 
+  def hasEquality: Boolean = expr.inequalities.map(_.includeEquality).reduceLeft(_ || _)
+
   def asQueryExpression: QueryExpression[Expression] =
     RangeQueryExpression(InequalitySeekRangeWrapper(range)(ident.position))
 }
 
 sealed trait Scannable[+T <: Expression] extends Sargable[T] {
-  def ident: Identifier
+  def ident: Variable
   def property: Property
 
   def propertyKey = property.propertyKey
 }
 
-case class ExplicitlyPropertyScannable(expr: FunctionInvocation, ident: Identifier, property: Property)
+case class ExplicitlyPropertyScannable(expr: FunctionInvocation, ident: Variable, property: Property)
   extends Scannable[FunctionInvocation]
 
-case class ImplicitlyPropertyScannable[+T <: Expression](expr: PartialPredicate[T], ident: Identifier, property: Property)
+case class ImplicitlyPropertyScannable[+T <: Expression](expr: PartialPredicate[T], ident: Variable, property: Property)
   extends Scannable[PartialPredicate[T]]
 
 sealed trait SeekableArgs {
   def expr: Expression
   def sizeHint: Option[Int]
 
-  def dependencies: Set[Identifier] = expr.dependencies
+  def dependencies: Set[Variable] = expr.dependencies
 
   def mapValues(f: Expression => Expression): SeekableArgs
 
@@ -209,17 +211,17 @@ case class SingleSeekableArg(expr: Expression) extends SeekableArgs {
 
 case class ManySeekableArgs(expr: Expression) extends SeekableArgs {
   val sizeHint = expr match {
-    case coll: Collection => Some(coll.expressions.size)
+    case coll: ListLiteral => Some(coll.expressions.size)
     case _ => None
   }
 
   override def mapValues(f: Expression => Expression) = expr match {
-    case coll: Collection => copy(expr = coll.map(f))
+    case coll: ListLiteral => copy(expr = coll.map(f))
     case _ => copy(expr = f(expr))
   }
 
   def asQueryExpression: QueryExpression[Expression] = expr match {
-    case coll: Collection =>
+    case coll: ListLiteral =>
       ZeroOneOrMany(coll.expressions) match {
         case One(value) => SingleQueryExpression(value)
         case _ => ManyQueryExpression(coll)
@@ -230,7 +232,7 @@ case class ManySeekableArgs(expr: Expression) extends SeekableArgs {
   }
 
   def asCommandSeekArgs: SeekArgs = expr match {
-    case coll: Collection =>
+    case coll: ListLiteral =>
       ZeroOneOrMany(coll.expressions) match {
         case Zero => SeekArgs.empty
         case One(value) => SingleSeekArg(toCommandExpression(value))

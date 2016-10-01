@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,9 +19,13 @@
  */
 package org.neo4j.kernel.impl.api.index;
 
+import org.neo4j.storageengine.api.schema.PopulationProgress;
+
 public interface StoreScan<FAILURE extends Exception>
 {
     void run() throws FAILURE;
 
     void stop();
+
+    PopulationProgress getProgress();
 }

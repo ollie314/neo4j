@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,7 @@
  */
 package org.neo4j.register;
 
-import org.neo4j.function.BiFunction;
+import java.util.function.BiFunction;
 
 public class Registers
 {
@@ -79,98 +79,6 @@ public class Registers
             public String toString()
             {
                 return "DoubleLongRegister{first=" + first + ", second=" + second + "}";
-            }
-        };
-    }
-
-    public static Register.LongRegister newLongRegister() { return newLongRegister( -1 ); }
-    public static Register.LongRegister newLongRegister( final long initialValue )
-    {
-        return new Register.LongRegister()
-        {
-            private long value = initialValue;
-            @Override
-            public long read()
-            {
-                return value;
-            }
-
-            @Override
-            public void write( long value )
-            {
-                this.value = value;
-            }
-
-            @Override
-            public long increment( long delta )
-            {
-                this.value += delta;
-                return this.value;
-            }
-
-            @Override
-            public String toString()
-            {
-                return "LongRegister{value=" + value + "}";
-            }
-        };
-    }
-
-    public static Register.IntRegister newIntRegister() { return newIntRegister( -1 ); }
-    public static Register.IntRegister newIntRegister( final int initialValue )
-    {
-        return new Register.IntRegister()
-        {
-            private int value = initialValue;
-            @Override
-            public int read()
-            {
-                return value;
-            }
-
-            @Override
-            public void write( int value )
-            {
-                this.value = value;
-            }
-
-            @Override
-            public int increment( int delta )
-            {
-                this.value += delta;
-                return this.value;
-            }
-
-            @Override
-            public String toString()
-            {
-                return "IntRegister{value=" + value + "}";
-            }
-        };
-    }
-
-    public static <T> Register.ObjectRegister<T> newObjectRegister() { return newObjectRegister( null ); }
-    public static <T> Register.ObjectRegister<T> newObjectRegister( final T initialValue )
-    {
-        return new Register.ObjectRegister<T>()
-        {
-            private T value = initialValue;
-            @Override
-            public T read()
-            {
-                return value;
-            }
-
-            @Override
-            public void write( T value )
-            {
-                this.value = value;
-            }
-
-            @Override
-            public String toString()
-            {
-                return "ObjectRegister{value=" + value + "}";
             }
         };
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,10 +24,10 @@ import org.neo4j.cypher.internal.frontend.v3_0.ast.{Not, Equals, NotEquals}
 
 case object normalizeNotEquals extends Rewriter {
 
-  override def apply(that: AnyRef): AnyRef = topDown(instance)(that)
+  override def apply(that: AnyRef): AnyRef = instance(that)
 
-  private val instance: Rewriter = Rewriter.lift {
+  private val instance: Rewriter = topDown(Rewriter.lift {
     case p @ NotEquals(lhs, rhs) =>
       Not(Equals(lhs, rhs)(p.position))(p.position)   // not(1 = 2)  <!===!>     1 != 2
-  }
+  })
 }

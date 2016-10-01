@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,10 +30,11 @@ import org.neo4j.kernel.api.exceptions.index.IndexPopulationFailedKernelExceptio
 import org.neo4j.kernel.api.exceptions.schema.ConstraintVerificationFailedKernelException;
 import org.neo4j.kernel.api.index.IndexConfiguration;
 import org.neo4j.kernel.api.index.IndexDescriptor;
-import org.neo4j.kernel.api.index.IndexReader;
 import org.neo4j.kernel.api.index.IndexUpdater;
 import org.neo4j.kernel.api.index.InternalIndexState;
 import org.neo4j.kernel.api.index.SchemaIndexProvider;
+import org.neo4j.storageengine.api.schema.IndexReader;
+import org.neo4j.storageengine.api.schema.PopulationProgress;
 
 public abstract class AbstractDelegatingIndexProxy implements IndexProxy
 {
@@ -121,6 +122,12 @@ public abstract class AbstractDelegatingIndexProxy implements IndexProxy
     public IndexPopulationFailure getPopulationFailure() throws IllegalStateException
     {
         return getDelegate().getPopulationFailure();
+    }
+
+    @Override
+    public PopulationProgress getIndexPopulationProgress()
+    {
+        return getDelegate().getIndexPopulationProgress();
     }
 
     @Override

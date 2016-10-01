@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,15 +25,19 @@ import org.neo4j.kernel.impl.store.record.NodeRecord;
 import org.neo4j.kernel.impl.store.record.PropertyRecord;
 import org.neo4j.kernel.impl.store.record.Record;
 
+import static org.neo4j.kernel.impl.store.record.RecordLoad.NORMAL;
+
 class DuplicatePropertyRemover
 {
     private final NodeStore nodeStore;
     private final PropertyStore propertyStore;
+    private final PropertyRecord otherPropertyRecord;
 
     DuplicatePropertyRemover( NodeStore nodeStore, PropertyStore propertyStore )
     {
         this.nodeStore = nodeStore;
         this.propertyStore = propertyStore;
+        this.otherPropertyRecord = propertyStore.newRecord();
     }
 
     public void fixUpPropertyLinksAroundUnusedRecord( NodeRecord nodeRecord, PropertyRecord duplicateRecord )
@@ -49,15 +53,15 @@ class DuplicatePropertyRemover
         long nextRecordId = duplicateRecord.getNextProp();
         if ( previousRecordId != Record.NO_PREVIOUS_PROPERTY.intValue() )
         {
-            PropertyRecord property = propertyStore.getRecord( previousRecordId );
-            property.setNextProp( nextRecordId );
-            propertyStore.updateRecord( property );
+            propertyStore.getRecord( previousRecordId, otherPropertyRecord, NORMAL );
+            otherPropertyRecord.setNextProp( nextRecordId );
+            propertyStore.updateRecord( otherPropertyRecord );
         }
         if ( nextRecordId != Record.NO_NEXT_PROPERTY.intValue() )
         {
-            PropertyRecord property = propertyStore.getRecord( nextRecordId );
-            property.setPrevProp( previousRecordId );
-            propertyStore.updateRecord( property );
+            propertyStore.getRecord( nextRecordId, otherPropertyRecord, NORMAL );
+            otherPropertyRecord.setPrevProp( previousRecordId );
+            propertyStore.updateRecord( otherPropertyRecord );
         }
     }
 }

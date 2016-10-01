@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,7 +26,7 @@ import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.{IdName, St
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.{Cardinality, QueryGraphProducer, Selectivity}
 import org.neo4j.cypher.internal.compiler.v3_0.planner.{LogicalPlanningTestSupport, QueryGraph}
 import org.neo4j.cypher.internal.compiler.v3_0.spi.GraphStatistics
-import org.neo4j.cypher.internal.frontend.v3_0.ast.Identifier
+import org.neo4j.cypher.internal.frontend.v3_0.ast.Variable
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
 import org.neo4j.cypher.internal.frontend.v3_0.{LabelId, PropertyKeyId, RelTypeId, SemanticTable}
 import org.scalatest.matchers.{MatchResult, Matcher}
@@ -208,8 +208,8 @@ trait CardinalityTestHelper extends QueryGraphProducer with CardinalityCustomMat
 
       val semanticTable: SemanticTable = {
         val empty = SemanticTable()
-        val withNodes = knownNodeNames.foldLeft(empty) { case (table, node) => table.addNode(Identifier(node)(pos)) }
-        val withNodesAndRels = knownRelNames.foldLeft(withNodes) { case (table, rel) => table.addRelationship(Identifier(rel)(pos)) }
+        val withNodes = knownNodeNames.foldLeft(empty) { case (table, node) => table.addNode(Variable(node)(pos)) }
+        val withNodesAndRels = knownRelNames.foldLeft(withNodes) { case (table, rel) => table.addRelationship(Variable(rel)(pos)) }
         withNodesAndRels
       }
 

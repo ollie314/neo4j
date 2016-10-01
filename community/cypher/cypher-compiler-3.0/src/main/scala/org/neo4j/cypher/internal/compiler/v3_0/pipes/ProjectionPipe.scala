@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -31,11 +31,11 @@ It's an additive operation - nothing is lost in the execution context, the pipe 
 case class ProjectionPipe(source: Pipe, expressions: Map[String, Expression])(val estimatedCardinality: Option[Double] = None)
                          (implicit pipeMonitor: PipeMonitor) extends PipeWithSource(source, pipeMonitor) with RonjaPipe {
   val symbols = {
-    val newIdentifiers = expressions.map {
+    val newVariables = expressions.map {
       case (name, expression) => name -> expression.getType(source.symbols)
     }
 
-    source.symbols.add(newIdentifiers)
+    source.symbols.add(newVariables)
   }
 
   protected def internalCreateResults(input: Iterator[ExecutionContext], state: QueryState) = {
@@ -55,7 +55,7 @@ case class ProjectionPipe(source: Pipe, expressions: Map[String, Expression])(va
 
   def planDescriptionWithoutCardinality =
     source.planDescription
-      .andThen(this.id, "Projection", identifiers, expressions.values.toSeq.map(LegacyExpression):_*)
+      .andThen(this.id, "Projection", variables, expressions.values.toSeq.map(LegacyExpression):_*)
 
   def dup(sources: List[Pipe]): Pipe = {
     val (source :: Nil) = sources

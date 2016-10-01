@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,19 +19,22 @@
  */
 package org.neo4j.shell;
 
-import org.junit.Ignore;
+import org.junit.Rule;
 import org.junit.Test;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.Serializable;
+import java.rmi.RemoteException;
 import java.util.Map;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
 import java.util.regex.Pattern;
 
 import org.neo4j.cypher.NodeStillHasRelationshipsException;
 import org.neo4j.graphdb.ConstraintViolationException;
 import org.neo4j.graphdb.Direction;
-import org.neo4j.graphdb.DynamicRelationshipType;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
@@ -39,55 +42,42 @@ import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.schema.IndexDefinition;
 import org.neo4j.graphdb.schema.Schema.IndexState;
+import org.neo4j.kernel.impl.transaction.TransactionStats;
+import org.neo4j.kernel.impl.transaction.log.TransactionIdStore;
 import org.neo4j.shell.impl.CollectingOutput;
 import org.neo4j.shell.impl.SameJvmClient;
 import org.neo4j.shell.kernel.GraphDatabaseShellServer;
+import org.neo4j.test.SuppressOutput;
 
 import static org.hamcrest.core.IsNot.not;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
+import static org.mockito.Mockito.mock;
 import static org.neo4j.graphdb.Direction.OUTGOING;
-import static org.neo4j.graphdb.DynamicLabel.label;
-import static org.neo4j.graphdb.DynamicRelationshipType.withName;
+import static org.neo4j.graphdb.Label.label;
 import static org.neo4j.graphdb.Neo4jMatchers.findNodesByLabelAndProperty;
 import static org.neo4j.graphdb.Neo4jMatchers.hasLabels;
 import static org.neo4j.graphdb.Neo4jMatchers.hasProperty;
 import static org.neo4j.graphdb.Neo4jMatchers.hasSize;
 import static org.neo4j.graphdb.Neo4jMatchers.inTx;
 import static org.neo4j.graphdb.Neo4jMatchers.waitForIndex;
+import static org.neo4j.graphdb.RelationshipType.withName;
 import static org.neo4j.helpers.collection.MapUtil.genericMap;
 
 public class TestApps extends AbstractShellTest
 {
-    // TODO: FIX THIS BEFORE MERGE
-    @Test @Ignore("I don't get how pwd is supposed to work, and subsequently don't grok how to fix this test.")
-    public void variationsOfCdAndPws() throws Exception
-    {
-        Relationship[] relationships = createRelationshipChain( 3 );
-        executeCommand( "mknode --cd" );
-        executeCommand( "pwd", pwdOutputFor( getStartNode( relationships[0] ) ) );
-        executeCommandExpectingException( "cd " + getStartNode( relationships[0] ).getId(), "stand" );
-        executeCommand( "pwd", pwdOutputFor( getStartNode( relationships[0] ) ) );
-        executeCommand( "cd " + getEndNode( relationships[0] ).getId() );
-        executeCommand( "pwd", pwdOutputFor( getStartNode( relationships[0] ), getEndNode( relationships[0] ) ) );
-        executeCommandExpectingException( "cd " + getEndNode( relationships[2] ).getId(), "connected" );
-        executeCommand( "pwd", pwdOutputFor( getStartNode( relationships[0] ), getEndNode( relationships[0] ) ) );
-        executeCommand( "cd -a " + getEndNode( relationships[2] ).getId() );
-        executeCommand( "pwd", pwdOutputFor( getStartNode( relationships[0] ), getEndNode( relationships[0] ), getEndNode( relationships[2] ) ) );
-        executeCommand( "cd .." );
-        executeCommand( "pwd", pwdOutputFor( getStartNode( relationships[0] ), getEndNode( relationships[0] ) ) );
-        executeCommand( "cd " + getEndNode( relationships[1] ).getId() );
-        executeCommand( "pwd", pwdOutputFor( getStartNode( relationships[0] ), getEndNode( relationships[0] ), getEndNode( relationships[1] ) ) );
-    }
+    @Rule
+    public SuppressOutput suppressOutput = SuppressOutput.suppressAll();
 
     @Test
     public void canSetPropertiesAndLsWithFilters() throws Exception
     {
-        RelationshipType type1 = DynamicRelationshipType.withName( "KNOWS" );
-        RelationshipType type2 = DynamicRelationshipType.withName( "LOVES" );
+        RelationshipType type1 = withName( "KNOWS" );
+        RelationshipType type2 = withName( "LOVES" );
         Relationship[] relationships = createRelationshipChain( type1, 2 );
         Node node = getEndNode( relationships[0] );
         createRelationshipChain( node, type2, 1 );
@@ -367,7 +357,8 @@ public class TestApps extends AbstractShellTest
         node.createRelationshipTo( otherNode, RELATIONSHIP_TYPE );
         finishTx();
 
-        executeCommand( "MATCH n WHERE id(n) = " + node.getId() + " optional match p=n-[r*]-m RETURN p;", "\\d+ ms" );
+        executeCommand( "MATCH (n) WHERE id(n) = " + node.getId() + " optional match p=(n)-[r*]-(m) RETURN p;",
+                "\\d+ ms", "1 row" );
     }
 
     @Test
@@ -545,19 +536,20 @@ public class TestApps extends AbstractShellTest
         assertThat( findNodesByLabelAndProperty( label( "Person" ), "name", "Andres", db ), hasSize( 1 ) );
     }
 
-
     @Test
     public void use_cypher_periodic_commit() throws Exception
     {
         File file = File.createTempFile( "file", "csv", null );
         try ( PrintWriter writer = new PrintWriter( file ) )
         {
-            String url = file.toURI().toURL().toString().replace("\\", "\\\\");
-            writer.println("1,2,3");
-            writer.println("4,5,6");
+            String url = file.toURI().toURL().toString().replace( "\\", "\\\\" );
+            writer.println( "1,2,3" );
+            writer.println( "4,5,6" );
+            writer.close();
 
             // WHEN
-            executeCommand( "USING PERIODIC COMMIT 100 LOAD CSV FROM '" + url + "' AS line CREATE ();" );
+            executeCommand( "USING PERIODIC COMMIT 100 LOAD CSV FROM '" + url + "' AS line CREATE ();",
+                    "Nodes created: 2" );
         }
         catch ( ShellException e )
         {
@@ -625,22 +617,22 @@ public class TestApps extends AbstractShellTest
     @Test
     public void canDumpSubgraphWithCypher() throws Exception
     {
-        final DynamicRelationshipType type = DynamicRelationshipType.withName( "KNOWS" );
+        final RelationshipType type = withName( "KNOWS" );
         beginTx();
         createRelationshipChain( db.createNode(), type, 1 );
         finishTx();
         executeCommand( "dump match (n)-[r]->(m) where id(n) = 0 return n,r,m;",
                 "begin",
-                "create (_0)",
+                "create \\(_0\\)",
                 "create \\(_1\\)",
-                "(_0)-\\[:`KNOWS`\\]->(_1)",
+                "\\(_0\\)-\\[:`KNOWS`\\]->\\(_1\\)",
                 "commit" );
     }
 
     @Test
     public void canDumpGraph() throws Exception
     {
-        final DynamicRelationshipType type = DynamicRelationshipType.withName( "KNOWS" );
+        final RelationshipType type = withName( "KNOWS" );
         beginTx();
         final Relationship rel = createRelationshipChain( db.createNode(), type, 1 )[0];
         rel.getStartNode().setProperty( "f o o", "bar" );
@@ -651,7 +643,7 @@ public class TestApps extends AbstractShellTest
                 "begin",
                 "create \\(_0 \\{\\`f o o\\`:\"bar\"\\}\\)",
                 "create \\(_1 \\{`flags`:\\[true, false, true\\]\\}\\)",
-                "_0-\\[:`KNOWS` \\{`since`:2010\\}\\]->_1",
+                "\\(_0\\)-\\[:`KNOWS` \\{`since`:2010\\}\\]->\\(_1\\)",
                 "commit"
         );
     }
@@ -1135,6 +1127,12 @@ public class TestApps extends AbstractShellTest
     }
 
     @Test
+    public void allowsCypherToContainExclamationMarks() throws Exception
+    {
+        executeCommand( "RETURN \"a\"+\"!b\";", "a!b" );
+    }
+
+    @Test
     public void shouldAllowQueriesToStartWithOptionalMatch() throws Exception
     {
         executeCommand( "OPTIONAL MATCH (n) RETURN n;" );
@@ -1181,51 +1179,158 @@ public class TestApps extends AbstractShellTest
     @Test
     public void shouldBeAbleToSwitchBetweenRuntimes() throws Exception
     {
-        executeCommand( "CYPHER runtime=compiled MATCH (n)-[:T]-(n) RETURN n;" );
         executeCommand( "CYPHER runtime=interpreted MATCH (n)-[:T]-(n) RETURN n;" );
     }
 
     @Test
     public void canListAllConfiguration() throws Exception
     {
-        executeCommand( "dbinfo -g Configuration", "\"ephemeral\": \"true\"" );
+        executeCommand( "dbinfo -g Configuration", "\"unsupported.dbms.ephemeral\": \"true\"" );
     }
 
     @Test
     public void canTerminateAnActiveCommand() throws Exception
     {
-        final ShellServer server = this.shellServer;
-        final Serializable clientId = this.shellClient.getId();
-        Thread thread = new Thread(new Runnable() {
-            @Override
-            public void run()
-            {
-                try
-                {
-                    Thread.sleep(1);
-                    server.terminate( clientId );
-                }
-                catch ( Exception e )
-                {
-                    throw new RuntimeException( e );
-                }
-            }
-        });
-        thread.start();
+        TransactionStats txStats = db.getDependencyResolver().resolveDependency( TransactionStats.class );
+        assertEquals( 0, txStats.getNumberOfActiveTransactions() );
 
-        executeCommandExpectingException( "FOREACH(i IN range(0, 10000) | CREATE ());",
+        Serializable clientId = shellClient.getId();
+        Future<?> result = ForkJoinPool.commonPool().submit( () -> {
+            try
+            {
+                while ( txStats.getNumberOfActiveTransactions() == 0 )
+                {
+                    Thread.sleep( 10 );
+                }
+                assertEquals( 1, txStats.getNumberOfActiveTransactions() );
+
+                shellServer.terminate( clientId );
+            }
+            catch ( Exception e )
+            {
+                throw new RuntimeException( e );
+            }
+        } );
+
+        executeCommandExpectingException( "FOREACH(i IN range(0, " + Integer.MAX_VALUE + ") | CREATE ());",
                 "has been terminated" );
+        assertNull( result.get() );
     }
 
     @Test
     public void canUseForeach() throws Exception
     {
-        executeCommand( "FOREACH (x in range(0,10) | CREATE ()));" );
+        executeCommand( "FOREACH(x in range(0,10) | CREATE ());" );
     }
 
     @Test
-    public void canUseCommandsWithoutSpaceBeforeLeftParenthesis() throws Exception
+    public void use_cypher_periodic_commit2() throws Exception
     {
-        executeCommand( "FOREACH(x in range(0,10) | CREATE ()));" );
+        File file = File.createTempFile( "file", "csv", null );
+        try ( PrintWriter writer = new PrintWriter( file ) )
+        {
+            String url = file.toURI().toURL().toString().replace("\\", "\\\\");
+            writer.println("apa,2,3");
+            writer.println("4,5,6");
+            writer.close();
+
+            // WHEN
+            executeCommand( "cypher planner=rule USING PERIODIC COMMIT 100 " +
+                            "LOAD CSV FROM '" + url + "' AS line " +
+                            "CREATE () " +
+                            "RETURN line;", "apa" );
+        }
+        catch ( ShellException e )
+        {
+            // THEN NOT
+            fail( "Failed to execute PERIODIC COMMIT query" );
+        }
+        finally
+        {
+            file.delete();
+        }
+    }
+
+    @Test
+    public void canUseCall() throws Exception
+    {
+        executeCommand( "CALL db.labels" );
+    }
+
+    @Test
+    public void shouldSupportUsingPeriodicCommitInSession() throws Exception
+    {
+        long fileSize = 120;
+        long batch = 40;
+
+        String csvFileUrl = createCsvFile( fileSize );
+        long expectedCommitCount = fileSize / batch;
+
+        verifyNumberOfCommits( "USING PERIODIC COMMIT " + batch + " LOAD CSV FROM '" + csvFileUrl + "' AS l CREATE ();",
+                expectedCommitCount );
+    }
+
+    @Test
+    public void shouldSupportUsingPeriodicCommitInMultipleLine() throws Exception
+    {
+        long fileSize = 120;
+        long batch = 40;
+
+        String csvFileUrl = createCsvFile( fileSize );
+        long expectedCommitCount = fileSize / batch;
+
+        verifyNumberOfCommits(
+                "USING\nPERIODIC\nCOMMIT\n" + batch + "\nLOAD\nCSV\nFROM '" + csvFileUrl + "' AS l\nCREATE ();",
+                expectedCommitCount );
+    }
+
+    private void verifyNumberOfCommits( String query, long expectedCommitCount ) throws Exception
+    {
+        // Given
+
+        CtrlCHandler ctrlCHandler = mock( CtrlCHandler.class );
+        StartClient startClient = getStartClient();
+        long txIdBeforeQuery = lastClosedTxId();
+
+        // When
+        startClient.start( new String[]{"-path", db.getStoreDir(), "-c", query}, ctrlCHandler );
+
+        // then
+        long txId = lastClosedTxId();
+        assertEquals( expectedCommitCount + txIdBeforeQuery + 1 /* shell opens a tx to show the prompt */, txId );
+
+    }
+
+    private StartClient getStartClient()
+    {
+        return new StartClient( System.out, System.err )
+        {
+            @Override
+            protected GraphDatabaseShellServer getGraphDatabaseShellServer( File path, boolean readOnly,
+                    String configFile ) throws RemoteException
+            {
+                return new GraphDatabaseShellServer( db );
+            }
+        };
+    }
+
+    private long lastClosedTxId()
+    {
+        return db.getDependencyResolver().resolveDependency( TransactionIdStore.class ).getLastCommittedTransactionId();
+    }
+
+    private String createCsvFile( long size ) throws IOException, InterruptedException
+    {
+        File tmpFile = File.createTempFile( "data", ".csv", null );
+        tmpFile.deleteOnExit();
+        try ( PrintWriter out = new PrintWriter( tmpFile ) )
+        {
+            out.println( "foo" );
+            for ( int i = 0; i < size; i++ )
+            {
+                out.println( i );
+            }
+        }
+        return tmpFile.toURI().toURL().toExternalForm();
     }
 }

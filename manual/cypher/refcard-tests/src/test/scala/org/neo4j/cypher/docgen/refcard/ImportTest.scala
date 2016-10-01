@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,7 +28,7 @@ import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionRe
 class ImportTest extends RefcardTest with QueryStatisticsTestSupport {
   val graphDescription = List()
   val title = "Import"
-  val css = "write c2-1 c4-4 c5-4 c6-3"
+  val css = "write c2-1 c4-4 c5-5 c6-3"
   override val linkId = "cypherdoc-importing-csv-files-with-cypher"
 
   implicit var csvFilesDir: File = createDir(dir, "csv")
@@ -65,7 +65,7 @@ class ImportTest extends RefcardTest with QueryStatisticsTestSupport {
   override def assert(name: String, result: InternalExecutionResult) {
     name match {
       case "created" =>
-        assertStats(result, nodesCreated = 4, labelsAdded = 4, propertiesSet = 8)
+        assertStats(result, nodesCreated = 4, labelsAdded = 4, propertiesWritten = 8)
     }
   }
 
@@ -93,7 +93,8 @@ Load CSV data which has headers.
 ###assertion=created
 //
 
-LOAD CSV FROM '%ARTIST_WITH_FIELD_DELIMITER%'
+LOAD CSV FROM
+'%ARTIST_WITH_FIELD_DELIMITER%'
 AS line FIELDTERMINATOR ';'
 CREATE (:Artist {name: line[1], year: toInt(line[2])})
 ###

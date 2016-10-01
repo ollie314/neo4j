@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,14 +19,14 @@
  */
 package org.neo4j.cypher.docgen.refcard
 
-import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionResult
-import org.neo4j.cypher.{ ExecutionResult, QueryStatisticsTestSupport }
+import org.neo4j.cypher.QueryStatisticsTestSupport
 import org.neo4j.cypher.docgen.RefcardTest
+import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionResult
 
 class LabelsTest extends RefcardTest with QueryStatisticsTestSupport {
   val graphDescription = List("A:Person KNOWS ROOT")
   val title = "Labels"
-  val css = "general c2-1 c3-2 c4-2 c5-3 c6-2"
+  val css = "general c2-1 c3-2 c4-1 c5-2 c6-6"
   override val linkId = "cypherdoc-labels-constraints-and-indexes"
 
   override def assert(name: String, result: InternalExecutionResult) {
@@ -38,10 +38,10 @@ class LabelsTest extends RefcardTest with QueryStatisticsTestSupport {
         assertStats(result, labelsAdded = 3)
         assert(result.toList.size === 1)
       case "create-rel" =>
-        assertStats(result, nodesCreated = 1, relationshipsCreated = 1, propertiesSet = 1, labelsAdded = 1)
+        assertStats(result, nodesCreated = 1, relationshipsCreated = 1, propertiesWritten = 1, labelsAdded = 1)
         assert(result.toList.size === 1)
       case "create" =>
-        assertStats(result, nodesCreated = 1, propertiesSet = 1, labelsAdded = 1, nodesDeleted = 1)
+        assertStats(result, nodesCreated = 1, propertiesWritten = 1, labelsAdded = 1, nodesDeleted = 1)
         assert(result.toList.size === 1)
       case "remove-label" =>
         assertStats(result, labelsRemoved = 1)
@@ -66,7 +66,7 @@ class LabelsTest extends RefcardTest with QueryStatisticsTestSupport {
 ###assertion=create parameters=bname
 //
 
-CREATE (n:Person {name:{value}})
+CREATE (n:Person {name: {value}})
 
 DELETE n
 RETURN n###
@@ -76,7 +76,7 @@ Create a node with label and property.
 ###assertion=create parameters=bname
 //
 
-MERGE (n:Person {name:{value}})
+MERGE (n:Person {name: {value}})
 
 DELETE n
 RETURN n###
@@ -99,7 +99,7 @@ MATCH (n:Person)
 
 RETURN n###
 
-Matches nodes labeled as `Person`.
+Matches nodes labeled `Person`.
 
 ###assertion=related parameters=aname
 //

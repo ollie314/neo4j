@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,9 +20,10 @@
 package org.neo4j.kernel.impl.transaction.log.checkpoint;
 
 import java.io.IOException;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 import org.neo4j.function.Predicates;
-import org.neo4j.function.Supplier;
 import org.neo4j.kernel.impl.store.UnderlyingStorageException;
 import org.neo4j.kernel.impl.util.JobScheduler;
 import org.neo4j.kernel.lifecycle.LifecycleAdapter;
@@ -70,10 +71,10 @@ public class CheckPointScheduler extends LifecycleAdapter
     private volatile JobScheduler.JobHandle handle;
     private volatile boolean stopped;
     private volatile boolean checkPointing;
-    private final Supplier<Boolean> checkPointingCondition = new Supplier<Boolean>()
+    private final BooleanSupplier checkPointingCondition = new BooleanSupplier()
     {
         @Override
-        public Boolean get()
+        public boolean getAsBoolean()
         {
             return !checkPointing;
         }

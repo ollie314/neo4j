@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -43,18 +43,22 @@ public final class StandalonePageCacheFactory
 
     public static PageCache createPageCache( FileSystemAbstraction fileSystem )
     {
-        return createPageCache( fileSystem, new Config() );
+        return createPageCache( fileSystem, Config.defaults() );
     }
 
-    public static PageCache createPageCache(
-            FileSystemAbstraction fileSystem, Config config )
+    public static PageCache createPageCache( FileSystemAbstraction fileSystem, Config config )
+    {
+        return createPageCache( fileSystem, PageCacheTracer.NULL, config );
+    }
+
+    public static PageCache createPageCache( FileSystemAbstraction fileSystem, PageCacheTracer tracer, Config config )
     {
         Config baseConfig = new Config( MapUtil.stringMap(
                 GraphDatabaseSettings.pagecache_memory.name(), "8M" ) );
         Config finalConfig = baseConfig.with( config.getParams() );
         FormattedLogProvider logProvider = FormattedLogProvider.toOutputStream( System.err );
         ConfiguringPageCacheFactory pageCacheFactory = new ConfiguringPageCacheFactory(
-                fileSystem, finalConfig, PageCacheTracer.NULL, logProvider.getLog( PageCache.class ) );
+                fileSystem, finalConfig, tracer, logProvider.getLog( PageCache.class ) );
         return pageCacheFactory.getOrCreatePageCache();
     }
 }

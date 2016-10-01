@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,7 @@ import org.neo4j.cypher.internal.compiler.v3_0.ExecutionContext
 import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.Expression
 import org.neo4j.cypher.internal.compiler.v3_0.commands.values.KeyToken
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan._
-import org.neo4j.cypher.internal.compiler.v3_0.mutation.{makeValueNeoSafe, GraphElementPropertyFunctions, SetAction}
+import org.neo4j.cypher.internal.compiler.v3_0.mutation.{GraphElementPropertyFunctions, SetAction, makeValueNeoSafe}
 import org.neo4j.cypher.internal.compiler.v3_0.planDescription.InternalPlanDescription.Arguments.ExpandExpression
 import org.neo4j.cypher.internal.compiler.v3_0.spi.QueryContext
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
@@ -33,7 +33,6 @@ import org.neo4j.helpers.collection.PrefetchingIterator
 
 import scala.collection.JavaConverters._
 import scala.collection.Map
-import scala.collection.mutable.ArrayBuffer
 
 /**
  * Merge when both end-points are known, find all relationships of the given
@@ -125,14 +124,13 @@ case class MergeIntoPipe(source: Pipe,
     val relationships = query.getRelationshipsForIds(start, localDirection, Some(Seq(typeId)))
 
     new PrefetchingIterator[Relationship] {
-      //we do not expect two nodes to have many connecting relationships
-      val connectedRelationships = new ArrayBuffer[Relationship](2)
 
       private def hasCorrectProperties(rel: Relationship): Boolean = props.forall { case (key, expression) =>
         val expressionValue = expression(execution)(queryState)
         val propertyKeyId = key.getOptId(query)
-
-        propertyKeyId.exists { id => query.relationshipOps.getProperty(rel.getId, id) == expressionValue }
+        propertyKeyId.exists { id =>
+          toComparableProperty(query.relationshipOps.getProperty(rel.getId, id)) == expressionValue
+        }
       }
 
       override def fetchNextOrNull(): Relationship = {
@@ -140,15 +138,20 @@ case class MergeIntoPipe(source: Pipe,
           val rel = relationships.next()
           val other = rel.getOtherNode(start)
           if (end == other) {
-            if (hasCorrectProperties(rel)) {
-              connectedRelationships.append(rel)
-              return rel
-            }
+            if (hasCorrectProperties(rel)) return rel
           }
         }
         null
       }
     }.asScala
+  }
+
+  /*
+   * Properties can contain arrays which are not comparable with ==
+   */
+  private def toComparableProperty(property: Any) = property match {
+    case a: Array[_] => a.toVector
+    case o => o
   }
 
   private def getDegree(node: Node, typeId: Int, direction: SemanticDirection, query: QueryContext) = {
@@ -165,7 +168,7 @@ case class MergeIntoPipe(source: Pipe,
   }
 
   def planDescriptionWithoutCardinality =
-    source.planDescription.andThen(this.id, "Merge(Into)", identifiers, ExpandExpression(fromName, relName, Seq(typ), toName, dir))
+    source.planDescription.andThen(this.id, "Merge(Into)", variables, ExpandExpression(fromName, relName, Seq(typ), toName, dir))
 
   val symbols = source.symbols.add(toName, CTNode).add(relName, CTRelationship)
 

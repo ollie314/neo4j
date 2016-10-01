@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -58,16 +58,16 @@ public abstract class PageCacheTracerTest
     private void assertCounts( long pins, long unpins, long faults, long evictions, long evictionExceptions,
                                long flushes, long bytesRead, long bytesWritten, long filesMapped, long filesUnmapped )
     {
-        assertThat( "countPins", tracer.countPins(), is( pins ) );
-        assertThat( "countUnpins", tracer.countUnpins(), is( unpins ) );
-        assertThat( "countFaults", tracer.countFaults(), is( faults ) );
-        assertThat( "countEvictions", tracer.countEvictions(), is( evictions ) );
-        assertThat( "countEvictionExceptions", tracer.countEvictionExceptions(), is( evictionExceptions ) );
-        assertThat( "countFlushes", tracer.countFlushes(), is( flushes ) );
-        assertThat( "countBytesRead", tracer.countBytesRead(), is( bytesRead ) );
-        assertThat( "countBytesWritten", tracer.countBytesWritten(), is( bytesWritten ) );
-        assertThat( "countFilesMapped", tracer.countFilesMapped(), is( filesMapped ) );
-        assertThat( "countFilesUnmapped", tracer.countFilesUnmapped(), is( filesUnmapped ) );
+        assertThat( "pins", tracer.pins(), is( pins ) );
+        assertThat( "unpins", tracer.unpins(), is( unpins ) );
+        assertThat( "faults", tracer.faults(), is( faults ) );
+        assertThat( "evictions", tracer.evictions(), is( evictions ) );
+        assertThat( "evictionExceptions", tracer.evictionExceptions(), is( evictionExceptions ) );
+        assertThat( "flushes", tracer.flushes(), is( flushes ) );
+        assertThat( "bytesRead", tracer.bytesRead(), is( bytesRead ) );
+        assertThat( "bytesWritten", tracer.bytesWritten(), is( bytesWritten ) );
+        assertThat( "filesMapped", tracer.filesMapped(), is( filesMapped ) );
+        assertThat( "filesUnmapped", tracer.filesUnmapped(), is( filesUnmapped ) );
     }
 
     @Test

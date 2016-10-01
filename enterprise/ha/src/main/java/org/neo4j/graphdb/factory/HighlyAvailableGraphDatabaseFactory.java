@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,58 +20,44 @@
 package org.neo4j.graphdb.factory;
 
 import java.io.File;
-import java.util.Map;
 
-import org.neo4j.graphdb.GraphDatabaseService;
+import org.neo4j.cluster.ClusterSettings;
+import org.neo4j.kernel.ha.HaSettings;
 import org.neo4j.kernel.ha.HighlyAvailableGraphDatabase;
+import org.neo4j.kernel.impl.factory.Edition;
+
+import static java.util.Arrays.asList;
 
 /**
  * Factory for HA Neo4j instances.
  */
 public class HighlyAvailableGraphDatabaseFactory extends GraphDatabaseFactory
 {
+    public HighlyAvailableGraphDatabaseFactory()
+    {
+        super( highlyAvailableFactoryState() );
+    }
+
+    private static GraphDatabaseFactoryState highlyAvailableFactoryState()
+    {
+        GraphDatabaseFactoryState state = new GraphDatabaseFactoryState();
+        state.addSettingsClasses( asList( ClusterSettings.class, HaSettings.class ) );
+        return state;
+    }
+
     @Override
     protected GraphDatabaseBuilder.DatabaseCreator createDatabaseCreator(
             final File storeDir, final GraphDatabaseFactoryState state )
     {
-        return new GraphDatabaseBuilder.DatabaseCreator()
-        {
-
-            @Override
-            public GraphDatabaseService newDatabase( final Map<String, String> config )
-            {
-                config.put( "ephemeral", "false" );
-
-                return new HighlyAvailableGraphDatabase( storeDir, config, state.databaseDependencies() );
-            }
+        return config -> {
+            config.put( "unsupported.dbms.ephemeral", "false" );
+            return new HighlyAvailableGraphDatabase( storeDir, config, state.databaseDependencies() );
         };
     }
 
-    /**
-     * @deprecated By using
-     *             {@link HighlyAvailableGraphDatabaseFactory#newEmbeddedDatabase(String)}
-     *             you get an abstraction of this factory, so you can either use
-     *             this factory or {@link GraphDatabaseFactory}.
-     * @param path Path to the new database
-     * @return a database service for the newly created database
-     */
-    @Deprecated
-    public GraphDatabaseService newHighlyAvailableDatabase( final String path )
+    @Override
+    public String getEdition()
     {
-        return newEmbeddedDatabase( path );
-    }
-
-    /**
-     * @deprecated By using
-     *             {@link HighlyAvailableGraphDatabaseFactory#newEmbeddedDatabaseBuilder(String)}
-     *             you get an abstraction of this factory, so you can either use
-     *             this factory or {@link GraphDatabaseFactory}.
-     * @param path Path to the new database
-     * @return a database service for the newly created database
-     */
-    @Deprecated
-    public GraphDatabaseBuilder newHighlyAvailableDatabaseBuilder( final String path )
-    {
-        return newEmbeddedDatabaseBuilder( path );
+        return Edition.enterprise.toString();
     }
 }

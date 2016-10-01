@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,7 +22,6 @@ package org.neo4j.cypher.internal.compiler.v3_0.ast.rewriters
 import org.neo4j.cypher.internal.compiler.v3_0.helpers.{FreshIdNameGenerator, PartialFunctionSupport}
 import org.neo4j.cypher.internal.frontend.v3_0.InputPosition
 import org.neo4j.cypher.internal.frontend.v3_0.ast._
-import org.neo4j.helpers.ThisShouldNotHappenError
 
 trait MatchPredicateNormalizer {
   val extract: PartialFunction[AnyRef, Vector[Expression]]
@@ -52,11 +51,11 @@ object PropertyPredicateNormalizer extends MatchPredicateNormalizer {
   }
 
   private def isParameter(expr: Expression) = expr match {
-    case Parameter(_) => true
+    case _: Parameter => true
     case _            => false
   }
 
-  private def propertyPredicates(id: Identifier, props: Expression): Vector[Expression] = props match {
+  private def propertyPredicates(id: Variable, props: Expression): Vector[Expression] = props match {
     case mapProps: MapExpression =>
       mapProps.items.map {
         // MATCH (a {a: 1, b: 2}) => MATCH (a) WHERE a.a = 1 AND a.b = 2
@@ -68,16 +67,16 @@ object PropertyPredicateNormalizer extends MatchPredicateNormalizer {
       Vector.empty
   }
 
-  private def varLengthPropertyPredicates(id: Identifier, props: Expression, patternPosition: InputPosition): Expression = {
+  private def varLengthPropertyPredicates(id: Variable, props: Expression, patternPosition: InputPosition): Expression = {
     val idName = FreshIdNameGenerator.name(patternPosition)
-    val newId = Identifier(idName)(id.position)
+    val newId = Variable(idName)(id.position)
     val expressions = propertyPredicates(newId, props)
     val conjunction = conjunct(expressions)
     AllIterablePredicate(newId, id.copyId, Some(conjunction))(props.position)
   }
 
   private def conjunct(exprs: Seq[Expression]): Expression = exprs match {
-    case Nil           => throw new ThisShouldNotHappenError("Davide", "There should be at least one predicate to be rewritten")
+    case Nil           => throw new IllegalArgumentException("There should be at least one predicate to be rewritten")
     case expr +: Nil   => expr
     case expr +: tail  => And(expr, conjunct(tail))(expr.position)
   }
@@ -89,7 +88,7 @@ object LabelPredicateNormalizer extends MatchPredicateNormalizer {
   }
 
   override val replace: PartialFunction[AnyRef, AnyRef] = {
-    case p@NodePattern(Some(id), labels, _) if labels.nonEmpty => p.copy(identifier = Some(id.copyId), labels = Seq.empty)(p.position)
+    case p@NodePattern(Some(id), labels, _) if labels.nonEmpty => p.copy(variable = Some(id.copyId), labels = Seq.empty)(p.position)
   }
 }
 

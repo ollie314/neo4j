@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,8 +21,8 @@ package org.neo4j.cypher.performance
 
 import java.io.File
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
-import org.neo4j.graphdb.DynamicRelationshipType
-import org.neo4j.index.impl.lucene.LuceneBatchInserterIndexProviderNewImpl
+import org.neo4j.graphdb.RelationshipType
+import org.neo4j.index.impl.lucene.legacy.LuceneBatchInserterIndexProviderNewImpl
 import org.neo4j.unsafe.batchinsert.{BatchInserter, BatchInserterIndex, BatchInserters}
 
 import scala.collection.JavaConverters._
@@ -30,17 +30,16 @@ import scala.io.Source.fromFile
 
 class DataImportTest extends CypherFunSuite {
 
-  val CATEGORY = DynamicRelationshipType.withName("category")
-  val RATING = DynamicRelationshipType.withName("rating")
+  val CATEGORY = RelationshipType.withName("category")
+  val RATING = RelationshipType.withName("rating")
 
   // This test creates a database
   ignore("createDatabase") {
     val sourceDir = new File("/Users/ata/Downloads/apa/ml-10M100K")
-    val targetDir = "target/perf-graph.db"
-    val dir = new File(targetDir)
-    deleteAll(dir)
+    val targetDir = new File("target/perf-graph.db")
+    deleteAll(targetDir)
 
-    dir.exists() should equal(false)
+    targetDir.exists() should equal(false)
 
     val (inserter, moviesId, moviesTitles, indexProvider, typeIdx) = createInserters(targetDir)
 
@@ -82,7 +81,7 @@ class DataImportTest extends CypherFunSuite {
     moviesId
   }
 
-  private def createInserters(targetDir: String) = {
+  private def createInserters(targetDir: File) = {
     val inserter = BatchInserters.inserter(targetDir)
     val indexProvider = new LuceneBatchInserterIndexProviderNewImpl(inserter)
 

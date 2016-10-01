@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -41,7 +41,7 @@ case class ProduceResultsPipe(source: Pipe, columns: Seq[String])(val estimatedC
   }
 
   def planDescriptionWithoutCardinality = source.planDescription
-    .andThen(this.id, "ProduceResults", identifiers, KeyNames(columns))
+    .andThen(this.id, "ProduceResults", variables, KeyNames(columns))
 
   def withEstimatedCardinality(estimated: Double) = copy()(Some(estimated))
 

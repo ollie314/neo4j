@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -148,7 +148,7 @@ abstract class MetadataCollector extends Metadata implements EntryVisitor<BigEnd
             {
                 if ( key.allZeroes() )
                 {
-                    if ( value.allZeroes() )
+                    if ( value.minusOneAtTheEnd() )
                     {
                         collector.state = done;
                         return false;
@@ -181,7 +181,8 @@ abstract class MetadataCollector extends Metadata implements EntryVisitor<BigEnd
             {
                 if ( key.allZeroes() )
                 {
-                    long entries = value.getIntegerFromEnd();
+                    long encodedEntries = value.getIntegerFromEnd();
+                    long entries = encodedEntries == -1 ? 0 : encodedEntries;
                     if ( entries != collector.data )
                     {
                         collector.state = in_error;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -39,7 +39,7 @@ public class StoreIdIterator implements PrimitiveLongIterator
     public StoreIdIterator( RecordStore<?> store, boolean forward )
     {
         this.store = store;
-        this.id = forward ? store.getNumberOfReservedLowIds() : store.getHighId();
+        this.id = forward ? store.getNumberOfReservedLowIds() : store.getHighestPossibleIdInUse();
         this.forward = forward;
     }
 

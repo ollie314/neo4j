@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,10 +23,10 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.Map;
 
-import org.neo4j.logging.Log;
 import org.neo4j.bolt.v1.messaging.MessageHandler;
 import org.neo4j.bolt.v1.runtime.Session;
 import org.neo4j.bolt.v1.runtime.internal.Neo4jError;
+import org.neo4j.logging.Log;
 
 public class MessageProcessingCallback<T> extends Session.Callback.Adapter<T,Void>
 {
@@ -34,19 +34,18 @@ public class MessageProcessingCallback<T> extends Session.Callback.Adapter<T,Voi
     public static void publishError( MessageHandler<IOException> out, Neo4jError error )
             throws IOException
     {
-        if ( error.status().code().classification().publishable() )
+        if ( !error.status().code().classification().shouldRespondToClient() )
         {
-            // If publishable, we forward the message as-is to the user.
-            out.handleFailureMessage( error.status(), error.message() );
-        }
-        else
-        {
-            // If not publishable, we only return an error reference to the user. This must
-            // be cross-referenced with the log files for full error detail. This feature
-            // exists to improve security so that sensitive information is not leaked.
+            // If not intended for client, we only return an error reference. This must
+            // be cross-referenced with the log files for full error detail.
             out.handleFailureMessage( error.status(), String.format(
                     "An unexpected failure occurred, see details in the database " +
                     "logs, reference number %s.", error.reference() ) );
+        }
+        else
+        {
+            // If intended for client, we forward the message as-is.
+            out.handleFailureMessage( error.status(), error.message() );
         }
     }
 

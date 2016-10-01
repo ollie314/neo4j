@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,24 +19,16 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans
 
-import org.neo4j.cypher.internal.frontend.v3_0.ast.Expression
 import org.neo4j.cypher.internal.compiler.v3_0.planner.{CardinalityEstimation, PlannerQuery}
+import org.neo4j.cypher.internal.frontend.v3_0.ast.Expression
 
 case class LetSelectOrSemiApply(left: LogicalPlan, right: LogicalPlan, idName: IdName, expr: Expression)
                                (val solved: PlannerQuery with CardinalityEstimation)
-  extends AbstractLetSelectOrSemiApply(left, right, idName, expr, solved) {
-
-  override def mapExpressions(f: (Set[IdName], Expression) => Expression): LogicalPlan =
-    copy(expr = f(left.availableSymbols, expr))(solved)
-}
+  extends AbstractLetSelectOrSemiApply(left, right, idName, expr, solved)
 
 case class LetSelectOrAntiSemiApply(left: LogicalPlan, right: LogicalPlan, idName: IdName, expr: Expression)
                                    (val solved: PlannerQuery with CardinalityEstimation)
-  extends AbstractLetSelectOrSemiApply(left, right, idName, expr, solved) {
-
-  override def mapExpressions(f: (Set[IdName], Expression) => Expression): LogicalPlan =
-    copy(expr = f(left.availableSymbols, expr))(solved)
-}
+  extends AbstractLetSelectOrSemiApply(left, right, idName, expr, solved)
 
 abstract class AbstractLetSelectOrSemiApply(left: LogicalPlan, right: LogicalPlan, idName: IdName, expr: Expression,
                                             solved: PlannerQuery with CardinalityEstimation)

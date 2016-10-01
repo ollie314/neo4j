@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,7 +24,8 @@ import org.junit.Before;
 
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.mockfs.EphemeralFileSystemAbstraction;
-import org.neo4j.kernel.GraphDatabaseAPI;
+import org.neo4j.kernel.api.security.AccessMode;
+import org.neo4j.kernel.api.dbms.DbmsOperations;
 import org.neo4j.kernel.api.DataWriteOperations;
 import org.neo4j.kernel.api.KernelAPI;
 import org.neo4j.kernel.api.KernelTransaction;
@@ -36,6 +37,7 @@ import org.neo4j.kernel.api.exceptions.KernelException;
 import org.neo4j.kernel.api.exceptions.TransactionFailureException;
 import org.neo4j.kernel.impl.api.index.IndexingService;
 import org.neo4j.kernel.impl.core.ThreadToStatementContextBridge;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import org.neo4j.test.TestGraphDatabaseBuilder;
 import org.neo4j.test.TestGraphDatabaseFactory;
 
@@ -50,33 +52,39 @@ public abstract class KernelIntegrationTest
     private KernelTransaction transaction;
     private Statement statement;
     private EphemeralFileSystemAbstraction fs;
+    private DbmsOperations dbmsOperations;
 
     protected TokenWriteOperations tokenWriteOperationsInNewTransaction() throws KernelException
     {
-        transaction = kernel.newTransaction();
+        transaction = kernel.newTransaction( KernelTransaction.Type.implicit, AccessMode.Static.WRITE );
         statement = transaction.acquireStatement();
         return statement.tokenWriteOperations();
     }
 
     protected DataWriteOperations dataWriteOperationsInNewTransaction() throws KernelException
     {
-        transaction = kernel.newTransaction();
+        transaction = kernel.newTransaction( KernelTransaction.Type.implicit, AccessMode.Static.WRITE );
         statement = transaction.acquireStatement();
         return statement.dataWriteOperations();
     }
 
     protected SchemaWriteOperations schemaWriteOperationsInNewTransaction() throws KernelException
     {
-        transaction = kernel.newTransaction();
+        transaction = kernel.newTransaction( KernelTransaction.Type.implicit, AccessMode.Static.FULL );
         statement = transaction.acquireStatement();
         return statement.schemaWriteOperations();
     }
 
     protected ReadOperations readOperationsInNewTransaction() throws TransactionFailureException
     {
-        transaction = kernel.newTransaction();
+        transaction = kernel.newTransaction( KernelTransaction.Type.implicit, AccessMode.Static.READ );
         statement = transaction.acquireStatement();
         return statement.readOperations();
+    }
+
+    protected DbmsOperations dbmsOperations()
+    {
+        return dbmsOperations;
     }
 
     protected void commit() throws TransactionFailureException
@@ -129,6 +137,7 @@ public abstract class KernelIntegrationTest
         kernel = db.getDependencyResolver().resolveDependency( KernelAPI.class );
         indexingService = db.getDependencyResolver().resolveDependency( IndexingService.class );
         statementContextSupplier = db.getDependencyResolver().resolveDependency( ThreadToStatementContextBridge.class );
+        dbmsOperations = db.getDependencyResolver().resolveDependency( DbmsOperations.class );
     }
 
     protected GraphDatabaseService createGraphDatabase( EphemeralFileSystemAbstraction fs )

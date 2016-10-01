@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,19 +22,19 @@ package org.neo4j.unsafe.impl.batchimport.staging;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.neo4j.helpers.Pair;
+import org.neo4j.helpers.collection.Pair;
 import org.neo4j.unsafe.impl.batchimport.Configuration;
 import org.neo4j.unsafe.impl.batchimport.stats.Keys;
 
+import static java.lang.Integer.min;
 import static java.lang.Math.max;
-import static java.lang.Math.min;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 /**
  * Monitors {@link StageExecution executions} and makes changes as the execution goes:
  * <ul>
  * <li>Figures out roughly how many CPUs (henceforth called processors) are busy processing batches.
- * The most busy step will have its {@link Step#numberOfProcessors() processors} counted as 1 processor each, all other
+ * The most busy step will have its {@link Step#processors(int) processors} counted as 1 processor each, all other
  * will take into consideration how idle the CPUs executing each step is, counted as less than one.</li>
  * <li>Constantly figures out bottleneck steps and assigns more processors those.</li>
  * <li>Constantly figures out if there are steps that are way faster than the second fastest step and
@@ -66,11 +66,6 @@ public class DynamicProcessorAssigner extends ExecutionMonitor.Adapter
     public void check( StageExecution[] executions )
     {
         int permits = availableProcessors - countActiveProcessors( executions );
-        if ( permits <= 0 )
-        {
-            return;
-        }
-
         for ( StageExecution execution : executions )
         {
             if ( execution.stillExecuting() )
@@ -81,7 +76,7 @@ public class DynamicProcessorAssigner extends ExecutionMonitor.Adapter
                     permits -= assignProcessorsToPotentialBottleNeck( execution, permits );
                 }
                 // Be a little more conservative removing processors from too fast steps
-                if ( removeProcessorFromPotentialIdleStep( execution ) )
+                if ( permits == 0 && removeProcessorFromPotentialIdleStep( execution ) )
                 {
                     permits++;
                 }
@@ -98,14 +93,15 @@ public class DynamicProcessorAssigner extends ExecutionMonitor.Adapter
         if ( bottleNeck.other() > 1.0f &&
              batchesPassedSinceLastChange( bottleNeckStep, doneBatches ) >= config.movingAverageSize() )
         {
+            // Assign 1/10th of the remaining permits. This will have processors being assigned more
+            // aggressively in the beginning of the run
             int optimalProcessorIncrement = min( max( 1, (int) bottleNeck.other().floatValue() - 1 ), permits );
-            for ( int i = 0; i < optimalProcessorIncrement; i++ )
+            int before = bottleNeckStep.processors( 0 );
+            int after = bottleNeckStep.processors( max( optimalProcessorIncrement, permits / 10 ) );
+            if ( after > before )
             {
-                if ( bottleNeckStep.incrementNumberOfProcessors() )
-                {
-                    lastChangedProcessors.put( bottleNeckStep, doneBatches );
-                    usedPermits++;
-                }
+                lastChangedProcessors.put( bottleNeckStep, doneBatches );
+                usedPermits -= (after-before);
             }
         }
         return usedPermits;
@@ -115,7 +111,7 @@ public class DynamicProcessorAssigner extends ExecutionMonitor.Adapter
     {
         for ( Pair<Step<?>,Float> fast : execution.stepsOrderedBy( Keys.avg_processing_time, true ) )
         {
-            int numberOfProcessors = fast.first().numberOfProcessors();
+            int numberOfProcessors = fast.first().processors( 0 );
             if ( numberOfProcessors == 1 )
             {
                 continue;
@@ -132,7 +128,8 @@ public class DynamicProcessorAssigner extends ExecutionMonitor.Adapter
                 long doneBatches = batches( fastestStep );
                 if ( batchesPassedSinceLastChange( fastestStep, doneBatches ) >= config.movingAverageSize() )
                 {
-                    if ( fastestStep.decrementNumberOfProcessors() )
+                    int before = fastestStep.processors( 0 );
+                    if ( fastestStep.processors( -1 ) < before )
                     {
                         lastChangedProcessors.put( fastestStep, doneBatches );
                         return true;
@@ -143,9 +140,9 @@ public class DynamicProcessorAssigner extends ExecutionMonitor.Adapter
         return false;
     }
 
-    private int avg( Step<?> step )
+    private long avg( Step<?> step )
     {
-        return (int) step.stats().stat( Keys.avg_processing_time ).asLong();
+        return step.stats().stat( Keys.avg_processing_time ).asLong();
     }
 
     private long batches( Step<?> step )
@@ -169,7 +166,7 @@ public class DynamicProcessorAssigner extends ExecutionMonitor.Adapter
                     // "steal" some of its processing power.
                     long avg = avg( step );
                     float factor = (float)avg / (float)highestAverage;
-                    processors += factor * step.numberOfProcessors();
+                    processors += factor * step.processors( 0 );
                 }
             }
         }

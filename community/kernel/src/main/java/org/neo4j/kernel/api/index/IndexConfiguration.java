@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,11 +19,16 @@
  */
 package org.neo4j.kernel.api.index;
 
-public class IndexConfiguration
+import org.neo4j.kernel.impl.store.record.IndexRule;
+
+public enum IndexConfiguration
 {
+    NON_UNIQUE( false ),
+    UNIQUE( true );
+
     private final boolean unique;
 
-    public IndexConfiguration( boolean unique )
+    IndexConfiguration( boolean unique )
     {
         this.unique = unique;
     }
@@ -33,17 +38,13 @@ public class IndexConfiguration
         return unique;
     }
 
-    @Override
-    public boolean equals( Object o )
+    public static IndexConfiguration of( boolean unique )
     {
-        return this == o ||
-                !(o == null || getClass() != o.getClass()) &&
-                        unique == ((IndexConfiguration) o).unique;
+        return unique ? UNIQUE : NON_UNIQUE;
     }
 
-    @Override
-    public int hashCode()
+    public static IndexConfiguration of( IndexRule rule )
     {
-        return (unique ? 1 : 0);
+        return of( rule.isConstraintIndex() );
     }
 }

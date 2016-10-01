@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,11 +22,11 @@ package org.neo4j.cypher.internal.compiler.v3_0.pipes.matching
 import org.neo4j.cypher.internal.compiler.v3_0._
 import org.neo4j.cypher.internal.frontend.v3_0.SemanticDirection
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
-import org.neo4j.graphdb.{DynamicRelationshipType, Relationship}
+import org.neo4j.graphdb.{RelationshipType, Relationship}
 
 class HistoryTest extends CypherFunSuite {
 
-  val typ = DynamicRelationshipType.withName("REL")
+  val typ = RelationshipType.withName("REL")
 
   test("excludingPatternRelsWorksAsExpected") {
     val a = new PatternNode("a")

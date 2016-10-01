@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -34,36 +34,32 @@ case object CypherPreParser extends Parser with Base {
 
   def AllOptions: Rule1[Seq[PreParserOption]] = zeroOrMore(AnyCypherOption, WS)
 
-  def AnyCypherOption: Rule1[PreParserOption] = Cypher | Explain | Profile | PlannerDeprecated
+  def AnyCypherOption: Rule1[PreParserOption] = Cypher | Explain | Profile
 
   def AnySomething: Rule1[String] = rule("Query") { oneOrMore(org.parboiled.scala.ANY) ~> identity }
 
   def Cypher = rule("CYPHER options") {
     keyword("CYPHER") ~~
       optional(VersionNumber) ~~
-      zeroOrMore(PlannerOption | RuntimeOption, WS) ~~> ConfigurationOptions
+      zeroOrMore(PlannerOption | RuntimeOption | StrategyOption, WS) ~~> ConfigurationOptions
   }
 
   def PlannerOption: Rule1[PreParserOption] = rule("planner option") (
-      option("planner", "cost") ~ push(GreedyPlannerOption)
-    | option("planner", "greedy") ~ push(GreedyPlannerOption)
+      option("planner", "cost") ~ push(CostPlannerOption)
     | option("planner", "rule") ~ push(RulePlannerOption)
+    | option("planner", "greedy") ~ push(GreedyPlannerOption)
     | option("planner", "idp") ~ push(IDPPlannerOption)
     | option("planner", "dp") ~ push(DPPlannerOption)
   )
 
   def RuntimeOption = rule("runtime option")(
     option("runtime", "interpreted") ~ push(InterpretedRuntimeOption)
-      | option("runtime", "compiled") ~ push(CompiledRuntimeOption)
+        //Only here for the parser to be backwards compatible
+      | option("runtime", "compiled") ~ push(InterpretedRuntimeOption)
   )
 
-  @deprecated
-  def PlannerDeprecated = rule("PLANNER") (
-      keyword("PLANNER COST") ~ push(GreedyPlannerOption)
-    | keyword("PLANNER GREEDY") ~ push(GreedyPlannerOption)
-    | keyword("PLANNER IDP") ~ push(IDPPlannerOption)
-    | keyword("PLANNER DP") ~ push(DPPlannerOption)
-    | keyword("PLANNER RULE") ~ push(RulePlannerOption)
+  def StrategyOption = rule("strategy option")(
+    option("updateStrategy", "eager") ~ push(EagerOption)
   )
 
   def VersionNumber = rule("Version") {

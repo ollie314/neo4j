@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,11 +22,22 @@ package org.neo4j.test;
 import org.hamcrest.Description;
 import org.hamcrest.TypeSafeDiagnosingMatcher;
 
+// TODO: move to common test module
 public class ByteArrayMatcher extends TypeSafeDiagnosingMatcher<byte[]>
 {
-    public static ByteArrayMatcher byteArray( byte[] expected )
+    public static ByteArrayMatcher byteArray( byte... expected )
     {
         return new ByteArrayMatcher( expected );
+    }
+
+    public static ByteArrayMatcher byteArray( int... expected )
+    {
+        byte[] bytes = new byte[expected.length];
+        for ( int i = 0; i < expected.length; i++ )
+        {
+            bytes[i] = (byte) expected[i];
+        }
+        return byteArray( bytes );
     }
 
     private final byte[] expected;

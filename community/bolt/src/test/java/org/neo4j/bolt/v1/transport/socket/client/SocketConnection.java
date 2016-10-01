@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -45,6 +45,11 @@ public class SocketConnection implements Connection
         this.socket = socket;
     }
 
+    protected void setSocket( Socket socket )
+    {
+        this.socket = socket;
+    }
+
     @Override
     public Connection connect( HostnamePort address ) throws Exception
     {
@@ -71,13 +76,18 @@ public class SocketConnection implements Connection
 
         try
         {
-            while ( (read = in.read( bytes, length - left, left )) != -1 && left > 0 )
+            while ( left > 0 && (read = in.read( bytes, length - left, left )) != -1 )
             {
                 left -= read;
             }
         } catch( SocketTimeoutException e )
         {
             throw new SocketTimeoutException( "Reading data timed out, missing " + left + " bytes. Buffer: " + HexPrinter.hex( bytes ) );
+        }
+        //all the bytes could not be read, fail
+        if (left != 0)
+        {
+            throw new IOException( "Failed to read " + length + " bytes, missing " + left + " bytes. Buffer: " + HexPrinter.hex( bytes ) );
         }
         return bytes;
     }
@@ -98,11 +108,5 @@ public class SocketConnection implements Connection
         {
             socket.close();
         }
-    }
-
-    @Override
-    public void close() throws Exception
-    {
-        disconnect();
     }
 }

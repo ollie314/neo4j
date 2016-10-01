@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -40,7 +40,7 @@ public class Chunker
 {
     public static byte[] chunk( int maxChunkSize, byte[][] messages ) throws IOException
     {
-        final ByteBuffer outputBuffer = ByteBuffer.allocate( 512 );
+        final ByteBuffer outputBuffer = ByteBuffer.allocate( 1024 * 8 );
 
         Channel ch = mock( Channel.class );
         when( ch.alloc() ).thenReturn( UnpooledByteBufAllocator.DEFAULT );
@@ -52,6 +52,7 @@ public class Chunker
                 ByteBuf buf = (ByteBuf) inv.getArguments()[0];
                 outputBuffer.limit( outputBuffer.position() + buf.readableBytes() );
                 buf.readBytes( outputBuffer );
+                buf.release();
                 return null;
             }
         } );
@@ -64,6 +65,7 @@ public class Chunker
             out.onMessageComplete();
         }
         out.flush();
+        out.close();
 
         byte[] bytes = new byte[outputBuffer.limit()];
         outputBuffer.position( 0 );

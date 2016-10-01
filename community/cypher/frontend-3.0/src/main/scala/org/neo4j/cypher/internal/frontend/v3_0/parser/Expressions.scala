@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -127,9 +127,7 @@ trait Expressions extends Parser
 
   private def Expression3: Rule1[ast.Expression] = rule("an expression") {
     Expression2 ~ zeroOrMore(WS ~ (
-        "[" ~~ Expression ~~ "]" ~~>> (ast.ContainerIndex(_: ast.Expression, _))
-      | "[" ~~ optional(Expression) ~~ ".." ~~ optional(Expression) ~~ "]" ~~>> (ast.CollectionSlice(_: ast.Expression, _, _))
-      | group(operator("=~") ~~ Expression2) ~~>> (ast.RegexMatch(_: ast.Expression, _))
+      group(operator("=~") ~~ Expression2) ~~>> (ast.RegexMatch(_: ast.Expression, _))
       | group(keyword("IN") ~~ Expression2) ~~>> (ast.In(_: ast.Expression, _))
       | group(keyword("STARTS WITH") ~~ Expression2) ~~>> (ast.StartsWith(_: ast.Expression, _))
       | group(keyword("ENDS WITH") ~~ Expression2) ~~>> (ast.EndsWith(_: ast.Expression, _))
@@ -143,6 +141,8 @@ trait Expressions extends Parser
     Expression1 ~ zeroOrMore(WS ~ (
         PropertyLookup
       | NodeLabels ~~>> (ast.HasLabels(_: ast.Expression, _))
+      |  "[" ~~ Expression ~~ "]" ~~>> (ast.ContainerIndex(_: ast.Expression, _))
+      | "[" ~~ optional(Expression) ~~ ".." ~~ optional(Expression) ~~ "]" ~~>> (ast.ListSlice(_: ast.Expression, _, _))
     ))
   }
 
@@ -157,10 +157,10 @@ trait Expressions extends Parser
     | group(keyword("COUNT") ~~ "(" ~~ "*" ~~ ")") ~ push(ast.CountStar()(_))
     | MapLiteral
     | ListComprehension
-    | group("[" ~~ zeroOrMore(Expression, separator = CommaSep) ~~ "]") ~~>> (ast.Collection(_))
+    | group("[" ~~ zeroOrMore(Expression, separator = CommaSep) ~~ "]") ~~>> (ast.ListLiteral(_))
     | group(keyword("FILTER") ~~ "(" ~~ FilterExpression ~~ ")") ~~>> (ast.FilterExpression(_, _, _))
     | group(keyword("EXTRACT") ~~ "(" ~~ FilterExpression ~ optional(WS ~ "|" ~~ Expression) ~~ ")") ~~>> (ast.ExtractExpression(_, _, _, _))
-    | group(keyword("REDUCE") ~~ "(" ~~ Identifier ~~ "=" ~~ Expression ~~ "," ~~ IdInColl ~~ "|" ~~ Expression ~~ ")") ~~>> (ast.ReduceExpression(_, _, _, _, _))
+    | group(keyword("REDUCE") ~~ "(" ~~ Variable ~~ "=" ~~ Expression ~~ "," ~~ IdInColl ~~ "|" ~~ Expression ~~ ")") ~~>> (ast.ReduceExpression(_, _, _, _, _))
     | group(keyword("ALL") ~~ "(" ~~ FilterExpression ~~ ")") ~~>> (ast.AllIterablePredicate(_, _, _))
     | group(keyword("ANY") ~~ "(" ~~ FilterExpression ~~ ")") ~~>> (ast.AnyIterablePredicate(_, _, _))
     | group(keyword("NONE") ~~ "(" ~~ FilterExpression ~~ ")") ~~>> (ast.NoneIterablePredicate(_, _, _))
@@ -169,7 +169,7 @@ trait Expressions extends Parser
     | RelationshipsPattern ~~> ast.PatternExpression
     | parenthesizedExpression
     | FunctionInvocation
-    | Identifier
+    | Variable
   )
 
   def parenthesizedExpression: Rule1[ast.Expression] = "(" ~~ Expression ~~ ")"
@@ -185,11 +185,11 @@ trait Expressions extends Parser
     )
   }
 
-  private def FilterExpression: Rule3[ast.Identifier, ast.Expression, Option[ast.Expression]] =
+  private def FilterExpression: Rule3[ast.Variable, ast.Expression, Option[ast.Expression]] =
     IdInColl ~ optional(WS ~ keyword("WHERE") ~~ Expression)
 
-  private def IdInColl: Rule2[ast.Identifier, ast.Expression] =
-    Identifier ~~ keyword("IN") ~~ Expression
+  private def IdInColl: Rule2[ast.Variable, ast.Expression] =
+    Variable ~~ keyword("IN") ~~ Expression
 
   private def FunctionInvocation: Rule1[ast.FunctionInvocation] = rule("a function") {
     ((group(FunctionName ~~ "(" ~~

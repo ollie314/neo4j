@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,10 +30,5 @@ public class GraphDatabaseBuilderTestTools
     public static Config createConfigCopy( GraphDatabaseBuilder builder )
     {
         return new Config( builder.getRawConfig() );
-    }
-
-    public static void clearConfig( GraphDatabaseBuilder builder )
-    {
-        builder.getRawConfig().clear();
     }
 }

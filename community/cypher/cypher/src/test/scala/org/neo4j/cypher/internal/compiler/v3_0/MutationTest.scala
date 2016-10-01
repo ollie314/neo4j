@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,30 +27,27 @@ import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import org.neo4j.cypher.internal.frontend.v3_0.CypherTypeException
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 import org.neo4j.graphdb.{Node, NotFoundException}
+import org.neo4j.kernel.api.KernelTransaction
+import org.neo4j.kernel.api.security.AccessMode
+import org.neo4j.kernel.impl.coreapi.InternalTransaction
 
 import scala.collection.mutable.{Map => MutableMap}
 
 class MutationTest extends ExecutionEngineFunSuite {
 
-  var tx : org.neo4j.graphdb.Transaction = null
   private implicit val monitor = mock[PipeMonitor]
 
-  def createQueryState = {
-    if(tx == null) tx = graph.beginTx()
+  def createQueryState(tx: InternalTransaction) = {
+
     QueryStateHelper.countStats(QueryStateHelper.queryStateFrom(graph, tx))
   }
 
-  override protected def afterEach() {
-    super.afterEach()
-    //    if(tx != null) tx.close()
-  }
-
   test("create_node") {
-    val tx = graph.beginTx()
+    val tx = graph.beginTransaction( KernelTransaction.Type.explicit, AccessMode.Static.WRITE )
     val start = SingleRowPipe()
     val createNode = new ExecuteUpdateCommandsPipe(start, Seq(CreateNode("n", Map("name" -> Literal("Andres")), Seq.empty)))
 
-    val queryState = createQueryState
+    val queryState = createQueryState(tx)
     createNode.createResults(queryState).toList
 
     val n = graph.getNodeById(0)
@@ -62,11 +59,11 @@ class MutationTest extends ExecutionEngineFunSuite {
   }
 
   test("join_existing_transaction_and_rollback") {
-    val tx = graph.beginTx()
+    val tx = graph.beginTransaction( KernelTransaction.Type.explicit, AccessMode.Static.WRITE )
     val start = SingleRowPipe()
     val createNode = new ExecuteUpdateCommandsPipe(start, Seq(CreateNode("n", Map("name" -> Literal("Andres")), Seq.empty)))
 
-    createNode.createResults(createQueryState).toList
+    createNode.createResults(createQueryState(tx)).toList
 
     tx.failure()
     tx.close()
@@ -75,11 +72,11 @@ class MutationTest extends ExecutionEngineFunSuite {
   }
 
   test("join_existing_transaction_and_commit") {
-    val tx = graph.beginTx()
+    val tx = graph.beginTransaction( KernelTransaction.Type.explicit, AccessMode.Static.WRITE )
     val start = SingleRowPipe()
     val createNode = new ExecuteUpdateCommandsPipe(start, Seq(CreateNode("n", Map("name" -> Literal("Andres")), Seq.empty)))
 
-    createNode.createResults(createQueryState).toList
+    createNode.createResults(createQueryState(tx)).toList
 
     tx.success()
     tx.close()
@@ -94,7 +91,7 @@ class MutationTest extends ExecutionEngineFunSuite {
   test("create_rel") {
     val a = createNode()
     val b = createNode()
-    val tx = graph.beginTx()
+    val tx = graph.beginTransaction( KernelTransaction.Type.explicit, AccessMode.Static.WRITE )
 
     val createRel = CreateRelationship("r",
       RelationshipEndpoint(getNode("a", a), Map(), Seq.empty),
@@ -103,7 +100,7 @@ class MutationTest extends ExecutionEngineFunSuite {
     val startPipe = SingleRowPipe()
     val createNodePipe = new ExecuteUpdateCommandsPipe(startPipe, Seq(createRel))
 
-    val state = createQueryState
+    val state = createQueryState(tx)
     val results: List[MutableMap[String, Any]] = createNodePipe.createResults(state).map(ctx => ctx.m).toList
 
     val r = graph.getRelationshipById(0)
@@ -116,15 +113,15 @@ class MutationTest extends ExecutionEngineFunSuite {
   }
 
   test("throw_exception_if_wrong_stuff_to_delete") {
-    val tx = graph.beginTx()
+    val tx = graph.beginTransaction( KernelTransaction.Type.explicit, AccessMode.Static.WRITE )
     val createRel = DeleteEntityAction(Literal("some text"), forced = false)
 
-    intercept[CypherTypeException](createRel.exec(ExecutionContext.empty, createQueryState))
+    intercept[CypherTypeException](createRel.exec(ExecutionContext.empty, createQueryState(tx)))
     tx.close()
   }
 
   test("delete_node") {
-    val tx = graph.beginTx()
+    val tx = graph.beginTransaction( KernelTransaction.Type.explicit, AccessMode.Static.WRITE )
     val a: Node = createNode()
     val node_id: Long = a.getId
     val deleteCommand = DeleteEntityAction(getNode("a", a), forced = false)
@@ -132,10 +129,10 @@ class MutationTest extends ExecutionEngineFunSuite {
     val startPipe = SingleRowPipe()
     val createNodePipe = new ExecuteUpdateCommandsPipe(startPipe, Seq(deleteCommand))
 
-    val state = createQueryState
+    val state = createQueryState(tx)
     createNodePipe.createResults(state).toList
 
-    state.query.close(success = true)
+    state.query.transactionalContext.close(success = true)
     tx.close()
 
     intercept[NotFoundException](graph.inTx(graph.getNodeById(node_id)))

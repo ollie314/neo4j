@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,7 +21,7 @@ package org.neo4j.helpers;
 
 import java.lang.reflect.Array;
 import java.util.Arrays;
-
+import java.util.function.Function;
 import static java.util.Arrays.copyOf;
 
 /**
@@ -29,22 +29,6 @@ import static java.util.Arrays.copyOf;
  */
 public abstract class ArrayUtil
 {
-    /**
-     * Convert an array to a {@link String}.
-     * I can't believe this method is missing from {@link Arrays}.
-     *
-     * @see Arrays#toString(byte[]) for similar functionality.
-     * @deprecated use {@link ObjectUtil#toString(Object)} instead.
-     * @param array Array to convert.
-     * @return A String representing the array.
-     */
-    @Deprecated
-    public static String toString( Object array )
-    {
-        assert array.getClass().isArray() : array + " is not an array";
-        return ObjectUtil.arrayToString( array );
-    }
-
     public static int hashCode( Object array )
     {
         assert array.getClass().isArray() : array + " is not an array";
@@ -410,8 +394,7 @@ public abstract class ArrayUtil
      * @param <TO> type of the converted items
      * @return a new array with all items from {@code from} converted into type {@code toClass}.
      */
-    public static <FROM,TO> TO[] map( FROM[] from, org.neo4j.function.Function<FROM,TO> transformer,
-            Class<TO> toClass )
+    public static <FROM, TO> TO[] map( FROM[] from, Function<FROM,TO> transformer, Class<TO> toClass )
     {
         @SuppressWarnings( "unchecked" )
         TO[] result = (TO[]) Array.newInstance( toClass, from.length );

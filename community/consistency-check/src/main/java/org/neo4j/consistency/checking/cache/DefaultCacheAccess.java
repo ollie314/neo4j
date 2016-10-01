@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -47,12 +47,10 @@ public class DefaultCacheAccess implements CacheAccess
     private final PackedMultiFieldCache cache;
     private long recordsPerCPU;
     private final Counts counts;
-    private final int threads;
 
     public DefaultCacheAccess( Counts counts, int threads )
     {
         this.counts = counts;
-        this.threads = threads;
         this.propertiesProcessed = new Collection[threads];
         this.cache = new PackedMultiFieldCache( 1, 63 );
     }
@@ -88,10 +86,10 @@ public class DefaultCacheAccess implements CacheAccess
     }
 
     @Override
-    public void prepareForProcessingOfSingleStore( long storeHighId )
+    public void prepareForProcessingOfSingleStore( long recordsPerCpu )
     {
         clients.resetId();
-        recordsPerCPU = (storeHighId / threads) + 1;
+        this.recordsPerCPU = recordsPerCpu;
     }
 
     private class DefaultClient implements Client
@@ -190,6 +188,12 @@ public class DefaultCacheAccess implements CacheAccess
         public void incAndGetCount( Type type )
         {
             counts.incAndGet( type, threadIndex );
+        }
+
+        @Override
+        public String toString()
+        {
+            return "Client[" + threadIndex + ", records/CPU:" + recordsPerCPU + "]";
         }
     }
 }

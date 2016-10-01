@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,7 +24,7 @@ import java.util.Map;
 
 import org.neo4j.cursor.Cursor;
 import org.neo4j.kernel.api.Statement;
-import org.neo4j.kernel.api.cursor.PropertyItem;
+import org.neo4j.storageengine.api.PropertyItem;
 
 /**
  * Base class for NodeProxy/RelationshipProxy with common methods for PropertyContainer

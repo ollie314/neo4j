@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,10 +19,10 @@
  */
 package org.neo4j.server.rest;
 
+import java.io.IOException;
+
 import org.junit.BeforeClass;
 import org.junit.Test;
-
-import java.io.IOException;
 
 import org.neo4j.server.helpers.FunctionalTestHelper;
 
@@ -41,7 +41,7 @@ public class JmxServiceDocIT extends AbstractRestFunctionalTestBase
     }
 
     @Test
-    public void shouldRespondWithTheWebAdminClientSettings() throws Exception {
+    public void shouldRespondWithJMXResources() throws Exception {
         String url = functionalTestHelper.managementUri() + "/server/jmx";
         JaxRsResponse resp = RestRequest.req().get(url);
         String json = resp.getEntity();

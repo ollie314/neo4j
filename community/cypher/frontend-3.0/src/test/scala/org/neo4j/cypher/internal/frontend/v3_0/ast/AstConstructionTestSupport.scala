@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,14 +27,18 @@ trait AstConstructionTestSupport extends CypherTestSupport {
 
   implicit def withPos[T](expr: InputPosition => T): T = expr(pos)
 
-  def ident(name: String): Identifier = Identifier(name)(pos)
+  def varFor(name: String): Variable = Variable(name)(pos)
 
-  def hasLabels(identifier: String, label: String) =
-    HasLabels(ident(identifier), Seq(LabelName(label)(pos)))(pos)
+  def lblName(s: String) = LabelName(s)(pos)
 
-  def propEquality(identifier: String, propKey: String, intValue: Int) = {
-    val prop: Expression = Property(ident(identifier), PropertyKeyName(propKey)(pos))(pos)
-    val literal: Expression = SignedDecimalIntegerLiteral(intValue.toString)(pos)
-    Equals(prop, literal)(pos)
-  }
+  def hasLabels(v: String, label: String) =
+    HasLabels(varFor(v), Seq(lblName(label)))(pos)
+
+  def prop(variable: String, propKey: String) = Property(varFor(variable), PropertyKeyName(propKey)(pos))(pos)
+
+  def propEquality(variable: String, propKey: String, intValue: Int) =
+    Equals(prop(variable, propKey), literalInt(intValue))(pos)
+
+  def literalInt(intValue: Int): SignedDecimalIntegerLiteral =
+    SignedDecimalIntegerLiteral(intValue.toString)(pos)
 }

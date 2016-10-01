@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,11 +26,9 @@ import org.neo4j.cypher.internal.frontend.v3_0.InputPosition
  */
 sealed trait InternalNotification
 
-case class CartesianProductNotification(position: InputPosition, isolatedIdentifiers: Set[String]) extends InternalNotification
+case class CartesianProductNotification(position: InputPosition, isolatedVariables: Set[String]) extends InternalNotification
 
 case class LengthOnNonPathNotification(position: InputPosition) extends InternalNotification
-
-case object LegacyPlannerNotification extends InternalNotification
 
 case object PlannerUnsupportedNotification extends InternalNotification
 
@@ -55,3 +53,5 @@ case class MissingRelTypeNotification(position: InputPosition, relType: String) 
 case class MissingPropertyNameNotification(position: InputPosition, name: String) extends InternalNotification
 
 case class UnboundedShortestPathNotification(position: InputPosition) extends InternalNotification
+
+case class ExhaustiveShortestPathForbiddenNotification(position: InputPosition) extends InternalNotification

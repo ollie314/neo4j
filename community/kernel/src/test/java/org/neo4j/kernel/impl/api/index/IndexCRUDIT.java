@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,6 +25,7 @@ import org.junit.Rule;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -37,13 +38,12 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.pagecache.PageCache;
-import org.neo4j.kernel.GraphDatabaseAPI;
 import org.neo4j.kernel.api.DataWriteOperations;
 import org.neo4j.kernel.api.ReadOperations;
+import org.neo4j.kernel.api.exceptions.index.IndexEntryConflictException;
 import org.neo4j.kernel.api.index.IndexAccessor;
 import org.neo4j.kernel.api.index.IndexConfiguration;
 import org.neo4j.kernel.api.index.IndexDescriptor;
-import org.neo4j.kernel.api.index.IndexEntryConflictException;
 import org.neo4j.kernel.api.index.IndexPopulator;
 import org.neo4j.kernel.api.index.IndexUpdater;
 import org.neo4j.kernel.api.index.NodePropertyUpdate;
@@ -51,9 +51,11 @@ import org.neo4j.kernel.api.index.PropertyAccessor;
 import org.neo4j.kernel.api.index.SchemaIndexProvider;
 import org.neo4j.kernel.extension.KernelExtensionFactory;
 import org.neo4j.kernel.impl.api.index.sampling.IndexSamplingConfig;
+import org.neo4j.kernel.impl.api.scan.LabelScanStoreProvider;
 import org.neo4j.kernel.impl.core.ThreadToStatementContextBridge;
 import org.neo4j.kernel.impl.storemigration.StoreMigrationParticipant;
-import org.neo4j.register.Register;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
+import org.neo4j.storageengine.api.schema.IndexSample;
 import org.neo4j.test.EphemeralFileSystemRule;
 import org.neo4j.test.TestGraphDatabaseFactory;
 
@@ -65,7 +67,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.neo4j.graphdb.DynamicLabel.label;
 import static org.neo4j.graphdb.Neo4jMatchers.createIndex;
-import static org.neo4j.helpers.collection.IteratorUtil.asSet;
+import static org.neo4j.helpers.collection.Iterators.asSet;
 import static org.neo4j.helpers.collection.MapUtil.map;
 import static org.neo4j.kernel.impl.api.index.SchemaIndexTestHelper.singleInstanceSchemaIndexProviderFactory;
 import static org.neo4j.kernel.impl.api.index.TestSchemaIndexProviderDescriptor.PROVIDER_DESCRIPTOR;
@@ -163,8 +165,9 @@ public class IndexCRUDIT
     @Before
     public void before() throws Exception
     {
-        when( mockedIndexProvider.storeMigrationParticipant( any( FileSystemAbstraction.class ), any( PageCache.class )
-        ) ).thenReturn( StoreMigrationParticipant.NOT_PARTICIPATING );
+        when( mockedIndexProvider.storeMigrationParticipant( any( FileSystemAbstraction.class ), any( PageCache.class ),
+                any( LabelScanStoreProvider.class ) ) )
+                .thenReturn( StoreMigrationParticipant.NOT_PARTICIPATING );
         TestGraphDatabaseFactory factory = new TestGraphDatabaseFactory();
         factory.setFileSystem( fs.get() );
         factory.addKernelExtensions(
@@ -212,13 +215,13 @@ public class IndexCRUDIT
         }
 
         @Override
-        public void add( long nodeId, Object propertyValue )
+        public void add( Collection<NodePropertyUpdate> updates )
         {
-            ReadOperations statement = ctxSupplier.get().readOperations();
-            updatesCommitted.add( NodePropertyUpdate.add(
-                    nodeId, statement.propertyKeyGetForName( propertyKey ),
-                    propertyValue, new long[]{statement.labelGetForName( myLabel.name() )} ) );
-            addValueToSample( nodeId, propertyValue );
+            for ( NodePropertyUpdate update : updates )
+            {
+                ReadOperations statement = ctxSupplier.get().readOperations();
+                updatesCommitted.add( update );
+            }
         }
 
         @Override
@@ -240,10 +243,7 @@ public class IndexCRUDIT
                 @Override
                 public void close() throws IOException, IndexEntryConflictException
                 {
-                    if ( IndexUpdateMode.ONLINE == mode )
-                    {
-                        updatesCommitted.addAll( updates );
-                    }
+                    updatesCommitted.addAll( updates );
                 }
 
                 @Override
@@ -265,16 +265,20 @@ public class IndexCRUDIT
         }
 
         @Override
-        public long sampleResult( Register.DoubleLong.Out result )
+        public void includeSample( NodePropertyUpdate update )
+        {
+            addValueToSample( update.getNodeId(), update.getValueAfter() );
+        }
+
+        @Override
+        public IndexSample sampleResult()
         {
             long indexSize = 0;
             for ( Set<Long> nodeIds : indexSamples.values() )
             {
                 indexSize += nodeIds.size();
             }
-
-            result.write( indexSamples.size(), indexSize );
-            return indexSize;
+            return new IndexSample( indexSize, indexSamples.size(), indexSize );
         }
 
         private void addValueToSample( long nodeId, Object propertyValue )

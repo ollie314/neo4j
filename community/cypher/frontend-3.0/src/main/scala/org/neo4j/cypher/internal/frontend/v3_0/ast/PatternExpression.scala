@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,7 +24,7 @@ import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 
 case class PatternExpression(pattern: RelationshipsPattern) extends Expression with SimpleTyping {
   def position = pattern.position
-  protected def possibleTypes = CTCollection(CTPath)
+  protected def possibleTypes = CTList(CTPath)
 
   override def semanticCheck(ctx: SemanticContext) =
     pattern.semanticCheck(Pattern.SemanticContext.Expression) chain

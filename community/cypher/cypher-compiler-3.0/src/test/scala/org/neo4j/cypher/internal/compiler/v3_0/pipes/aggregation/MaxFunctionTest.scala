@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -54,7 +54,19 @@ class MaxFunctionTest extends CypherFunSuite with AggregateTest {
     result shouldBe a[java.lang.Integer]
   }
 
-  test("noNumberValuesThrowAnException") {
+  test("mixed numbers and strings throws") {
     intercept[IncomparableValuesException](aggregateOn(1, "wut"))
+  }
+
+  test("aggregating strings work") {
+    val result = aggregateOn("abc", "a", "b", "B", "abc1")
+
+    result should equal("b")
+  }
+
+  test("nulls are simply skipped") {
+    val result = aggregateOn("abc", "a", null, "B", "abc1")
+
+    result should equal("abc1")
   }
 }

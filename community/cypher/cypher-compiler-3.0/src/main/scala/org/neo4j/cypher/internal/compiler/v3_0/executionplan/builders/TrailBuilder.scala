@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,16 +20,12 @@
 package org.neo4j.cypher.internal.compiler.v3_0.executionplan.builders
 
 import org.neo4j.cypher.internal.compiler.v3_0.commands._
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Variable}
 import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates.Predicate
+import org.neo4j.cypher.internal.compiler.v3_0.pipes.matching.{EndPoint, RelationshipVariable, SingleStepTrail, VariableLengthStepTrail, _}
 import org.neo4j.cypher.internal.frontend.v3_0.SemanticDirection
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Identifier}
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.matching._
-import org.neo4j.helpers.ThisShouldNotHappenError
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.matching.VariableLengthStepTrail
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.matching.EndPoint
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.matching.RelationshipIdentifier
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.matching.SingleStepTrail
-import annotation.tailrec
+
+import scala.annotation.tailrec
 
 object TrailBuilder {
   def findLongestTrail(patterns: Seq[Pattern], boundPoints: Seq[String], predicates: Seq[Predicate] = Nil) =
@@ -52,7 +48,7 @@ final class TrailBuilder(patterns: Seq[Pattern], boundPoints: Seq[String], predi
     def transformToTrail(p: Pattern, done: Trail, patternsToDo: Seq[Pattern]): (Trail, Seq[Pattern]) = {
 
       def rewriteTo(originalName: String, newExpr: Expression)(e: Expression) = e match {
-        case Identifier(name) if name == originalName => newExpr
+        case Variable(name) if name == originalName => newExpr
         case _                                        => e
       }
 
@@ -64,11 +60,11 @@ final class TrailBuilder(patterns: Seq[Pattern], boundPoints: Seq[String], predi
 
         val relPred: Predicate = Predicate.
           fromSeq(orgRelPred).
-          rewriteAsPredicate(rewriteTo(rel.relName, RelationshipIdentifier()))
+          rewriteAsPredicate(rewriteTo(rel.relName, RelationshipVariable()))
 
         val nodePred: Predicate = Predicate.
           fromSeq(orgNodePred).
-          rewriteAsPredicate(rewriteTo(end, NodeIdentifier()))
+          rewriteAsPredicate(rewriteTo(end, NodeVariable()))
 
         done.add(start => SingleStepTrail(EndPoint(end), dir, rel.relName, rel.relTypes, start, relPred, nodePred, rel, orgNodePred ++ orgRelPred))
       }
@@ -83,7 +79,7 @@ final class TrailBuilder(patterns: Seq[Pattern], boundPoints: Seq[String], predi
         case rel: RelatedTo if rel.right.name == done.end          => singleStep(rel, rel.left.name, rel.direction.reversed)
         case rel: VarLengthRelatedTo if rel.right.name == done.end => multiStep(rel, rel.left.name, rel.direction.reversed, rel.direction)
         case rel: VarLengthRelatedTo if rel.left.name == done.end  => multiStep(rel, rel.right.name, rel.direction, rel.direction)
-        case _                                                     => throw new ThisShouldNotHappenError("Andres", "This pattern is not expected")
+        case _                                                     => throw new AssertionError("This pattern is not expected")
       }
 
       (result, patternsLeft)

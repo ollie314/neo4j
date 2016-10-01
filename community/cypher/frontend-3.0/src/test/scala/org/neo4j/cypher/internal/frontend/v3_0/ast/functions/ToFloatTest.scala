@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,15 +27,21 @@ class ToFloatTest extends FunctionTestBase("toFloat")  {
     testValidTypes(CTString)(CTFloat)
     testValidTypes(CTFloat)(CTFloat)
     testValidTypes(CTInteger)(CTFloat)
+    testValidTypes(CTNumber.covariant)(CTFloat)
+    testValidTypes(CTAny.covariant)(CTFloat)
   }
 
   test("shouldFailTypeCheckForIncompatibleArguments") {
-    testInvalidApplication(CTCollection(CTAny))(
-      "Type mismatch: expected Float, Integer or String but was Collection<Any>"
+    testInvalidApplication(CTList(CTAny))(
+      "Type mismatch: expected Float, Integer, Number or String but was Collection<Any>"
     )
 
     testInvalidApplication(CTNode)(
-      "Type mismatch: expected Float, Integer or String but was Node"
+      "Type mismatch: expected Float, Integer, Number or String but was Node"
+    )
+
+    testInvalidApplication(CTBoolean)(
+      "Type mismatch: expected Float, Integer, Number or String but was Boolean"
     )
   }
 

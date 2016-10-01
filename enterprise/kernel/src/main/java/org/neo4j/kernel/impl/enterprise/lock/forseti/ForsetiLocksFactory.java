@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,8 +22,9 @@ package org.neo4j.kernel.impl.enterprise.lock.forseti;
 import org.neo4j.helpers.Service;
 import org.neo4j.kernel.impl.locking.Locks;
 import org.neo4j.kernel.impl.locking.ResourceTypes;
+import org.neo4j.storageengine.api.lock.ResourceType;
 
-@Service.Implementation(Locks.Factory.class)
+@Service.Implementation( Locks.Factory.class )
 public class ForsetiLocksFactory extends Locks.Factory
 {
     public ForsetiLocksFactory()
@@ -32,7 +33,7 @@ public class ForsetiLocksFactory extends Locks.Factory
     }
 
     @Override
-    public Locks newInstance( Locks.ResourceType[] resourceTypes )
+    public Locks newInstance( ResourceType[] resourceTypes )
     {
         return new ForsetiLockManager( ResourceTypes.values() );
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -29,7 +29,7 @@ class CollapseInCollectionsTest extends CypherFunSuite with AstRewritingTestSupp
     val original = parse("MATCH (a) WHERE id(a) IN [42] OR id(a) IN [13]")
     val expected = parse("MATCH (a) WHERE id(a) IN [42, 13]")
 
-    val result = original.rewrite(collapseInCollections)
+    val result = original.rewrite(collapseMultipleInPredicates)
 
     result should equal(expected)
   }
@@ -38,7 +38,7 @@ class CollapseInCollectionsTest extends CypherFunSuite with AstRewritingTestSupp
     val original = parse("MATCH (a) WHERE id(a) IN [42] OR id(a) IN [rand()]")
     val expected = parse("MATCH (a) WHERE id(a) IN [42, rand()]")
 
-    val result = original.rewrite(collapseInCollections)
+    val result = original.rewrite(collapseMultipleInPredicates)
 
     result should equal(expected)
   }
@@ -47,7 +47,7 @@ class CollapseInCollectionsTest extends CypherFunSuite with AstRewritingTestSupp
     val original = parse("MATCH (a) WHERE a.prop IN [42] OR a.prop IN [13]")
     val expected = parse("MATCH (a) WHERE a.prop IN [42, 13]")
 
-    val result = original.rewrite(collapseInCollections)
+    val result = original.rewrite(collapseMultipleInPredicates)
 
     result should equal(expected)
   }
@@ -56,7 +56,7 @@ class CollapseInCollectionsTest extends CypherFunSuite with AstRewritingTestSupp
     val original = parse("MATCH (a) WHERE a.prop IN [42] OR a.prop IN [rand()]")
     val expected = parse("MATCH (a) WHERE a.prop IN [42, rand()]")
 
-    val result = original.rewrite(collapseInCollections)
+    val result = original.rewrite(collapseMultipleInPredicates)
 
     result should equal(expected)
   }

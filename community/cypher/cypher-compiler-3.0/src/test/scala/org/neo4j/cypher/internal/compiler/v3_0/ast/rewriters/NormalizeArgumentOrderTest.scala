@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,15 +19,14 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.ast.rewriters
 
-import org.neo4j.cypher.internal.frontend.v3_0.ast.{Equals, Identifier, _}
-import org.neo4j.cypher.internal.frontend.v3_0.ast.functions.Has
+import org.neo4j.cypher.internal.frontend.v3_0.ast.{Equals, Variable, _}
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
 
 class NormalizeArgumentOrderTest extends CypherFunSuite with AstConstructionTestSupport {
 
   test("a.prop = b.prop rewritten to: a.prop = b.prop") {
-    val lhs: Expression = Property(ident("a"), PropertyKeyName("prop")_)_
-    val rhs: Expression = Property(ident("b"), PropertyKeyName("prop")_)_
+    val lhs: Expression = Property(varFor("a"), PropertyKeyName("prop")_)_
+    val rhs: Expression = Property(varFor("b"), PropertyKeyName("prop")_)_
 
     val input: Expression = Equals(lhs, rhs)_
 
@@ -36,7 +35,7 @@ class NormalizeArgumentOrderTest extends CypherFunSuite with AstConstructionTest
 
   test("12 = a.prop rewritten to: a.prop = 12") {
     val lhs: Expression = SignedDecimalIntegerLiteral("12")_
-    val rhs: Expression = Property(ident("a"), PropertyKeyName("prop")_)_
+    val rhs: Expression = Property(varFor("a"), PropertyKeyName("prop")_)_
 
     val input: Expression = Equals(lhs, rhs)_
     val expected: Expression = Equals(rhs, lhs)_
@@ -64,7 +63,7 @@ class NormalizeArgumentOrderTest extends CypherFunSuite with AstConstructionTest
   }
 
   test("a.prop = id(b) rewritten to: id(b) = a.prop") {
-    val lhs: Expression = Property(ident("a"), PropertyKeyName("prop")_)_
+    val lhs: Expression = Property(varFor("a"), PropertyKeyName("prop")_)_
     val rhs: Expression = id("b")
 
     val input: Expression = Equals(rhs, lhs)_
@@ -74,7 +73,7 @@ class NormalizeArgumentOrderTest extends CypherFunSuite with AstConstructionTest
 
   test("id(a) = b.prop rewritten to: id(a) = b.prop") {
     val lhs: Expression = id("a")
-    val rhs: Expression = Property(ident("b"), PropertyKeyName("prop")_)_
+    val rhs: Expression = Property(varFor("b"), PropertyKeyName("prop")_)_
 
     val input: Expression = Equals(lhs, rhs)_
 
@@ -83,7 +82,7 @@ class NormalizeArgumentOrderTest extends CypherFunSuite with AstConstructionTest
 
   test("a < n.prop rewritten to: n.prop > a") {
     val lhs: Expression = id("a")
-    val rhs: Expression = Property(ident("n"), PropertyKeyName("prop")_)_
+    val rhs: Expression = Property(varFor("n"), PropertyKeyName("prop")_)_
 
     val input: Expression = LessThan(lhs, rhs)_
 
@@ -92,7 +91,7 @@ class NormalizeArgumentOrderTest extends CypherFunSuite with AstConstructionTest
 
   test("a <= n.prop rewritten to: n.prop >= a") {
     val lhs: Expression = id("a")
-    val rhs: Expression = Property(ident("n"), PropertyKeyName("prop")_)_
+    val rhs: Expression = Property(varFor("n"), PropertyKeyName("prop")_)_
 
     val input: Expression = LessThanOrEqual(lhs, rhs)_
 
@@ -101,7 +100,7 @@ class NormalizeArgumentOrderTest extends CypherFunSuite with AstConstructionTest
 
   test("a > n.prop rewritten to: n.prop < a") {
     val lhs: Expression = id("a")
-    val rhs: Expression = Property(ident("n"), PropertyKeyName("prop")_)_
+    val rhs: Expression = Property(varFor("n"), PropertyKeyName("prop")_)_
 
     val input: Expression = GreaterThan(lhs, rhs)_
 
@@ -110,7 +109,7 @@ class NormalizeArgumentOrderTest extends CypherFunSuite with AstConstructionTest
 
   test("a >= n.prop rewritten to: n.prop <= a") {
     val lhs: Expression = id("a")
-    val rhs: Expression = Property(ident("n"), PropertyKeyName("prop")_)_
+    val rhs: Expression = Property(varFor("n"), PropertyKeyName("prop")_)_
 
     val input: Expression = GreaterThanOrEqual(lhs, rhs)_
 
@@ -118,7 +117,7 @@ class NormalizeArgumentOrderTest extends CypherFunSuite with AstConstructionTest
   }
 
   private def id(name: String): FunctionInvocation =
-    FunctionInvocation(FunctionName("id")(pos), distinct = false, Array(Identifier(name)(pos)))(pos)
+    FunctionInvocation(FunctionName("id")(pos), distinct = false, Array(Variable(name)(pos)))(pos)
 }
 
 

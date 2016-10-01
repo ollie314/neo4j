@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,6 +21,7 @@ package org.neo4j.server.rest.batch;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -43,7 +44,6 @@ public class StreamingBatchOperationResults
 {
     public static final int HEAD_BUFFER = 10;
     public static final int IS_ERROR = -1;
-    private final String encoding = "UTF-8";
     private final Map<Integer, String> locations = new HashMap<Integer, String>();
     private final JsonGenerator g;
     private final ServletOutputStream output;
@@ -170,7 +170,7 @@ public class StreamingBatchOperationResults
         if (message!=null && !message.trim().equals( Response.Status.fromStatusCode( status ).getReasonPhrase()))  g.writeStringField( "message", message);
         else {
             if (errorStream!=null) {
-                g.writeStringField( "message", errorStream.toString( encoding ));
+                g.writeStringField( "message", errorStream.toString( StandardCharsets.UTF_8.name() ));
             }
         }
         g.close();

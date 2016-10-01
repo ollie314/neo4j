@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,9 +22,10 @@ package org.neo4j.graphdb;
 import org.junit.Rule;
 import org.junit.Test;
 
+import java.io.File;
+
 import org.neo4j.test.TargetDirectory;
 import org.neo4j.test.TestGraphDatabaseFactory;
-import org.neo4j.tooling.GlobalGraphOperations;
 
 import static org.junit.Assert.assertEquals;
 import static org.neo4j.helpers.collection.Iterables.count;
@@ -38,19 +39,17 @@ public class FirstStartupIT
     public void shouldBeEmptyWhenFirstStarted() throws Exception
     {
         // When
-        String storeDir = testDir.absolutePath();
+        File storeDir = testDir.absolutePath();
         GraphDatabaseService db = new TestGraphDatabaseFactory().newEmbeddedDatabase( storeDir );
 
         // Then
         try(Transaction ignore = db.beginTx())
         {
-            GlobalGraphOperations global = GlobalGraphOperations.at( db );
-
-            assertEquals(0, count( global.getAllNodes() ));
-            assertEquals(0, count( global.getAllRelationships() ));
-            assertEquals(0, count( global.getAllRelationshipTypes() ));
-            assertEquals(0, count( global.getAllLabels() ));
-            assertEquals(0, count( global.getAllPropertyKeys() ));
+            assertEquals(0, count( db.getAllNodes() ));
+            assertEquals(0, count( db.getAllRelationships() ));
+            assertEquals(0, count( db.getAllRelationshipTypes() ));
+            assertEquals(0, count( db.getAllLabels() ));
+            assertEquals(0, count( db.getAllPropertyKeys() ));
         }
 
         db.shutdown();

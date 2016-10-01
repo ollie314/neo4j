@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,33 +19,42 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.pipes
 
+import org.neo4j.cypher.internal.compiler.v3_0.spi.{QueryContext, TokenContext}
 import org.neo4j.cypher.internal.frontend.v3_0.ast.LabelName
-import org.neo4j.cypher.internal.compiler.v3_0.spi.{TokenContext, QueryContext}
-import org.neo4j.cypher.internal.frontend.v3_0.{SemanticTable, LabelId}
+import org.neo4j.cypher.internal.frontend.v3_0.{LabelId, SemanticTable}
 
-case class LazyLabel(name:String) {
-  private var id : Option[LabelId] = None
+case class LazyLabel(name: String) {
+  private var id: Option[LabelId] = None
 
-  def id(context: TokenContext): Option[LabelId] = id match {
+  def getOptId(context: TokenContext): Option[LabelId] = id match {
     case None => {
       id = context.getOptLabelId(name).map(LabelId)
       id
     }
-    case x    => x
+    case x => x
+  }
+
+  def getOrCreateId(context: QueryContext): LabelId = id match {
+    case None => {
+      val labelId = LabelId(context.getOrCreateLabelId(name))
+      id = Some(labelId)
+      labelId
+    }
+    case Some(x) => x
   }
 
   // yuck! this is only used by tests...
-  def id(table:SemanticTable):Option[LabelId] = id match {
+  def id(table: SemanticTable): Option[LabelId] = id match {
     case None => {
       id = table.resolvedLabelIds.get(name)
       id
     }
-    case x    => x
+    case x => x
   }
 }
 
 object LazyLabel {
-  def apply(name: LabelName)(implicit table:SemanticTable): LazyLabel = {
+  def apply(name: LabelName)(implicit table: SemanticTable): LazyLabel = {
     val label = new LazyLabel(name.name)
     label.id = name.id
     label

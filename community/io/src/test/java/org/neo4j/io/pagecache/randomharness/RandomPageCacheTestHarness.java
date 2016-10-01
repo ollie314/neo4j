@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -449,7 +449,8 @@ public class RandomPageCacheTestHarness
         File[] files = new File[s.length()];
         for ( int i = 0; i < s.length(); i++ )
         {
-            files[i] = new File( s.substring( i, i+1 ) );
+            files[i] = new File( s.substring( i, i+1 ) ).getCanonicalFile();
+            fs.mkdirs( files[i].getParentFile()  );
             fs.open( files[i], "rw" ).close();
         }
         return files;

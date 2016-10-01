@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -31,7 +31,6 @@ import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 import org.neo4j.cypher.internal.frontend.v3_0.{InternalException, InvalidSemanticsException}
 import org.neo4j.graphdb.Node
-import org.neo4j.helpers.ThisShouldNotHappenError
 
 case class MergePatternAction(patterns: Seq[Pattern],
                               actions: Seq[UpdateAction],
@@ -71,10 +70,11 @@ case class MergePatternAction(patterns: Seq[Pattern],
   private def doMatch(state: QueryState) = matchPipe.createResults(state)
 
   private def lockAndThenMatch(state: QueryState, ctx: ExecutionContext): Iterator[ExecutionContext] = {
-    val lockingQueryContext = state.query.upgradeToLockingQueryContext
-    val patternIdentifiers = identifiers.map(p => p._1)
-    ctx.collect { case (identifier, node: Node) if patternIdentifiers.contains(identifier) => node.getId }.toSeq.sorted.
-      foreach( id => lockingQueryContext.getLabelsForNode(id) ) // TODO: This locks the nodes. Hack!
+    val patternVariables = variables.map(p => p._1)
+    val nodeIds = ctx.collect {
+      case (variable, node: Node) if patternVariables.contains(variable) => node.getId
+    }.toSeq
+    state.query.lockNodes(nodeIds:_*)
     matchPipe.createResults(state)
   }
 
@@ -95,7 +95,7 @@ case class MergePatternAction(patterns: Seq[Pattern],
     temp
   }
 
-  def identifiers: Seq[(String, CypherType)] = patterns.flatMap(_.possibleStartPoints)
+  def variables: Seq[(String, CypherType)] = patterns.flatMap(_.possibleStartPoints)
 
   def rewrite(f: (Expression) => Expression): UpdateAction =
     MergePatternAction(
@@ -113,15 +113,15 @@ case class MergePatternAction(patterns: Seq[Pattern],
         onCreate.flatMap(_.symbolTableDependencies) ++
         onMatch.flatMap(_.symbolTableDependencies)).toSet
 
-    val introducedIdentifiers = patterns.flatMap(_.identifiers).toSet
+    val introducedVariables = patterns.flatMap(_.variables).toSet
 
-    dependencies -- introducedIdentifiers
+    dependencies -- introducedVariables
   }
 
   private def readEffects(symbols: SymbolTable): Effects = {
-    val collect: Seq[Effect] = identifiers.collect {
-      case (k, CTNode) if !symbols.hasIdentifierNamed(k) => ReadsAllNodes
-      case (k, CTRelationship) if !symbols.hasIdentifierNamed(k) => ReadsAllRelationships
+    val collect: Seq[Effect] = variables.collect {
+      case (k, CTNode) if !symbols.hasVariableNamed(k) => ReadsAllNodes
+      case (k, CTRelationship) if !symbols.hasVariableNamed(k) => ReadsAllRelationships
     }
 
     Effects(collect.toSet)
@@ -141,7 +141,7 @@ case class MergePatternAction(patterns: Seq[Pattern],
     actionEffects ++ onCreateEffects ++ onMatchEffects ++ updateActionsEffects ++ effectsFromReading
   }
 
-  override def updateSymbols(symbol: SymbolTable): SymbolTable = symbol.add(identifiers.toMap)
+  override def updateSymbols(symbol: SymbolTable): SymbolTable = symbol.add(variables.toMap)
 
   override def arguments: Seq[Argument] = {
     val startPoint: Option[String] = maybeMatchPipe.map {
@@ -161,7 +161,7 @@ object MergePatternAction {
         case RelatedTo(_, _, _, _, _, properties) => Some(properties)
         case VarLengthRelatedTo(_, _, _, _, _, _, _, _, _)
              | UniqueLink(_, _, _, _, _) =>
-          throw new ThisShouldNotHappenError("Davide/Stefan", "Merge patterns do not support var length or unique link")
+          throw new IllegalStateException("Merge patterns do not support var length or unique link")
         case _ => None
       }
 

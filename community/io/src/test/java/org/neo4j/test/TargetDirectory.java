@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,6 +19,7 @@
  */
 package org.neo4j.test;
 
+import org.junit.Rule;
 import org.junit.rules.TestRule;
 import org.junit.runner.Description;
 import org.junit.runners.model.Statement;
@@ -57,12 +58,24 @@ public class TargetDirectory
     public class TestDirectory implements TestRule
     {
         private File subdir = null;
+        private boolean keepDirectoryAfterSuccefulTest;
 
         private TestDirectory() { }
 
-        public String absolutePath()
+        /**
+         * Tell this {@link Rule} to keep the store directory, even after a successful test.
+         * It's just a useful debug mechanism to have for analyzing store after a test.
+         * by default directories aren't kept.
+         */
+        public TestDirectory keepDirectoryAfterSuccefulTest()
         {
-            return directory().getAbsolutePath();
+            keepDirectoryAfterSuccefulTest = true;
+            return this;
+        }
+
+        public File absolutePath()
+        {
+            return directory().getAbsoluteFile();
         }
 
         public File directory()
@@ -89,7 +102,18 @@ public class TargetDirectory
             return dir;
         }
 
-        public File graphDbDir() {
+        public File cleanDirectory( String name ) throws IOException
+        {
+            File directory = directory( name );
+            for ( File file : fileSystem.listFiles( directory ) )
+            {
+                fileSystem.deleteRecursively( file );
+            }
+            return directory;
+        }
+
+        public File graphDbDir()
+        {
             return directory( "graph-db" );
         }
 
@@ -125,7 +149,7 @@ public class TargetDirectory
 
         private void complete( boolean success )
         {
-            if ( success && subdir != null )
+            if ( success && subdir != null && !keepDirectoryAfterSuccefulTest )
             {
                 try
                 {
@@ -136,7 +160,8 @@ public class TargetDirectory
                     if ( e.getCause() != null &&
                             e.getCause() instanceof FileUtils.MaybeWindowsMemoryMappedFileReleaseProblem )
                     {
-                        System.err.println( "Failed to delete test directory, maybe due to Windows memory-mapped file problem" );
+                        System.err.println( "Failed to delete test directory, " +
+                                "maybe due to Windows memory-mapped file problem: " + e.getCause().getMessage() );
                     }
                     else
                     {
@@ -156,8 +181,13 @@ public class TargetDirectory
         return new TargetDirectory( new DefaultFileSystemAbstraction(), owningTest ).testDirectory();
     }
 
+    public static TestDirectory testDirForTest( Class<?> owningTest, FileSystemAbstraction fs )
+    {
+        return new TargetDirectory( fs, owningTest ).testDirectory();
+    }
+
     public static TestDirectory testDirForTestWithEphemeralFS( EphemeralFileSystemAbstraction fileSystem,
-                                                               Class<?> owningTest )
+            Class<?> owningTest )
     {
         return new TargetDirectory( fileSystem, owningTest ).testDirectory();
     }

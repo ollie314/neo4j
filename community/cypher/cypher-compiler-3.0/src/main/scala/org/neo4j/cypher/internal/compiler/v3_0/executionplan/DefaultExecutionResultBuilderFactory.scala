@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,22 +19,23 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.executionplan
 
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.RuntimeTypeConverter
 import org.neo4j.cypher.internal.compiler.v3_0.pipes._
 import org.neo4j.cypher.internal.compiler.v3_0.planDescription.InternalPlanDescription
 import org.neo4j.cypher.internal.compiler.v3_0.spi.{CSVResources, QueryContext}
 import org.neo4j.cypher.internal.compiler.v3_0.{ExecutionMode, ExplainMode, _}
 import org.neo4j.cypher.internal.frontend.v3_0.CypherException
-import org.neo4j.graphdb.QueryExecutionType.QueryType
 
 import scala.collection.mutable
 
-case class DefaultExecutionResultBuilderFactory(pipeInfo: PipeInfo, columns: List[String]) extends ExecutionResultBuilderFactory {
+case class DefaultExecutionResultBuilderFactory(pipeInfo: PipeInfo, columns: List[String],
+                                                typeConverter: RuntimeTypeConverter) extends ExecutionResultBuilderFactory {
   def create(): ExecutionResultBuilder =
     ExecutionWorkflowBuilder()
 
   case class ExecutionWorkflowBuilder() extends ExecutionResultBuilder {
     private val taskCloser = new TaskCloser
-    private var externalResource: ExternalResource = new CSVResources(taskCloser)
+    private var externalResource: ExternalCSVResource = new CSVResources(taskCloser)
     private var maybeQueryContext: Option[QueryContext] = None
     private var pipeDecorator: PipeDecorator = NullPipeDecorator
     private var exceptionDecorator: CypherException => CypherException = identity
@@ -58,8 +59,10 @@ case class DefaultExecutionResultBuilderFactory(pipeInfo: PipeInfo, columns: Lis
     }
 
     def build(queryId: AnyRef, planType: ExecutionMode, params: Map[String, Any], notificationLogger: InternalNotificationLogger): InternalExecutionResult = {
-      taskCloser.addTask(queryContext.close)
-      val state = new QueryState(queryContext, externalResource, params, pipeDecorator, queryId = queryId, triadicState = mutable.Map.empty, repeatableReads = mutable.Map.empty)
+      taskCloser.addTask(queryContext.transactionalContext.close)
+      val state = new QueryState(queryContext, externalResource, params, pipeDecorator, queryId = queryId,
+                                 triadicState = mutable.Map.empty, repeatableReads = mutable.Map.empty,
+                                 typeConverter = typeConverter)
       try {
         try {
           createResults(state, planType, notificationLogger)
@@ -79,14 +82,14 @@ case class DefaultExecutionResultBuilderFactory(pipeInfo: PipeInfo, columns: Lis
     private def createResults(state: QueryState, planType: ExecutionMode, notificationLogger: InternalNotificationLogger): InternalExecutionResult = {
       val queryType =
         if (pipeInfo.pipe.isInstanceOf[IndexOperationPipe] || pipeInfo.pipe.isInstanceOf[ConstraintOperationPipe])
-          QueryType.SCHEMA_WRITE
+          SCHEMA_WRITE
         else if (pipeInfo.updating) {
           if (columns.isEmpty)
-            QueryType.WRITE
+            WRITE
           else
-            QueryType.READ_WRITE
+            READ_WRITE
         } else
-          QueryType.READ_ONLY
+          READ_ONLY
       if (planType == ExplainMode) {
         //close all statements
         taskCloser.close(success = true)

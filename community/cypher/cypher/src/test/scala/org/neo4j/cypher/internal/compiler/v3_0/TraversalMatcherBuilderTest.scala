@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,25 +26,23 @@ import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions._
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.builders.{BuilderTest, Solved, TraversalMatcherBuilder, Unsolved}
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{ExecutionPlanInProgress, PartiallySolvedQuery}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.{ArgumentPipe, SingleRowPipe}
-import org.neo4j.cypher.internal.compiler.v3_0.spi.PlanContext
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import org.neo4j.cypher.internal.frontend.v3_0.parser.CypherParser
-import org.neo4j.cypher.internal.spi.v3_0.TransactionBoundPlanContext
-import org.neo4j.graphdb.Transaction
+import org.neo4j.kernel.impl.coreapi.InternalTransaction
+import org.neo4j.kernel.api.KernelTransaction
+import org.neo4j.kernel.api.security.AccessMode
 
 class TraversalMatcherBuilderTest extends GraphDatabaseFunSuite with BuilderTest {
 
   import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 
   var builder: TraversalMatcherBuilder = null
-  var ctx: PlanContext = null
-  var tx: Transaction = null
+  var tx: InternalTransaction = null
 
   override def beforeEach() {
     super.beforeEach()
     builder = new TraversalMatcherBuilder
-    tx = graph.beginTx()
-    ctx = new TransactionBoundPlanContext(statement, graph)
+    tx = graph.beginTransaction(KernelTransaction.Type.explicit, AccessMode.Static.READ)
   }
 
   override def afterEach() {
@@ -57,7 +55,7 @@ class TraversalMatcherBuilderTest extends GraphDatabaseFunSuite with BuilderTest
       copy(start = Seq(Unsolved(NodeByIndex("n", "index", Literal("key"), Literal("expression"))))
     )
 
-    builder.canWorkWith(plan(SingleRowPipe(), q), ctx) should be(false)
+    builder.canWorkWith(plan(SingleRowPipe(), q), planContext) should be(false)
   }
 
   test("should_accept_variable_length_paths") {
@@ -65,7 +63,7 @@ class TraversalMatcherBuilderTest extends GraphDatabaseFunSuite with BuilderTest
                   "MATCH me-[:jane_knows*]->friend-[:has]->status " +
                   "RETURN me")
 
-    builder.canWorkWith(plan(SingleRowPipe(), q), ctx) should be(true)
+    builder.canWorkWith(plan(SingleRowPipe(), q), planContext) should be(true)
   }
 
   test("should_not_accept_queries_with_varlength_paths") {
@@ -73,7 +71,7 @@ class TraversalMatcherBuilderTest extends GraphDatabaseFunSuite with BuilderTest
                   "MATCH me-[:LOVES*]->banana-[:LIKES*]->you " +
                   "RETURN me")
 
-    builder.canWorkWith(plan(SingleRowPipe(), q), ctx) should be(true)
+    builder.canWorkWith(plan(SingleRowPipe(), q), planContext) should be(true)
   }
 
   test("should_handle_loops") {
@@ -81,16 +79,16 @@ class TraversalMatcherBuilderTest extends GraphDatabaseFunSuite with BuilderTest
                   "MATCH me-[:LIKES]->(u1)<-[:LIKES]->you, me-[:HATES]->(u2)<-[:HATES]->you " +
                   "RETURN me")
 
-    builder.canWorkWith(plan(SingleRowPipe(), q), ctx) should be(true)
+    builder.canWorkWith(plan(SingleRowPipe(), q), planContext) should be(true)
   }
 
   test("should_not_take_on_path_expression_predicates") {
     val q = query("START a=node({self}) MATCH a-->b WHERE b-->() RETURN b")
 
-    builder.canWorkWith(plan(SingleRowPipe(), q), ctx) should be(true)
+    builder.canWorkWith(plan(SingleRowPipe(), q), planContext) should be(true)
 
     val testPlan = plan(SingleRowPipe(), q)
-    val newPlan = builder.apply(testPlan, ctx)
+    val newPlan = builder.apply(testPlan, planContext)
 
     assertQueryHasNotSolvedPathExpressions(newPlan)
   }
@@ -99,34 +97,34 @@ class TraversalMatcherBuilderTest extends GraphDatabaseFunSuite with BuilderTest
     val q = query("START a=node({self}), b = node(*) MATCH a-->b RETURN b")
 
     val testPlan = plan(SingleRowPipe(), q)
-    builder.canWorkWith(testPlan, ctx) should be(true)
+    builder.canWorkWith(testPlan, planContext) should be(true)
 
-    val newPlan = builder.apply(testPlan, ctx)
+    val newPlan = builder.apply(testPlan, planContext)
 
     newPlan.query.start.exists(_.unsolved) should be(false)
   }
 
-  test("does_not_take_on_paths_overlapping_with_identifiers_already_in_scope") {
+  test("does_not_take_on_paths_overlapping_with_variables_already_in_scope") {
     val q = query("START a = node(*) MATCH a-->b RETURN b")
 
     val sourcePipe = ArgumentPipe(new SymbolTable(Map("b" -> CTNode)))()
 
-    builder.canWorkWith(plan(sourcePipe, q), ctx) should be(false)
+    builder.canWorkWith(plan(sourcePipe, q), planContext) should be(false)
   }
 
   test("should handle starting from node and relationship") {
     val q = query("start a=node(0), ab=relationship(0) match (a)-[ab]->(b) return b")
-    builder.canWorkWith(plan(SingleRowPipe(), q), ctx) should be(true)
+    builder.canWorkWith(plan(SingleRowPipe(), q), planContext) should be(true)
 
-    val newPlan = builder.apply(plan(SingleRowPipe(), q), ctx)
+    val newPlan = builder.apply(plan(SingleRowPipe(), q), planContext)
     newPlan.query.start.exists(_.unsolved) should be(false)
   }
 
   test("should handle starting from two nodes") {
     val q = query("start a=node(0), b=node(1) match (a)-[ab]->(b) return b")
-    builder.canWorkWith(plan(SingleRowPipe(), q), ctx) should be(true)
+    builder.canWorkWith(plan(SingleRowPipe(), q), planContext) should be(true)
 
-    val newPlan = builder.apply(plan(SingleRowPipe(), q), ctx)
+    val newPlan = builder.apply(plan(SingleRowPipe(), q), planContext)
     newPlan.query.start.exists(_.unsolved) should be(false)
   }
 

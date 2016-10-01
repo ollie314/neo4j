@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,11 +19,17 @@
  */
 package org.neo4j.graphdb;
 
-import static org.junit.Assert.assertEquals;
-
 import org.junit.Rule;
 import org.junit.Test;
+
+import org.neo4j.graphdb.factory.GraphDatabaseSettings;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
+import org.neo4j.kernel.configuration.Config;
+import org.neo4j.kernel.impl.MyRelTypes;
 import org.neo4j.test.ImpermanentDatabaseRule;
+
+import static org.junit.Assert.assertEquals;
+import static org.neo4j.helpers.collection.Iterables.single;
 
 public class DenseNodeIT
 {
@@ -34,7 +40,7 @@ public class DenseNodeIT
     public void testBringingNodeOverDenseThresholdIsConsistent() throws Exception
     {
         // GIVEN
-        GraphDatabaseService db = databaseRule.getGraphDatabaseService();
+        GraphDatabaseService db = databaseRule.getGraphDatabaseAPI();
 
 
         Node root;
@@ -54,10 +60,10 @@ public class DenseNodeIT
             assertEquals( 100, root.getDegree() );
             assertEquals( 100, root.getDegree( Direction.OUTGOING ) );
             assertEquals( 0, root.getDegree( Direction.INCOMING ) );
-            assertEquals( 25, root.getDegree( DynamicRelationshipType.withName( "Type0" ) ) );
-            assertEquals( 25, root.getDegree( DynamicRelationshipType.withName( "Type1" ) ) );
-            assertEquals( 25, root.getDegree( DynamicRelationshipType.withName( "Type2" ) ) );
-            assertEquals( 25, root.getDegree( DynamicRelationshipType.withName( "Type3" ) ) );
+            assertEquals( 25, root.getDegree( RelationshipType.withName( "Type0" ) ) );
+            assertEquals( 25, root.getDegree( RelationshipType.withName( "Type1" ) ) );
+            assertEquals( 25, root.getDegree( RelationshipType.withName( "Type2" ) ) );
+            assertEquals( 25, root.getDegree( RelationshipType.withName( "Type3" ) ) );
             tx.success();
         }
 
@@ -66,10 +72,10 @@ public class DenseNodeIT
             assertEquals( 100, root.getDegree() );
             assertEquals( 100, root.getDegree( Direction.OUTGOING ) );
             assertEquals( 0, root.getDegree( Direction.INCOMING ) );
-            assertEquals( 25, root.getDegree( DynamicRelationshipType.withName( "Type0" ) ) );
-            assertEquals( 25, root.getDegree( DynamicRelationshipType.withName( "Type1" ) ) );
-            assertEquals( 25, root.getDegree( DynamicRelationshipType.withName( "Type2" ) ) );
-            assertEquals( 25, root.getDegree( DynamicRelationshipType.withName( "Type3" ) ) );
+            assertEquals( 25, root.getDegree( RelationshipType.withName( "Type0" ) ) );
+            assertEquals( 25, root.getDegree( RelationshipType.withName( "Type1" ) ) );
+            assertEquals( 25, root.getDegree( RelationshipType.withName( "Type2" ) ) );
+            assertEquals( 25, root.getDegree( RelationshipType.withName( "Type3" ) ) );
             tx.success();
         }
     }
@@ -78,7 +84,7 @@ public class DenseNodeIT
     public void deletingRelationshipsFromDenseNodeIsConsistent() throws Exception
     {
         // GIVEN
-        GraphDatabaseService db = databaseRule.getGraphDatabaseService();
+        GraphDatabaseService db = databaseRule.getGraphDatabaseAPI();
 
         Node root;
         try( Transaction tx = db.beginTx() )
@@ -112,7 +118,7 @@ public class DenseNodeIT
     public void movingBilaterallyOfTheDenseNodeThresholdIsConsistent() throws Exception
     {
         // GIVEN
-        GraphDatabaseService db = databaseRule.getGraphDatabaseService();
+        GraphDatabaseService db = databaseRule.getGraphDatabaseAPI();
 
         Node root;
         // WHEN
@@ -143,7 +149,7 @@ public class DenseNodeIT
     public void testBringingTwoConnectedNodesOverDenseThresholdIsConsistent() throws Exception
     {
         // GIVEN
-        GraphDatabaseService db = databaseRule.getGraphDatabaseService();
+        GraphDatabaseService db = databaseRule.getGraphDatabaseAPI();
 
         Node source;
         Node sink;
@@ -164,18 +170,18 @@ public class DenseNodeIT
             assertEquals( 100, source.getDegree() );
             assertEquals( 100, source.getDegree( Direction.OUTGOING ) );
             assertEquals( 0, source.getDegree( Direction.INCOMING ) );
-            assertEquals( 25, source.getDegree( DynamicRelationshipType.withName( "Type0" ) ) );
-            assertEquals( 25, source.getDegree( DynamicRelationshipType.withName( "Type1" ) ) );
-            assertEquals( 25, source.getDegree( DynamicRelationshipType.withName( "Type2" ) ) );
-            assertEquals( 25, source.getDegree( DynamicRelationshipType.withName( "Type3" ) ) );
+            assertEquals( 25, source.getDegree( RelationshipType.withName( "Type0" ) ) );
+            assertEquals( 25, source.getDegree( RelationshipType.withName( "Type1" ) ) );
+            assertEquals( 25, source.getDegree( RelationshipType.withName( "Type2" ) ) );
+            assertEquals( 25, source.getDegree( RelationshipType.withName( "Type3" ) ) );
 
             assertEquals( 100, sink.getDegree() );
             assertEquals( 0, sink.getDegree( Direction.OUTGOING ) );
             assertEquals( 100, sink.getDegree( Direction.INCOMING ) );
-            assertEquals( 25, sink.getDegree( DynamicRelationshipType.withName( "Type0" ) ) );
-            assertEquals( 25, sink.getDegree( DynamicRelationshipType.withName( "Type1" ) ) );
-            assertEquals( 25, sink.getDegree( DynamicRelationshipType.withName( "Type2" ) ) );
-            assertEquals( 25, sink.getDegree( DynamicRelationshipType.withName( "Type3" ) ) );
+            assertEquals( 25, sink.getDegree( RelationshipType.withName( "Type0" ) ) );
+            assertEquals( 25, sink.getDegree( RelationshipType.withName( "Type1" ) ) );
+            assertEquals( 25, sink.getDegree( RelationshipType.withName( "Type2" ) ) );
+            assertEquals( 25, sink.getDegree( RelationshipType.withName( "Type3" ) ) );
             tx.success();
         }
 
@@ -184,20 +190,59 @@ public class DenseNodeIT
             assertEquals( 100, source.getDegree() );
             assertEquals( 100, source.getDegree( Direction.OUTGOING ) );
             assertEquals( 0, source.getDegree( Direction.INCOMING ) );
-            assertEquals( 25, source.getDegree( DynamicRelationshipType.withName( "Type0" ) ) );
-            assertEquals( 25, source.getDegree( DynamicRelationshipType.withName( "Type1" ) ) );
-            assertEquals( 25, source.getDegree( DynamicRelationshipType.withName( "Type2" ) ) );
-            assertEquals( 25, source.getDegree( DynamicRelationshipType.withName( "Type3" ) ) );
+            assertEquals( 25, source.getDegree( RelationshipType.withName( "Type0" ) ) );
+            assertEquals( 25, source.getDegree( RelationshipType.withName( "Type1" ) ) );
+            assertEquals( 25, source.getDegree( RelationshipType.withName( "Type2" ) ) );
+            assertEquals( 25, source.getDegree( RelationshipType.withName( "Type3" ) ) );
 
             assertEquals( 100, sink.getDegree() );
             assertEquals( 0, sink.getDegree( Direction.OUTGOING ) );
             assertEquals( 100, sink.getDegree( Direction.INCOMING ) );
-            assertEquals( 25, sink.getDegree( DynamicRelationshipType.withName( "Type0" ) ) );
-            assertEquals( 25, sink.getDegree( DynamicRelationshipType.withName( "Type1" ) ) );
-            assertEquals( 25, sink.getDegree( DynamicRelationshipType.withName( "Type2" ) ) );
-            assertEquals( 25, sink.getDegree( DynamicRelationshipType.withName( "Type3" ) ) );
+            assertEquals( 25, sink.getDegree( RelationshipType.withName( "Type0" ) ) );
+            assertEquals( 25, sink.getDegree( RelationshipType.withName( "Type1" ) ) );
+            assertEquals( 25, sink.getDegree( RelationshipType.withName( "Type2" ) ) );
+            assertEquals( 25, sink.getDegree( RelationshipType.withName( "Type3" ) ) );
             tx.success();
         }
+    }
+
+    @Test
+    public void shouldBeAbleToCreateRelationshipsInEmptyDenseNode() throws Exception
+    {
+        // GIVEN
+        Node node;
+        try ( Transaction tx = databaseRule.beginTx() )
+        {
+            node = databaseRule.createNode();
+            createRelationshipsBetweenNodes( node, databaseRule.createNode(), denseNodeThreshold( databaseRule ) + 1 );
+            tx.success();
+        }
+        try ( Transaction tx = databaseRule.beginTx() )
+        {
+            node.getRelationships().forEach( Relationship::delete );
+            tx.success();
+        }
+
+        // WHEN
+        Relationship rel;
+        try ( Transaction tx = databaseRule.beginTx() )
+        {
+            rel = node.createRelationshipTo( databaseRule.createNode(), MyRelTypes.TEST );
+            tx.success();
+        }
+
+        try ( Transaction tx = databaseRule.beginTx() )
+        {
+            // THEN
+            assertEquals( rel, single( node.getRelationships() ) );
+            tx.success();
+        }
+    }
+
+    private int denseNodeThreshold( GraphDatabaseAPI db )
+    {
+        return db.getDependencyResolver()
+                .resolveDependency( Config.class ).get( GraphDatabaseSettings.dense_node_threshold );
     }
 
     private void deleteRelationshipsFromNode( Node root, int numberOfRelationships )
@@ -218,7 +263,7 @@ public class DenseNodeIT
     {
         for ( int i = 0; i < numberOfRelationships; i++ )
         {
-            root.createRelationshipTo( db.createNode(), DynamicRelationshipType.withName( "Type" + (i % 4) ) )
+            root.createRelationshipTo( db.createNode(), RelationshipType.withName( "Type" + (i % 4) ) )
                     .setProperty( "" + i, i );
 
         }
@@ -229,7 +274,7 @@ public class DenseNodeIT
     {
         for ( int i = 0; i < numberOfRelationships; i++ )
         {
-            source.createRelationshipTo( sink, DynamicRelationshipType.withName( "Type" + (i % 4) ) )
+            source.createRelationshipTo( sink, RelationshipType.withName( "Type" + (i % 4) ) )
                     .setProperty( "" + i, i );
 
         }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,8 @@
  */
 package org.neo4j.visualization.graphviz;
 
-import org.neo4j.function.Predicate;
+import java.util.function.Predicate;
+
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 
@@ -50,12 +51,6 @@ interface StyleConfiguration
 	void setNodePropertyFomatter( PropertyFormatter format );
 
 	void setRelationshipPropertyFomatter( PropertyFormatter format );
-
-	/**
-	 * @deprecated use {@link #setRelationshipReverseOrderPredicate(Predicate)} instead
-	 */
-    @Deprecated
-    void setRelationshipReverseOrderPredicate( org.neo4j.helpers.Predicate<Relationship> reversed );
 
 	void setRelationshipReverseOrderPredicate( Predicate<Relationship> reversed );
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -83,12 +83,9 @@ public class IntArrayTest
     }
 
     @Parameters
-    public static Collection<Object[]> data()
+    public static Collection<NumberArrayFactory> data()
     {
-        return Arrays.asList(
-                new Object[] {NumberArrayFactory.HEAP},
-                new Object[] {NumberArrayFactory.OFF_HEAP}
-                );
+        return Arrays.asList( NumberArrayFactory.HEAP, NumberArrayFactory.OFF_HEAP );
     }
 
     public IntArrayTest( NumberArrayFactory factory )

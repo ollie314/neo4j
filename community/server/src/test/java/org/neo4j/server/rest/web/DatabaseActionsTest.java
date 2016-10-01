@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -35,24 +35,22 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.neo4j.function.Function;
 import org.neo4j.graphdb.ConstraintViolationException;
-import org.neo4j.graphdb.DynamicLabel;
-import org.neo4j.graphdb.DynamicRelationshipType;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.NotFoundException;
 import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.schema.ConstraintDefinition;
 import org.neo4j.graphdb.schema.ConstraintType;
 import org.neo4j.graphdb.schema.IndexDefinition;
 import org.neo4j.helpers.FakeClock;
-import org.neo4j.helpers.Pair;
 import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.helpers.collection.MapUtil;
-import org.neo4j.kernel.GraphDatabaseAPI;
+import org.neo4j.helpers.collection.Pair;
+import org.neo4j.kernel.impl.factory.GraphDatabaseFacade;
 import org.neo4j.server.database.Database;
 import org.neo4j.server.database.WrappedDatabase;
 import org.neo4j.server.helpers.ServerHelper;
@@ -80,21 +78,20 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.neo4j.graphdb.DynamicLabel.label;
-import static org.neo4j.helpers.collection.Iterables.first;
+import static org.neo4j.graphdb.Label.label;
+import static org.neo4j.helpers.collection.Iterables.firstOrNull;
 import static org.neo4j.helpers.collection.Iterables.single;
-import static org.neo4j.helpers.collection.IteratorUtil.asSet;
-import static org.neo4j.helpers.collection.IteratorUtil.count;
+import static org.neo4j.helpers.collection.Iterators.asSet;
 import static org.neo4j.helpers.collection.MapUtil.map;
 import static org.neo4j.server.rest.repr.RepresentationTestAccess.nodeUriToId;
 import static org.neo4j.server.rest.repr.RepresentationTestAccess.serialize;
 
 public class DatabaseActionsTest
 {
-    private static final Label LABEL = DynamicLabel.label( "Label" );
+    private static final Label LABEL = label( "Label" );
     private static GraphDbHelper graphdbHelper;
     private static Database database;
-    private static GraphDatabaseAPI graph;
+    private static GraphDatabaseFacade graph;
     private static DatabaseActions actions;
 
     @Rule
@@ -103,7 +100,7 @@ public class DatabaseActionsTest
     @BeforeClass
     public static void createDb() throws IOException
     {
-        graph = (GraphDatabaseAPI) new TestGraphDatabaseFactory().newImpermanentDatabase();
+        graph = (GraphDatabaseFacade) new TestGraphDatabaseFactory().newImpermanentDatabase();
         database = new WrappedDatabase( graph );
         graphdbHelper = new GraphDbHelper( database );
         actions = new TransactionWrappedDatabaseActions( new LeaseManager( new FakeClock() ), database.getGraph() );
@@ -442,7 +439,7 @@ public class DatabaseActionsTest
             Node startNode = database.getGraph().createNode();
             Node endNode = database.getGraph().createNode();
             Relationship relationship = startNode.createRelationshipTo( endNode,
-                    DynamicRelationshipType.withName( "knows" ) );
+                    RelationshipType.withName( "knows" ) );
             for ( Map.Entry<String, Object> entry : properties.entrySet() )
             {
                 relationship.setProperty( entry.getKey(), entry.getValue() );
@@ -1171,7 +1168,7 @@ public class DatabaseActionsTest
         // THEN
         assertEquals(
                 asSet( labelName1, labelName2 ),
-                asSet( labels ) );
+                Iterables.asSet( labels ) );
     }
 
     @Test
@@ -1191,14 +1188,9 @@ public class DatabaseActionsTest
         }
 
         // THEN
-        assertEquals( asSet( node1, node2 ), asSet( Iterables.map( new Function<Object, Long>()
-        {
-            @Override
-            public Long apply( Object from )
-            {
-                Map<?, ?> nodeMap = (Map<?, ?>) from;
-                return nodeUriToId( (String) nodeMap.get( "self" ) );
-            }
+        assertEquals( asSet( node1, node2 ), Iterables.asSet( Iterables.map( from -> {
+            Map<?, ?> nodeMap = (Map<?, ?>) from;
+            return nodeUriToId( (String) nodeMap.get( "self" ) );
         }, representation ) ) );
     }
 
@@ -1240,8 +1232,8 @@ public class DatabaseActionsTest
         try ( Transaction transaction = graph.beginTx() )
         {
             Iterable<IndexDefinition> defs = graphdbHelper.getSchemaIndexes( labelName );
-            assertEquals( 1, count( defs ) );
-            assertEquals( propertyKey, first( first( defs ).getPropertyKeys() ) );
+            assertEquals( 1, Iterables.count( defs ) );
+            assertEquals( propertyKey, firstOrNull( firstOrNull( defs ).getPropertyKeys() ) );
         }
     }
 
@@ -1258,7 +1250,7 @@ public class DatabaseActionsTest
         // THEN
         try ( Transaction transaction = graph.beginTx() )
         {
-            assertFalse( "Index should have been dropped", asSet( graphdbHelper.getSchemaIndexes( labelName ) )
+            assertFalse( "Index should have been dropped", Iterables.asSet( graphdbHelper.getSchemaIndexes( labelName ) )
                     .contains( index ) );
         }
     }
@@ -1298,7 +1290,7 @@ public class DatabaseActionsTest
         try ( Transaction tx = graph.beginTx() )
         {
             Iterable<ConstraintDefinition> defs = graphdbHelper.getPropertyUniquenessConstraints( labelName, propertyKey );
-            assertEquals( asSet( propertyKey ), asSet( single( defs ).getPropertyKeys() ) );
+            assertEquals( asSet( propertyKey ), Iterables.asSet( single( defs ).getPropertyKeys() ) );
             tx.success();
         }
     }
@@ -1316,7 +1308,7 @@ public class DatabaseActionsTest
 
         // THEN
         assertFalse( "Constraint should have been dropped",
-                asSet( graphdbHelper.getPropertyUniquenessConstraints( labelName, propertyKey ) ).contains( index ) );
+                Iterables.asSet( graphdbHelper.getPropertyUniquenessConstraints( labelName, propertyKey ) ).contains( index ) );
     }
 
     @Test

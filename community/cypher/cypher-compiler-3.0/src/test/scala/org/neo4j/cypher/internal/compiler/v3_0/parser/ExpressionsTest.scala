@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -74,45 +74,45 @@ class ExpressionsTest extends ParserTest[ast.Expression, legacy.Expression] with
   }
 
   test("list_comprehension") {
-    val predicate = predicates.Equals(legacy.Property(legacy.Identifier("x"), PropertyKey("prop")), legacy.Literal(42))
-    val mapExpression = legacy.Property(legacy.Identifier("x"), PropertyKey("name"))
+    val predicate = predicates.Equals(legacy.Property(legacy.Variable("x"), PropertyKey("prop")), legacy.Literal(42))
+    val mapExpression = legacy.Property(legacy.Variable("x"), PropertyKey("name"))
 
     parsing("[x in collection WHERE x.prop = 42 | x.name]") shouldGive
-      legacy.ExtractFunction(legacy.FilterFunction(legacy.Identifier("collection"), "x", predicate), "x", mapExpression)
+      legacy.ExtractFunction(legacy.FilterFunction(legacy.Variable("collection"), "x", predicate), "x", mapExpression)
 
     parsing("[x in collection WHERE x.prop = 42]") shouldGive
-      legacy.FilterFunction(legacy.Identifier("collection"), "x", predicate)
+      legacy.FilterFunction(legacy.Variable("collection"), "x", predicate)
 
     parsing("[x in collection | x.name]") shouldGive
-      legacy.ExtractFunction(legacy.Identifier("collection"), "x", mapExpression)
+      legacy.ExtractFunction(legacy.Variable("collection"), "x", mapExpression)
   }
 
   test("array_indexing") {
-    val collection = legacy.Collection(legacy.Literal(1), legacy.Literal(2), legacy.Literal(3), legacy.Literal(4))
+    val collection = legacy.ListLiteral(legacy.Literal(1), legacy.Literal(2), legacy.Literal(3), legacy.Literal(4))
 
     parsing("[1,2,3,4][1..2]") shouldGive
-      legacy.CollectionSliceExpression(collection, Some(legacy.Literal(1)), Some(legacy.Literal(2)))
+      legacy.ListSlice(collection, Some(legacy.Literal(1)), Some(legacy.Literal(2)))
 
     parsing("[1,2,3,4][1..2][2..3]") shouldGive
-      legacy.CollectionSliceExpression(legacy.CollectionSliceExpression(collection, Some(legacy.Literal(1)), Some(legacy.Literal(2))), Some(legacy.Literal(2)), Some(legacy.Literal(3)))
+      legacy.ListSlice(legacy.ListSlice(collection, Some(legacy.Literal(1)), Some(legacy.Literal(2))), Some(legacy.Literal(2)), Some(legacy.Literal(3)))
 
     parsing("collection[1..2]") shouldGive
-      legacy.CollectionSliceExpression(legacy.Identifier("collection"), Some(legacy.Literal(1)), Some(legacy.Literal(2)))
+      legacy.ListSlice(legacy.Variable("collection"), Some(legacy.Literal(1)), Some(legacy.Literal(2)))
 
     parsing("[1,2,3,4][2]") shouldGive
       legacy.ContainerIndex(collection, legacy.Literal(2))
 
     parsing("[[1,2]][0][6]") shouldGive
-      legacy.ContainerIndex(legacy.ContainerIndex(legacy.Collection(legacy.Collection(legacy.Literal(1), legacy.Literal(2))), legacy.Literal(0)), legacy.Literal(6))
+      legacy.ContainerIndex(legacy.ContainerIndex(legacy.ListLiteral(legacy.ListLiteral(legacy.Literal(1), legacy.Literal(2))), legacy.Literal(0)), legacy.Literal(6))
 
     parsing("collection[1..2][0]") shouldGive
-      legacy.ContainerIndex(legacy.CollectionSliceExpression(legacy.Identifier("collection"), Some(legacy.Literal(1)), Some(legacy.Literal(2))), legacy.Literal(0))
+      legacy.ContainerIndex(legacy.ListSlice(legacy.Variable("collection"), Some(legacy.Literal(1)), Some(legacy.Literal(2))), legacy.Literal(0))
 
     parsing("collection[..-2]") shouldGive
-      legacy.CollectionSliceExpression(legacy.Identifier("collection"), None, Some(legacy.Literal(-2)))
+      legacy.ListSlice(legacy.Variable("collection"), None, Some(legacy.Literal(-2)))
 
     parsing("collection[1..]") shouldGive
-      legacy.CollectionSliceExpression(legacy.Identifier("collection"), Some(legacy.Literal(1)), None)
+      legacy.ListSlice(legacy.Variable("collection"), Some(legacy.Literal(1)), None)
   }
 
   test("literal_maps") {
@@ -128,7 +128,7 @@ class ExpressionsTest extends ParserTest[ast.Expression, legacy.Expression] with
 
   test("better_map_support") {
     parsing("map.key1.key2.key3") shouldGive
-      legacy.Property(legacy.Property(legacy.Property(legacy.Identifier("map"), PropertyKey("key1")), PropertyKey("key2")), PropertyKey("key3"))
+      legacy.Property(legacy.Property(legacy.Property(legacy.Variable("map"), PropertyKey("key1")), PropertyKey("key2")), PropertyKey("key3"))
 
     parsing("({ key: 'value' }).key") shouldGive
       legacy.Property(legacy.LiteralMap(Map("key" -> legacy.Literal("value"))), PropertyKey("key"))

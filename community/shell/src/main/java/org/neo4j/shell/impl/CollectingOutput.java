@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -38,7 +38,7 @@ public class CollectingOutput extends UnicastRemoteObject implements Output, Ser
     private transient StringWriter stringWriter = new StringWriter();
     private transient PrintWriter allLinesAsOne = new PrintWriter( stringWriter );
 
-    private final List<String> lines = new ArrayList<String>();
+    private List<String> lines = new ArrayList<String>();
 
     private String ongoingLine = "";
 

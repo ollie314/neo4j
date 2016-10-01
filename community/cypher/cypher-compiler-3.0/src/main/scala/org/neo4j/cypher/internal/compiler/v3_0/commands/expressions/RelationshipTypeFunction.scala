@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,23 +23,28 @@ import org.neo4j.cypher.internal.compiler.v3_0._
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{Effects, ReadsAllRelationships}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
+import org.neo4j.cypher.internal.frontend.v3_0.ParameterWrongTypeException
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 import org.neo4j.graphdb.Relationship
 
 case class RelationshipTypeFunction(relationship: Expression) extends NullInNullOutExpression(relationship) {
-  def compute(value: Any, m: ExecutionContext)(implicit state: QueryState) =
-    value.asInstanceOf[Relationship].getType.name()
 
-  def rewrite(f: (Expression) => Expression) = f(RelationshipTypeFunction(relationship.rewrite(f)))
+  override def compute(value: Any, m: ExecutionContext)(implicit state: QueryState): String = value match {
+    case r: Relationship => r.getType.name()
 
-  def arguments = Seq(relationship)
+    case x => throw new ParameterWrongTypeException("Expected a Relationship, got: " + x)
+  }
 
-  def calculateType(symbols: SymbolTable) = {
+  override def rewrite(f: (Expression) => Expression) = f(RelationshipTypeFunction(relationship.rewrite(f)))
+
+  override def arguments = Seq(relationship)
+
+  override def calculateType(symbols: SymbolTable) = {
     relationship.evaluateType(CTRelationship, symbols)
     CTString
   }
 
-  def symbolTableDependencies = relationship.symbolTableDependencies
+  override def symbolTableDependencies = relationship.symbolTableDependencies
 
   override def localEffects(symbols: SymbolTable) = Effects(ReadsAllRelationships)
 }

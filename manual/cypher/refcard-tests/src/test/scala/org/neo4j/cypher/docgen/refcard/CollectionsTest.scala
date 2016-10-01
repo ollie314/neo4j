@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,8 +25,8 @@ import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionRe
 
 class CollectionsTest extends RefcardTest with QueryStatisticsTestSupport {
   val graphDescription = List("A KNOWS B")
-  val title = "Collections"
-  val css = "general c2-2 c3-1 c4-3 c5-2 c6-4"
+  val title = "Lists"
+  val css = "general c2-2 c3-2 c4-3 c5-2 c6-6"
   override val linkId = "syntax-collections"
 
   override def assert(name: String, result: InternalExecutionResult) {
@@ -52,9 +52,9 @@ class CollectionsTest extends RefcardTest with QueryStatisticsTestSupport {
       case "parameters=coll" =>
         Map("coll" -> List(1, 2, 3))
       case "parameters=range" =>
-        Map("first_num" -> 1, "last_num" -> 10, "step" -> 2)
+        Map("firstNum" -> 1, "lastNum" -> 10, "step" -> 2)
       case "parameters=subscript" =>
-        Map("start_idx" -> 1, "end_idx" -> -1, "idx" -> 0)
+        Map("startIdx" -> 1, "endIdx" -> -1, "idx" -> 0)
       case "" =>
         Map()
     }
@@ -67,11 +67,11 @@ class CollectionsTest extends RefcardTest with QueryStatisticsTestSupport {
 ###assertion=returns-one
 RETURN
 
-['a','b','c'] AS coll
+["a", "b", "c"] AS coll
 
 ###
 
-Literal collections are declared in square brackets.
+Literal lists are declared in square brackets.
 
 ###assertion=returns-one parameters=coll
 RETURN
@@ -80,16 +80,16 @@ size({coll}) AS len, {coll}[0] AS value
 
 ###
 
-Collections can be passed in as parameters.
+Lists can be passed in as parameters.
 
 ###assertion=returns-one parameters=range
 RETURN
 
-range({first_num},{last_num},{step}) AS coll
+range({firstNum}, {lastNum}, {step}) AS coll
 
 ###
 
-Range creates a collection of numbers (+step+ is optional), other functions returning collections are:
+Range creates a list of numbers (+step+ is optional), other functions returning list are:
 +labels+, +nodes+, +relationships+, +rels+, +filter+, +extract+.
 
 ###assertion=returns-one
@@ -100,7 +100,7 @@ RETURN r AS rels
 
 ###
 
-Relationship identifiers of a variable length path contain a collection of relationships.
+Relationship variables of a variable length path contain a list of relationships.
 
 ###assertion=returns-two
 MATCH (matchedNode)
@@ -110,32 +110,32 @@ RETURN matchedNode.coll[0] AS value,
 
 ###
 
-Properties can be arrays/collections of strings, numbers or booleans.
+Properties can be lists of strings, numbers or booleans.
 
 ###assertion=returns-one parameters=subscript
-WITH [1,2,3] as coll
+WITH [1, 2, 3] AS coll
 RETURN
 
 coll[{idx}] AS value,
-coll[{start_idx}..{end_idx}] AS slice
+coll[{startIdx}..{endIdx}] AS slice
 
 ###
 
-Collection elements can be accessed with +idx+ subscripts in square brackets.
-Invalid indexes return +NULL+.
-Slices can be retrieved with intervals from +start_idx+ to +end_idx+ each of which can be omitted or negative.
+List elements can be accessed with `idx` subscripts in square brackets.
+Invalid indexes return `NULL`.
+Slices can be retrieved with intervals from `start_idx` to `end_idx` each of which can be omitted or negative.
 Out of range elements are ignored.
 
 ###assertion=returns-one parameters=names
 //
 
 UNWIND {names} AS name
-MATCH (n {name:name})
+MATCH (n {name: name})
 RETURN avg(n.age)
 
 ###
 
-With +UNWIND+, you can transform any collection back into individual rows.
+With `UNWIND`, you can transform any list back into individual rows.
 The example matches all names from a list of names.
 """
 }

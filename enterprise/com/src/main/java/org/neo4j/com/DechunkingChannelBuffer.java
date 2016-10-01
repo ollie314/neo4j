@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,11 @@
  */
 package org.neo4j.com;
 
-import static org.neo4j.kernel.impl.util.Bits.numbersToBitString;
+import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.buffer.ChannelBufferFactory;
+import org.jboss.netty.buffer.ChannelBufferIndexFinder;
+import org.jboss.netty.buffer.ChannelBuffers;
+import org.jboss.netty.handler.queue.BlockingReadHandler;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -32,11 +36,7 @@ import java.nio.channels.ScatteringByteChannel;
 import java.nio.charset.Charset;
 import java.util.concurrent.TimeUnit;
 
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBufferFactory;
-import org.jboss.netty.buffer.ChannelBufferIndexFinder;
-import org.jboss.netty.buffer.ChannelBuffers;
-import org.jboss.netty.handler.queue.BlockingReadHandler;
+import static org.neo4j.kernel.impl.util.Bits.numbersToBitString;
 
 public class DechunkingChannelBuffer implements ChannelBuffer
 {
@@ -149,8 +149,10 @@ public class DechunkingChannelBuffer implements ChannelBuffer
         Throwable cause;
         try
         {
-            ObjectInputStream input = new ObjectInputStream( asInputStream() );
-            cause = (Throwable) input.readObject();
+            try ( ObjectInputStream input = new ObjectInputStream( asInputStream() ) )
+            {
+                cause = (Throwable) input.readObject();
+            }
         }
         catch ( Throwable e )
         {

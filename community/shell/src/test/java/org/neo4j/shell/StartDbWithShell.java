@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,25 +19,25 @@
  */
 package org.neo4j.shell;
 
+import java.io.File;
+
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.factory.GraphDatabaseFactory;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
-import org.neo4j.helpers.Settings;
-
-import static org.neo4j.helpers.SillyUtils.ignore;
+import org.neo4j.kernel.configuration.Settings;
 
 public class StartDbWithShell
 {
     public static void main( String[] args ) throws Exception
     {
-        String path = args.length > 0 ? args[0] : "target/test-data/shell-db";
+        File path = args.length > 0 ? new File( args[0] ) : new File( "target/test-data/shell-db" );
         GraphDatabaseService db = new GraphDatabaseFactory().
             newEmbeddedDatabaseBuilder( path ).
             setConfig( ShellSettings.remote_shell_enabled, Settings.TRUE).
             setConfig( GraphDatabaseSettings.allow_store_upgrade, Settings.TRUE).
             newGraphDatabase();
         System.out.println( "db " + path + " started, ENTER to quit" );
-        ignore( System.in.read() );
+        System.in.read();
         db.shutdown();
     }
 }

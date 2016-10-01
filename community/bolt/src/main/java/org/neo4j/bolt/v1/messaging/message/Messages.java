@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,8 +28,12 @@ public class Messages
 {
     private static final PullAllMessage PULL_ALL = new PullAllMessage();
     private static final DiscardAllMessage DISCARD_ALL = new DiscardAllMessage();
-    private static final AcknowledgeFailureMessage ACK_FAILURE = new AcknowledgeFailureMessage();
     private static final SuccessMessage SUCCESS = new SuccessMessage( Collections.EMPTY_MAP );
+
+    public static Message reset()
+    {
+        return new ResetMessage();
+    }
 
     public static Message run( String statement )
     {
@@ -41,9 +45,9 @@ public class Messages
         return new RunMessage( statement, parameters );
     }
 
-    public static Message init( String clientName )
+    public static Message init( String clientName, Map<String, Object> credentials )
     {
-        return new InitMessage( clientName );
+        return new InitMessage( clientName, credentials );
     }
 
     public static Message pullAll()
@@ -54,11 +58,6 @@ public class Messages
     public static Message discardAll()
     {
         return DISCARD_ALL;
-    }
-
-    public static Message ackFailure()
-    {
-        return ACK_FAILURE;
     }
 
     public static Message record( Record value )

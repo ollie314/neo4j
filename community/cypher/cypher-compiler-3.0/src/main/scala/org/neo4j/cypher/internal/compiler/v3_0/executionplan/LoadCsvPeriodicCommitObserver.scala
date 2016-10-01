@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,12 +21,12 @@ package org.neo4j.cypher.internal.compiler.v3_0.executionplan
 
 import java.net.URL
 
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.ExternalResource
+import org.neo4j.cypher.internal.compiler.v3_0.pipes.ExternalCSVResource
 import org.neo4j.cypher.internal.compiler.v3_0.spi.QueryContext
 import org.neo4j.cypher.internal.frontend.v3_0.{CypherException, LoadCsvStatusWrapCypherException}
 
-class LoadCsvPeriodicCommitObserver(batchRowCount: Long, resources: ExternalResource, queryContext: QueryContext)
-  extends ExternalResource with ((CypherException) => CypherException) {
+class LoadCsvPeriodicCommitObserver(batchRowCount: Long, resources: ExternalCSVResource, queryContext: QueryContext)
+  extends ExternalCSVResource with ((CypherException) => CypherException) {
 
   val updateCounter = new UpdateCounter
   var outerLoadCSVIterator: Option[LoadCsvIterator] = None
@@ -48,7 +48,7 @@ class LoadCsvPeriodicCommitObserver(batchRowCount: Long, resources: ExternalReso
   }
 
   private def commitAndRestartTx() {
-    queryContext.commitAndRestartTx()
+    queryContext.transactionalContext.commitAndRestartTx()
     outerLoadCSVIterator.foreach(_.notifyCommit())
   }
 

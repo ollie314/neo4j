@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -33,7 +33,7 @@ case class NodeByLabelScanPipe(ident: String, label: LazyLabel)
 
   protected def internalCreateResults(state: QueryState): Iterator[ExecutionContext] = {
 
-    label.id(state.query) match {
+    label.getOptId(state.query) match {
       case Some(labelId) =>
         val nodes = state.query.getNodesByLabel(labelId.id)
         val baseContext = state.initialContext.getOrElse(ExecutionContext.empty)
@@ -45,7 +45,7 @@ case class NodeByLabelScanPipe(ident: String, label: LazyLabel)
 
   def exists(predicate: Pipe => Boolean): Boolean = predicate(this)
 
-  def planDescriptionWithoutCardinality = new PlanDescriptionImpl(this.id, "NodeByLabelScan", NoChildren, Seq(LabelName(label.name)), identifiers)
+  def planDescriptionWithoutCardinality = new PlanDescriptionImpl(this.id, "NodeByLabelScan", NoChildren, Seq(LabelName(label.name)), variables)
 
   def symbols = new SymbolTable(Map(ident -> CTNode))
 

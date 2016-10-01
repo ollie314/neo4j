@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,8 +26,17 @@ class captureStateAsGraphVizTest extends ExecutionEngineFunSuite {
   test("creates graphviz object representing the current db state") {
     createNode()
 
-    val result = captureStateAsGraphViz(graph, "apa", 0)
+    val result = captureStateAsGraphViz(graph, "apa", 0, "")
 
     result shouldBe a[GraphViz]
+  }
+
+  test("graphviz handles options correctly") {
+    createNode()
+
+    val result = captureStateAsGraphViz(graph, "apa", 0, "graph [layout=neato]")
+
+    result shouldBe a[GraphViz]
+    result.s should include("graph [layout=neato]")
   }
 }

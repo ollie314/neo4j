@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,7 +22,7 @@ package org.neo4j.cypher.internal.compiler.v3_0.pipes
 import org.neo4j.cypher.internal.compiler.v3_0.ExecutionContext
 import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.Expression
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{ReadsAllNodes, Effects}
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.{CollectionSupport, IsCollection}
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.{ListSupport, IsList}
 import org.neo4j.cypher.internal.compiler.v3_0.planDescription.{NoChildren, PlanDescriptionImpl}
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import org.neo4j.cypher.internal.frontend.v3_0.symbols.CTNode
@@ -47,7 +47,7 @@ case class SingleSeekArg(expr: Expression) extends SeekArgs {
 case class ManySeekArgs(coll: Expression) extends SeekArgs {
   def expressions(ctx: ExecutionContext, state: QueryState): Iterable[Any] = {
     coll(ctx)(state) match {
-      case IsCollection(values) => values
+      case IsList(values) => values
     }
   }
 }
@@ -55,7 +55,7 @@ case class ManySeekArgs(coll: Expression) extends SeekArgs {
 case class NodeByIdSeekPipe(ident: String, nodeIdsExpr: SeekArgs)
                            (val estimatedCardinality: Option[Double] = None)(implicit pipeMonitor: PipeMonitor)
   extends Pipe
-  with CollectionSupport
+  with ListSupport
   with RonjaPipe {
 
   protected def internalCreateResults(state: QueryState): Iterator[ExecutionContext] = {
@@ -69,7 +69,7 @@ case class NodeByIdSeekPipe(ident: String, nodeIdsExpr: SeekArgs)
 
   def exists(predicate: Pipe => Boolean): Boolean = predicate(this)
 
-  def planDescriptionWithoutCardinality = new PlanDescriptionImpl(this.id, "NodeByIdSeek", NoChildren, Seq(), identifiers)
+  def planDescriptionWithoutCardinality = new PlanDescriptionImpl(this.id, "NodeByIdSeek", NoChildren, Seq(), variables)
 
   def symbols: SymbolTable = new SymbolTable(Map(ident -> CTNode))
 

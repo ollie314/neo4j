@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -38,22 +38,26 @@ object JavaConversionSupport {
     def next() = iterator.next()
   }
 
+  def asScalaENFXSafe(iterator: PrimitiveIntIterator): Iterator[Int] = makeENFXSafe(iterator.hasNext, iterator.next)(identity)
+
   def mapToScala[T](iterator: PrimitiveIntIterator)(f: Int => T): Iterator[T] = new Iterator[T] {
     def hasNext = iterator.hasNext
     def next() = f(iterator.next())
   }
 
   // Same as mapToScala, but handles concurrency exceptions by swallowing exceptions
-  def mapToScalaENFXSafe[T](iterator: PrimitiveLongIterator)(f: Long => T): Iterator[T] = new Iterator[T] {
+  def mapToScalaENFXSafe[T](iterator: PrimitiveLongIterator)(f: Long => T): Iterator[T] = makeENFXSafe(iterator.hasNext, iterator.next)(f)
+
+  private def makeENFXSafe[S,T](hasMore: () => Boolean, more: () => S)(f: S => T): Iterator[T] = new Iterator[T] {
     private var _next: Option[T] = fetchNext()
 
     // Init
     private def fetchNext(): Option[T] = {
-      if (!iterator.hasNext)
+      if (!hasMore())
         _next = None
       else {
         try {
-          _next = Some(f(iterator.next()))
+          _next = Some(f(more()))
         } catch {
           case _: org.neo4j.kernel.api.exceptions.EntityNotFoundException => fetchNext()
           case _: EntityNotFoundException => fetchNext()

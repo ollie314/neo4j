@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -80,7 +80,7 @@ object LogicalPlan2PlanDescription extends ((LogicalPlan, Map[LogicalPlan, Id]) 
         val children = TwoChildren(apply(lhs, idMap), apply(rhs, idMap))
         PlanDescriptionImpl(id = idMap(plan), "CartesianProduct", children,Seq.empty, symbols)
 
-      case Limit(lhs, count) =>
+      case Limit(lhs, count, DoNotIncludeTies) =>
         PlanDescriptionImpl(id = idMap(plan), name = "Limit", children = SingleChild(apply(lhs, idMap)),
           Seq(Expression(count)), symbols)
 

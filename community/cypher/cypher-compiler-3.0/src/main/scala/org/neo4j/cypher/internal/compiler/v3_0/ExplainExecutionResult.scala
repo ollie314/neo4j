@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,15 +23,15 @@ import java.io.PrintWriter
 import java.util
 import java.util.Collections
 
-import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionResult
+import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{InternalExecutionResult, InternalQueryType}
 import org.neo4j.cypher.internal.compiler.v3_0.planDescription.InternalPlanDescription
+import org.neo4j.cypher.internal.compiler.v3_0.spi.InternalResultVisitor
 import org.neo4j.cypher.internal.frontend.v3_0.notification.InternalNotification
-import org.neo4j.graphdb.QueryExecutionType.{QueryType, explained}
 import org.neo4j.graphdb.ResourceIterator
-import org.neo4j.graphdb.Result.ResultVisitor
 
 case class ExplainExecutionResult(columns: List[String],
-                                  executionPlanDescription: InternalPlanDescription, queryType: QueryType,
+                                  executionPlanDescription: InternalPlanDescription,
+                                  executionType: InternalQueryType,
                                   notifications: Set[InternalNotification])
   extends InternalExecutionResult {
 
@@ -55,15 +55,15 @@ case class ExplainExecutionResult(columns: List[String],
 
   def planDescriptionRequested = true
 
-  def executionType = explained(queryType)
-
   def close() {}
 
   def next() = Iterator.empty.next()
 
   def hasNext = false
 
-  override def accept[EX <: Exception](visitor: ResultVisitor[EX]) = {}
+  override def accept[EX <: Exception](visitor: InternalResultVisitor[EX]) = {}
+
+  override def executionMode: ExecutionMode = ExplainMode
 }
 
 final class EmptyResourceIterator[T]() extends ResourceIterator[T] {

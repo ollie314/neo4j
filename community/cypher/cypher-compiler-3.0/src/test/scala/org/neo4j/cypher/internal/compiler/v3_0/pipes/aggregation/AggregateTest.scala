@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,7 +20,7 @@
 package org.neo4j.cypher.internal.compiler.v3_0.pipes.aggregation
 
 import org.neo4j.cypher.internal.compiler.v3_0._
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Identifier}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Variable}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryStateHelper
 
 trait AggregateTest {
@@ -29,7 +29,7 @@ trait AggregateTest {
   def aggregateOn(values: Any*): Any = {
     implicit val state = QueryStateHelper.empty
 
-    val func: AggregationFunction = createAggregator(Identifier("x"))
+    val func: AggregationFunction = createAggregator(Variable("x"))
     values.foreach(value => func(ExecutionContext.from("x" -> value)))
     func.result
   }

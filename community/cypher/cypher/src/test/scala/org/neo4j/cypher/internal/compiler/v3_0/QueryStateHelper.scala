@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,27 +19,35 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0
 
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.{ExternalResource, NullPipeDecorator, PipeDecorator, QueryState}
+import org.neo4j.cypher.internal.compiler.v3_0.pipes.{ExternalCSVResource, NullPipeDecorator, PipeDecorator, QueryState}
 import org.neo4j.cypher.internal.compiler.v3_0.spi.{QueryContext, UpdateCountingQueryContext}
+import org.neo4j.cypher.internal.spi.TransactionalContextWrapper
 import org.neo4j.cypher.internal.spi.v3_0.TransactionBoundQueryContext
-import org.neo4j.graphdb.{GraphDatabaseService, Transaction}
-import org.neo4j.kernel.GraphDatabaseAPI
+import org.neo4j.cypher.internal.spi.v3_0.TransactionBoundQueryContext.IndexSearchMonitor
+import org.neo4j.kernel.GraphDatabaseQueryService
 import org.neo4j.kernel.api.Statement
 import org.neo4j.kernel.impl.core.ThreadToStatementContextBridge
+import org.neo4j.kernel.impl.coreapi.{InternalTransaction, PropertyContainerLocker}
+import org.neo4j.kernel.impl.query.Neo4jTransactionalContext
+import org.neo4j.kernel.monitoring.{Monitors => KernelMonitors}
 
 import scala.collection.mutable
 
 object QueryStateHelper {
   def empty: QueryState = newWith()
 
-  def newWith(db: GraphDatabaseService = null, query: QueryContext = null, resources: ExternalResource = null,
-                params: Map[String, Any] = Map.empty, decorator: PipeDecorator = NullPipeDecorator) =
+  def newWith(db: GraphDatabaseQueryService = null, query: QueryContext = null, resources: ExternalCSVResource = null,
+              params: Map[String, Any] = Map.empty, decorator: PipeDecorator = NullPipeDecorator) =
     new QueryState(query = query, resources = resources, params = params, decorator = decorator, triadicState = mutable.Map.empty, repeatableReads = mutable.Map.empty)
 
-  def queryStateFrom(db: GraphDatabaseAPI, tx: Transaction, params: Map[String, Any] = Map.empty): QueryState = {
+  private val locker: PropertyContainerLocker = new PropertyContainerLocker
+
+  def queryStateFrom(db: GraphDatabaseQueryService, tx: InternalTransaction, params: Map[String, Any] = Map.empty): QueryState = {
     val statement: Statement = db.getDependencyResolver.resolveDependency(classOf[ThreadToStatementContextBridge]).get()
-    val context = new TransactionBoundQueryContext(db, tx, isTopLevelTx = true, statement)
-    newWith(db = db, query = context, params = params)
+    val searchMonitor = new KernelMonitors().newMonitor(classOf[IndexSearchMonitor])
+    val transactionalContext = new TransactionalContextWrapper(new Neo4jTransactionalContext(db, tx, statement, locker))
+    val queryContext = new TransactionBoundQueryContext(transactionalContext)(searchMonitor)
+    newWith(db = db, query = queryContext, params = params)
   }
 
   def countStats(q: QueryState) = q.withQueryContext(query = new UpdateCountingQueryContext(q.query))

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -35,11 +35,11 @@ public abstract class ConstraintValidationKernelException extends KernelExceptio
 {
     protected ConstraintValidationKernelException( String message, Object... parameters )
     {
-        super( Status.Schema.ConstraintViolation, message, parameters );
+        super( Status.Schema.ConstraintValidationFailed, message, parameters );
     }
 
     protected ConstraintValidationKernelException( Throwable cause, String message, Object... parameters )
     {
-        super( Status.Schema.ConstraintViolation, cause, message, parameters );
+        super( Status.Schema.ConstraintValidationFailed, cause, message, parameters );
     }
 }

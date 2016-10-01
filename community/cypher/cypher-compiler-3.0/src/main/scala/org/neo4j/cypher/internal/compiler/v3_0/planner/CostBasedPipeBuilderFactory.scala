@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,9 +21,9 @@ package org.neo4j.cypher.internal.compiler.v3_0.planner
 
 import org.neo4j.cypher.internal.compiler.v3_0._
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical._
-import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.greedy.{GreedyQueryGraphSolver, expandsOnly, expandsOrJoins}
-import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.idp.{IDPQueryGraphSolver, IDPQueryGraphSolverMonitor}
+import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.idp._
 import org.neo4j.cypher.internal.compiler.v3_0.tracing.rewriters.RewriterStepSequencer
+import org.neo4j.cypher.internal.frontend.v3_0.InternalException
 
 object CostBasedPipeBuilderFactory {
 
@@ -35,23 +35,35 @@ object CostBasedPipeBuilderFactory {
              tokenResolver: SimpleTokenResolver = new SimpleTokenResolver(),
              plannerName: Option[CostBasedPlannerName],
              runtimeBuilder: RuntimeBuilder,
-             useErrorsOverWarnings: Boolean
-    ) = {
+             config: CypherCompilerConfiguration,
+             updateStrategy: Option[UpdateStrategy],
+             publicTypeConverter: Any => Any
+  ) = {
 
     def createQueryGraphSolver(n: CostBasedPlannerName): QueryGraphSolver = n match {
       case IDPPlannerName =>
-        IDPQueryGraphSolver(monitors.newMonitor[IDPQueryGraphSolverMonitor]())
+        val monitor = monitors.newMonitor[IDPQueryGraphSolverMonitor]()
+        val solverConfig = new ConfigurableIDPSolverConfig(
+          maxTableSize = config.idpMaxTableSize,
+          iterationDurationLimit = config.idpIterationDuration
+        )
+        val singleComponentPlanner = SingleComponentPlanner(monitor, solverConfig)
+
+        IDPQueryGraphSolver(singleComponentPlanner, cartesianProductsOrValueJoins, monitor)
 
       case DPPlannerName =>
-        IDPQueryGraphSolver(monitors.newMonitor[IDPQueryGraphSolverMonitor](), maxTableSize = Int.MaxValue)
+        val monitor = monitors.newMonitor[IDPQueryGraphSolverMonitor]()
+        val singleComponentPlanner = SingleComponentPlanner(monitor, DPSolverConfig)
+        IDPQueryGraphSolver(singleComponentPlanner, cartesianProductsOrValueJoins, monitor)
 
-      case GreedyPlannerName =>
-        new CompositeQueryGraphSolver(
-          new GreedyQueryGraphSolver(expandsOrJoins),
-          new GreedyQueryGraphSolver(expandsOnly))
+      case _ => throw new InternalException(s"$n is not a valid planner")
     }
 
     val actualPlannerName = plannerName.getOrElse(CostBasedPlannerName.default)
-    CostBasedExecutablePlanBuilder(monitors, metricsFactory, tokenResolver, queryPlanner, createQueryGraphSolver(actualPlannerName), rewriterSequencer, semanticChecker, actualPlannerName, runtimeBuilder, useErrorsOverWarnings)
+    val actualUpdateStrategy = updateStrategy.getOrElse(defaultUpdateStrategy)
+    CostBasedExecutablePlanBuilder(monitors, metricsFactory, tokenResolver, queryPlanner,
+      createQueryGraphSolver(actualPlannerName), rewriterSequencer, semanticChecker, actualPlannerName, runtimeBuilder,
+      actualUpdateStrategy,
+      config, publicTypeConverter)
   }
 }

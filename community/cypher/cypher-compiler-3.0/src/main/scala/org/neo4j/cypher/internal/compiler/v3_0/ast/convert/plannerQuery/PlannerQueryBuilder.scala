@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,47 +19,56 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.ast.convert.plannerQuery
 
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.CollectionSupport
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.ListSupport
+import org.neo4j.cypher.internal.compiler.v3_0.planner._
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.IdName
-import org.neo4j.cypher.internal.compiler.v3_0.planner.{UpdateGraph, Selections, PlannerQuery, QueryGraph, QueryHorizon}
+import org.neo4j.cypher.internal.frontend.v3_0.SemanticTable
 
-case class PlannerQueryBuilder(private val q: PlannerQuery, returns: Seq[IdName] = Seq.empty)
-  extends CollectionSupport {
+case class PlannerQueryBuilder(private val q: PlannerQuery, semanticTable: SemanticTable, returns: Seq[IdName] = Seq.empty)
+  extends ListSupport {
 
   def withReturns(returns: Seq[IdName]): PlannerQueryBuilder = copy(returns = returns)
 
   def amendQueryGraph(f: QueryGraph => QueryGraph): PlannerQueryBuilder =
     copy(q = q.updateTailOrSelf(_.amendQueryGraph(f)))
 
-  def amendUpdateGraph(f: UpdateGraph => UpdateGraph): PlannerQueryBuilder =
-    copy(q = q.updateTailOrSelf(_.amendUpdateGraph(f)))
-
   def withHorizon(horizon: QueryHorizon): PlannerQueryBuilder =
     copy(q = q.updateTailOrSelf(_.withHorizon(horizon)))
 
   def withTail(newTail: PlannerQuery): PlannerQueryBuilder = {
-    copy(q = q.updateTailOrSelf(_.withTail(newTail)))
+    copy(q = q.updateTailOrSelf(_.withTail(newTail.amendQueryGraph(_.addArgumentIds(currentlyExposedSymbols.toSeq)))))
   }
 
-  def currentlyAvailableIdentifiers: Set[IdName] =
-    currentQueryGraph.coveredIds
-
-  def currentQueryGraph: QueryGraph = {
-    var current = q
-    while (current.tail.nonEmpty) {
-      current = current.tail.get
-    }
-    current.queryGraph
+  private def currentlyExposedSymbols: Set[IdName] = {
+    q.lastQueryHorizon.exposedSymbols(q.lastQueryGraph)
   }
+
+  def currentlyAvailableVariables: Set[IdName] = {
+    val allPlannerQueries = q.allPlannerQueries
+    val previousAvailableSymbols = if (allPlannerQueries.length > 1) {
+      val current = allPlannerQueries(allPlannerQueries.length - 2)
+      current.horizon.exposedSymbols(current.queryGraph)
+    } else Set.empty
+
+    // for the last planner query we should not consider the return projection
+    previousAvailableSymbols ++ q.lastQueryGraph.allCoveredIds
+  }
+
+  def currentQueryGraph: QueryGraph = q.lastQueryGraph
 
   def allSeenPatternNodes: Set[IdName] = {
-    val all = q.allPlannerQueries.toSet
-
-    all.flatMap(_.queryGraph.patternNodes) ++
-      all.flatMap(_.updateGraph.nodePatterns.map(_.nodeName))
+    val allPlannerQueries = q.allPlannerQueries
+    val previousPatternNodes = if (allPlannerQueries.length > 1) {
+      val current = allPlannerQueries(allPlannerQueries.length - 2)
+      val projectedNodes = current.horizon.exposedSymbols(current.queryGraph).collect {
+        case id@IdName(n) if semanticTable.containsNode(n) => id
+      }
+      projectedNodes ++ current.queryGraph.allPatternNodes
+    } else Set.empty
+    previousPatternNodes ++ q.lastQueryGraph.allPatternNodes
   }
 
-  def readOnly: Boolean = q.updateGraph.isEmpty
+  def readOnly: Boolean = q.queryGraph.readOnly
 
   def build(): PlannerQuery = {
 
@@ -69,8 +78,18 @@ case class PlannerQueryBuilder(private val q: PlannerQuery, returns: Seq[IdName]
         (args ++ qg.allCoveredIds, qg.withArgumentIds(args intersect qg.allCoveredIds))
       }
       plannerQuery
-        .amendQueryGraph(_.withOptionalMatches(newOptionalMatches))
+        .amendQueryGraph(_.withOptionalMatches(newOptionalMatches.toVector))
         .updateTail(fixArgumentIdsOnOptionalMatch)
+    }
+
+    def fixArgumentIdsOnMerge(plannerQuery: PlannerQuery): PlannerQuery = {
+      val mergeMatchGraph = plannerQuery.queryGraph.mergeQueryGraph
+      val newMergeMatchGraph = mergeMatchGraph.map {
+        qg =>
+          val requiredArguments = qg.coveredIdsExceptArguments intersect qg.argumentIds
+          qg.withArgumentIds(requiredArguments)
+      }
+      plannerQuery.amendQueryGraph(qg => newMergeMatchGraph.map(qg.withMergeMatch).getOrElse(qg)).updateTail(fixArgumentIdsOnMerge)
     }
 
     val fixedArgumentIds = q.foldMap {
@@ -95,13 +114,12 @@ case class PlannerQueryBuilder(private val q: PlannerQuery, returns: Seq[IdName]
       .updateTail(groupInequalities)
     }
 
-    val withFixedArgumentIds = fixArgumentIdsOnOptionalMatch(fixedArgumentIds)
-    val withGroupedInequalities = groupInequalities(withFixedArgumentIds)
-
-    withGroupedInequalities.withUpdateGraph(updateGraph = q.updateGraph)
+    val withFixedOptionalMatchArgumentIds = fixArgumentIdsOnOptionalMatch(fixedArgumentIds)
+    val withFixedMergeArgumentIds = fixArgumentIdsOnMerge(withFixedOptionalMatchArgumentIds)
+    groupInequalities(withFixedMergeArgumentIds)
   }
 }
 
 object PlannerQueryBuilder {
-  val empty = new PlannerQueryBuilder(PlannerQuery.empty)
+  def apply(semanticTable: SemanticTable) = new PlannerQueryBuilder(PlannerQuery.empty, semanticTable)
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,26 +25,28 @@ import pipes.QueryState
 import org.neo4j.graphdb.{Relationship, Node}
 import collection.Map
 
-class PatternMatcher(bindings: Map[String, MatchingPair],
+class PatternMatcher(bindings: Map[String, Set[MatchingPair]],
                      predicates: Seq[Predicate],
                      source:ExecutionContext,
                      state:QueryState,
-                     identifiersInClause: Set[String])
+                     variablesInClause: Set[String])
   extends Traversable[ExecutionContext] {
-  val boundNodes: Map[String, MatchingPair] = bindings.filter(_._2.patternElement.isInstanceOf[PatternNode])
-  val boundRels: Map[String, MatchingPair] = bindings.filter(_._2.patternElement.isInstanceOf[PatternRelationship])
+  val boundNodes: Map[String, Set[MatchingPair]] =
+    bindings.filter(x => x._2.nonEmpty && x._2.head.patternElement.isInstanceOf[PatternNode])
+  val boundRels: Map[String, Set[MatchingPair]] =
+    bindings.filter(x => x._2.nonEmpty && x._2.head.patternElement.isInstanceOf[PatternRelationship])
 
   def foreach[U](f: ExecutionContext => U) {
     debug("startPatternMatching")
 
-    traverseNode(boundNodes.values.toSet, createInitialHistory, f)
+    traverseNode(boundNodes.values.flatten.toSet, createInitialHistory, f)
   }
 
 
   def createInitialHistory: InitialHistory = {
 
     val relationshipsInContextButNotInPattern = source.collect {
-      case (key, r: Relationship) if !boundRels.contains(key) && identifiersInClause.contains(key) => r
+      case (key, r: Relationship) if !boundRels.contains(key) && variablesInClause.contains(key) => r
     }.toSeq
 
     new InitialHistory(source, relationshipsInContextButNotInPattern)
@@ -134,7 +136,7 @@ class PatternMatcher(bindings: Map[String, MatchingPair],
 
   private def alreadyPinned[U](currentRel: PatternRelationship, x: GraphRelationship): Boolean = {
     boundRels.get(currentRel.key) match {
-      case Some(pinnedRel) => pinnedRel.matches(x)
+      case Some(pinnedRel) => pinnedRel.forall(_.matches(x))
       case None => true
     }
   }

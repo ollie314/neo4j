@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -39,7 +39,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasItems;
 import static org.junit.Assert.assertThat;
-import static org.neo4j.graphdb.DynamicLabel.label;
+import static org.neo4j.graphdb.Label.label;
 import static org.neo4j.graphdb.Neo4jMatchers.containsOnly;
 import static org.neo4j.graphdb.Neo4jMatchers.getConstraints;
 import static org.neo4j.graphdb.Neo4jMatchers.isEmpty;
@@ -50,11 +50,8 @@ import static org.neo4j.server.rest.domain.JsonHelper.jsonToMap;
 
 public class SchemaConstraintsDocIT extends AbstractRestFunctionalTestBase
 {
-    /**
-     * Create uniqueness constraint.
-     * Create a uniqueness constraint on a property.
-     */
-    @Documented
+    @Documented( "Create uniqueness constraint.\n" +
+                 "Create a uniqueness constraint on a property." )
     @Test
     @GraphDescription.Graph( nodes = {} )
     public void createPropertyUniquenessConstraint() throws JsonParseException
@@ -77,11 +74,8 @@ public class SchemaConstraintsDocIT extends AbstractRestFunctionalTestBase
         assertThat( serialized, equalTo( constraint ) );
     }
 
-    /**
-     * Get a specific uniqueness constraint.
-     * Get a specific uniqueness constraint for a label and a property.
-     */
-    @Documented
+    @Documented( "Get a specific uniqueness constraint.\n" +
+                 "Get a specific uniqueness constraint for a label and a property." )
     @Test
     @GraphDescription.Graph( nodes = {} )
     public void getLabelUniquenessPropertyConstraint() throws JsonParseException
@@ -104,11 +98,8 @@ public class SchemaConstraintsDocIT extends AbstractRestFunctionalTestBase
         assertThat( serializedList, hasItem( constraint ) );
     }
 
-    /**
-     * Get all uniqueness constraints for a label.
-     */
     @SuppressWarnings( "unchecked" )
-    @Documented
+    @Documented( "Get all uniqueness constraints for a label." )
     @Test
     @GraphDescription.Graph( nodes = {} )
     public void getLabelUniquenessPropertyConstraints() throws JsonParseException
@@ -136,11 +127,8 @@ public class SchemaConstraintsDocIT extends AbstractRestFunctionalTestBase
         assertThat( serializedList, hasItems( constraint1, constraint2 ) );
     }
 
-    /**
-     * Get all constraints for a label.
-     */
     @SuppressWarnings( "unchecked" )
-    @Documented
+    @Documented( "Get all constraints for a label." )
     @Test
     @GraphDescription.Graph( nodes = {} )
     public void getLabelPropertyConstraints() throws JsonParseException
@@ -162,11 +150,8 @@ public class SchemaConstraintsDocIT extends AbstractRestFunctionalTestBase
         assertThat( serializedList, hasItems( constraint1 ) );
     }
 
-    /**
-     * Get all constraints.
-     */
     @SuppressWarnings( "unchecked" )
-    @Documented
+    @Documented( "Get all constraints." )
     @Test
     @GraphDescription.Graph( nodes = {} )
     public void get_constraints() throws JsonParseException
@@ -188,11 +173,8 @@ public class SchemaConstraintsDocIT extends AbstractRestFunctionalTestBase
         assertThat( serializedList, hasItems( constraint1 ) );
     }
 
-    /**
-     * Drop uniqueness constraint.
-     * Drop uniqueness constraint for a label and a property.
-     */
-    @Documented
+    @Documented( "Drop uniqueness constraint.\n" +
+                 "Drop uniqueness constraint for a label and a property." )
     @Test
     @GraphDescription.Graph( nodes = {} )
     public void drop_constraint() throws Exception

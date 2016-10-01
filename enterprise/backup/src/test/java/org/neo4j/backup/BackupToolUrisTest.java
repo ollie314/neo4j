@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -95,7 +95,7 @@ public class BackupToolUrisTest
                     eq( host ),
                     eq( port ),
                     eq( new File( "/var/backup/graph" ) ),
-                    eq( ConsistencyCheck.DEFAULT ),
+                    eq( ConsistencyCheck.FULL ),
                     any( Config.class ),
                     eq( BackupClient.BIG_READ_TIMEOUT ),
                     eq( false )
@@ -199,7 +199,7 @@ public class BackupToolUrisTest
                     eq( host ),
                     eq( port ),
                     eq( new File( "/var/backup/graph" ) ),
-                    eq( ConsistencyCheck.DEFAULT ),
+                    eq( ConsistencyCheck.FULL ),
                     any( Config.class ),
                     eq( BackupClient.BIG_READ_TIMEOUT ),
                     eq( false )

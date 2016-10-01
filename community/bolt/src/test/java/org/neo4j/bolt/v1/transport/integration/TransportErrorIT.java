@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -157,7 +157,7 @@ public class TransportErrorIT
         MatcherAssert.assertThat( client, TransportTestUtil.eventuallyRecieves( new byte[]{0, 0, 0, 1} ) );
         MatcherAssert.assertThat( client, TransportTestUtil.eventuallyRecieves(
                 msgFailure( Status.Request.InvalidFormat,
-                        "Unable to read MSG_RUN message. Error was: Wrong type received. Expected TEXT, received: " +
+                        "Unable to read MSG_RUN message. Error was: Wrong type received. Expected STRING, received: " +
                         "RESERVED (0xff)." ) ) );
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,25 +19,27 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner
 
+import java.time.Clock
+
 import org.mockito.Matchers._
 import org.mockito.Mockito._
 import org.neo4j.cypher.internal.compiler.v3_0._
-import org.neo4j.cypher.internal.compiler.v3_0.ast
-import org.neo4j.cypher.internal.compiler.v3_0.parser
+import org.neo4j.cypher.internal.compiler.v3_0.ast.convert.plannerQuery.StatementConverters._
+import org.neo4j.cypher.internal.compiler.v3_0.ast.rewriters.{namePatternPredicatePatternElements, normalizeReturnClauses, normalizeWithClauses}
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.IdentityTypeConverter
 import org.neo4j.cypher.internal.compiler.v3_0.planner.execution.PipeExecutionBuilderContext
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.Metrics._
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical._
-import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.greedy.{GreedyPlanTable, GreedyQueryGraphSolver, expandsOnly, expandsOrJoins}
+import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.idp.{DefaultIDPSolverConfig, IDPQueryGraphSolver, IDPQueryGraphSolverMonitor, SingleComponentPlanner, cartesianProductsOrValueJoins}
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans._
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.rewriter.LogicalPlanRewriter
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.steps.LogicalPlanProducer
-import org.neo4j.cypher.internal.compiler.v3_0.spi.{GraphStatistics, PlanContext}
+import org.neo4j.cypher.internal.compiler.v3_0.spi.{GraphStatistics, PlanContext, ProcedureSignature, QualifiedProcedureName}
 import org.neo4j.cypher.internal.compiler.v3_0.tracing.rewriters.RewriterStepSequencer
+import org.neo4j.cypher.internal.frontend.v3_0._
 import org.neo4j.cypher.internal.frontend.v3_0.ast._
 import org.neo4j.cypher.internal.frontend.v3_0.parser.CypherParser
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.{CypherFunSuite, CypherTestSupport}
-import org.neo4j.cypher.internal.frontend.v3_0._
-import org.neo4j.helpers.Clock
 
 import scala.collection.mutable
 
@@ -113,17 +115,16 @@ trait LogicalPlanningTestSupport extends CypherTestSupport with AstConstructionT
   def newMockedLogicalPlanningContext(planContext: PlanContext,
                                       metrics: Metrics = mockedMetrics,
                                       semanticTable: SemanticTable = newMockedSemanticTable,
-                                      strategy: QueryGraphSolver = new CompositeQueryGraphSolver(
-                                        new GreedyQueryGraphSolver(expandsOrJoins),
-                                        new GreedyQueryGraphSolver(expandsOnly)
-                                      ),
+                                      strategy: QueryGraphSolver = new IDPQueryGraphSolver(
+                                        SingleComponentPlanner(mock[IDPQueryGraphSolverMonitor]),
+                                        cartesianProductsOrValueJoins, mock[IDPQueryGraphSolverMonitor]),
                                       cardinality: Cardinality = Cardinality(1),
                                       strictness: Option[StrictnessMode] = None,
                                       notificationLogger: InternalNotificationLogger = devNullLogger,
                                       useErrorsOverWarnings: Boolean = false): LogicalPlanningContext =
     LogicalPlanningContext(planContext, LogicalPlanProducer(metrics.cardinality), metrics, semanticTable,
       strategy, QueryGraphSolverInput(Map.empty, cardinality, strictness),
-      notificationLogger = notificationLogger, useErrorsOverWarnings = useErrorsOverWarnings)
+      notificationLogger = notificationLogger, useErrorsOverWarnings = useErrorsOverWarnings, config = QueryPlannerConfiguration.default)
 
   def newMockedStatistics = mock[GraphStatistics]
   def hardcodedStatistics = HardcodedGraphStatistics
@@ -135,8 +136,8 @@ trait LogicalPlanningTestSupport extends CypherTestSupport with AstConstructionT
   }
 
   def newMockedLogicalPlanWithProjections(ids: String*): LogicalPlan = {
-    val projections = RegularQueryProjection(projections = ids.map((id) => id -> ident(id)).toMap)
-    FakePlan(ids.map(IdName(_)).toSet)(CardinalityEstimation.lift(PlannerQuery(
+    val projections = RegularQueryProjection(projections = ids.map((id) => id -> varFor(id)).toMap)
+    FakePlan(ids.map(IdName(_)).toSet)(CardinalityEstimation.lift(RegularPlannerQuery(
         horizon = projections,
         queryGraph = QueryGraph.empty.addPatternNodes(ids.map(IdName(_)): _*)
       ), Cardinality(0))
@@ -145,7 +146,7 @@ trait LogicalPlanningTestSupport extends CypherTestSupport with AstConstructionT
 
   def newMockedLogicalPlan(idNames: Set[IdName], cardinality: Cardinality = Cardinality(1), hints: Set[Hint] = Set[Hint]()): LogicalPlan = {
     val qg = QueryGraph.empty.addPatternNodes(idNames.toSeq: _*).addHints(hints)
-    FakePlan(idNames)(CardinalityEstimation.lift(PlannerQuery(qg), cardinality))
+    FakePlan(idNames)(CardinalityEstimation.lift(RegularPlannerQuery(qg), cardinality))
   }
 
   def newMockedLogicalPlan(ids: String*): LogicalPlan =
@@ -156,7 +157,7 @@ trait LogicalPlanningTestSupport extends CypherTestSupport with AstConstructionT
 
   def newMockedLogicalPlanWithPatterns(ids: Set[IdName], patterns: Seq[PatternRelationship] = Seq.empty): LogicalPlan = {
     val qg = QueryGraph.empty.addPatternNodes(ids.toSeq: _*).addPatternRelationships(patterns)
-    FakePlan(ids)(CardinalityEstimation.lift(PlannerQuery(qg), Cardinality(0)))
+    FakePlan(ids)(CardinalityEstimation.lift(RegularPlannerQuery(qg), Cardinality(0)))
   }
 
   def newPlanner(metricsFactory: MetricsFactory): CostBasedExecutablePlanBuilder = {
@@ -167,39 +168,59 @@ trait LogicalPlanningTestSupport extends CypherTestSupport with AstConstructionT
       queryPlanner = queryPlanner,
       rewriterSequencer = rewriterSequencer,
       plannerName = None,
-      runtimeBuilder = InterpretedRuntimeBuilder(InterpretedPlanBuilder(Clock.SYSTEM_CLOCK, monitors)),
+      runtimeBuilder = InterpretedRuntimeBuilder(InterpretedPlanBuilder(Clock.systemUTC(), monitors, IdentityTypeConverter)),
       semanticChecker = semanticChecker,
-      useErrorsOverWarnings = false)
+      updateStrategy = None,
+      config = config,
+      publicTypeConverter = identity)
   }
 
-  def produceLogicalPlan(queryText: String)(implicit planner: CostBasedExecutablePlanBuilder, planContext: PlanContext): LogicalPlan = {
-    val parsedStatement = parser.parse(queryText)
-    val mkException = new SyntaxExceptionCreator(queryText, Some(pos))
-    val semanticState = semanticChecker.check(queryText, parsedStatement, mkException)
-    val (rewrittenStatement, _, postConditions) = astRewriter.rewrite(queryText, parsedStatement, semanticState)
-    CostBasedExecutablePlanBuilder.rewriteStatement(rewrittenStatement, semanticState.scopeTree, SemanticTable(types = semanticState.typeTable), rewriterSequencer, semanticChecker, postConditions, monitors.newMonitor[AstRewritingMonitor]()) match {
-      case (ast: Query, newTable) =>
-        val semanticState = semanticChecker.check(queryText, ast, mkException)
-        tokenResolver.resolve(ast)(newTable, planContext)
-        val (logicalPlan, _) = planner.produceLogicalPlan(ast, newTable)(planContext, devNullLogger)
-        logicalPlan
+  val config = CypherCompilerConfiguration(
+    queryCacheSize = 100,
+    statsDivergenceThreshold = 0.5,
+    queryPlanTTL = 1000,
+    useErrorsOverWarnings = false,
+    idpMaxTableSize = DefaultIDPSolverConfig.maxTableSize,
+    idpIterationDuration = DefaultIDPSolverConfig.iterationDurationLimit,
+    errorIfShortestPathFallbackUsedAtRuntime = false,
+    nonIndexedLabelWarningThreshold = 10000
+  )
 
-      case _ =>
-        throw new IllegalArgumentException("produceLogicalPlan only supports ast.Query input")
-    }
+  def buildPlannerQuery(query: String, lookup: Option[QualifiedProcedureName => ProcedureSignature] = None) = {
+    val queries: Seq[PlannerQuery] = buildPlannerUnionQuery(query, lookup).queries
+    queries.head
+  }
+
+  def buildPlannerUnionQuery(query: String, lookup: Option[QualifiedProcedureName => ProcedureSignature] = None) = {
+    val parsedStatement = parser.parse(query.replace("\r\n", "\n"))
+    val mkException = new SyntaxExceptionCreator(query, Some(pos))
+    val cleanedStatement: Statement = parsedStatement.endoRewrite(inSequence(normalizeReturnClauses(mkException), normalizeWithClauses(mkException)))
+    val semanticState = semanticChecker.check(query, cleanedStatement, mkException)
+    val astRewriterResultStatement = astRewriter.rewrite(query, cleanedStatement, semanticState)._1
+    val resolvedStatement = lookup.map(l => astRewriterResultStatement.endoRewrite(rewriteProcedureCalls(l))).getOrElse(astRewriterResultStatement)
+    val semanticTable: SemanticTable = SemanticTable(types = semanticState.typeTable)
+    val (rewrittenAst: Statement, _) = CostBasedExecutablePlanBuilder.rewriteStatement(resolvedStatement, semanticState.scopeTree,
+      semanticTable, RewriterStepSequencer.newValidating, semanticChecker, Set.empty, mock[AstRewritingMonitor])
+
+    // This fakes pattern expression naming for testing purposes
+    // In the actual code path, this renaming happens as part of planning
+    //
+    // cf. QueryPlanningStrategy
+    //
+
+    val namedAst: Statement = rewrittenAst.endoRewrite(namePatternPredicatePatternElements)
+    val unionQuery = toUnionQuery(namedAst.asInstanceOf[Query], semanticTable)
+    unionQuery
   }
 
   def identHasLabel(name: String, labelName: String): HasLabels = {
     val labelNameObj: LabelName = LabelName(labelName)_
-    HasLabels(Identifier(name)_, Seq(labelNameObj))_
+    HasLabels(Variable(name)_, Seq(labelNameObj))_
   }
-
-  def greedyPlanTableWith(plans: LogicalPlan*)(implicit ctx: LogicalPlanningContext) =
-    plans.foldLeft(GreedyPlanTable.empty)(_ + _)
 }
 
 case class FakePlan(availableSymbols: Set[IdName])(val solved: PlannerQuery with CardinalityEstimation)
-  extends LogicalPlan with LogicalPlanWithoutExpressions with LazyLogicalPlan {
+  extends LogicalPlan with LazyLogicalPlan {
   def rhs = None
   def lhs = None
 }

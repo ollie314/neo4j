@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -55,7 +55,7 @@ object ExpressionConverters {
     def extractPatternExpressions: Seq[PatternExpression] =
       expression.treeFold(Seq.empty[PatternExpression]) {
         case p: PatternExpression =>
-          (acc, _) => acc :+ p
+          acc => (acc :+ p, None)
       }
   }
 
@@ -63,17 +63,17 @@ object ExpressionConverters {
     def asPredicates: Set[Predicate] = {
       predicate.treeFold(Set.empty[Predicate]) {
         // n:Label
-        case p@HasLabels(Identifier(name), labels) =>
-          (acc, _) => acc ++ labels.map {
-            label: LabelName =>
-              Predicate(Set(IdName(name)), p.copy(labels = Seq(label))(p.position))
-          }
+        case p@HasLabels(Variable(name), labels) =>
+          acc => val newAcc = acc ++ labels.map { label =>
+                Predicate(Set(IdName(name)), p.copy(labels = Seq(label))(p.position))
+            }
+            (newAcc, None)
         // and
         case _: Ands =>
-          (acc, children) => children(acc)
+          acc => (acc, Some(identity))
         case p: Expression =>
-          (acc, _) => acc + Predicate(p.idNames, p)
-      }.map(filterUnnamed).toSet
+          acc => (acc + Predicate(p.idNames, p), None)
+      }.map(filterUnnamed)
     }
 
     private def filterUnnamed(predicate: Predicate): Predicate = predicate match {
@@ -102,7 +102,7 @@ object ExpressionConverters {
 
     private def unnamedIdNamesInNestedPatternExpressions(expression: Expression) = {
       val patternExpressions = expression.treeFold(Seq.empty[PatternExpression]) {
-        case p: PatternExpression => (acc, _) => acc :+ p
+        case p: PatternExpression => acc => (acc :+ p, None)
       }
 
       val unnamedIdsInPatternExprs = patternExpressions.flatMap(_.idNames)

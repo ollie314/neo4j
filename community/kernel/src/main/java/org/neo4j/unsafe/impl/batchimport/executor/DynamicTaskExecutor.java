@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,11 +24,13 @@ import java.lang.reflect.Array;
 import java.util.Arrays;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.function.Supplier;
 
-import org.neo4j.function.Supplier;
 import org.neo4j.function.Suppliers;
 
-import static java.lang.Math.min;
+import static java.lang.Integer.max;
+import static java.lang.Integer.min;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import static org.neo4j.helpers.Exceptions.launderedException;
 
@@ -38,7 +40,7 @@ import static org.neo4j.helpers.Exceptions.launderedException;
  */
 public class DynamicTaskExecutor<LOCAL> implements TaskExecutor<LOCAL>
 {
-    public static final ParkStrategy DEFAULT_PARK_STRATEGY = new ParkStrategy.Park( 10 );
+    public static final ParkStrategy DEFAULT_PARK_STRATEGY = new ParkStrategy.Park( 10, MILLISECONDS );
 
     private final BlockingQueue<Task<LOCAL>> queue;
     private final ParkStrategy parkStrategy;
@@ -46,6 +48,7 @@ public class DynamicTaskExecutor<LOCAL> implements TaskExecutor<LOCAL>
     @SuppressWarnings( "unchecked" )
     private volatile Processor[] processors = (Processor[]) Array.newInstance( Processor.class, 0 );
     private volatile boolean shutDown;
+    private volatile boolean abortQueued;
     private volatile Throwable panic;
     private final Supplier<LOCAL> initialLocalState;
     private final int maxProcessorCount;
@@ -69,78 +72,71 @@ public class DynamicTaskExecutor<LOCAL> implements TaskExecutor<LOCAL>
         this.processorThreadNamePrefix = processorThreadNamePrefix;
         this.initialLocalState = initialLocalState;
         this.queue = new ArrayBlockingQueue<>( maxQueueSize );
-        setNumberOfProcessors( initialProcessorCount );
+        processors( initialProcessorCount );
     }
 
     @Override
-    public synchronized void setNumberOfProcessors( int count )
+    public int processors( int delta )
     {
-        assertHealthy();
-        assert count > 0;
-        if ( count == processors.length )
+        if ( shutDown || delta == 0 )
         {
-            return;
+            return processors.length;
         }
 
-        count = min( count, maxProcessorCount );
-        Processor[] newProcessors;
-        if ( count > processors.length )
-        {   // Add one or more
-            newProcessors = Arrays.copyOf( processors, count );
-            for ( int i = processors.length; i < newProcessors.length; i++ )
+        synchronized ( this )
+        {
+            if ( shutDown )
             {
-                newProcessors[i] = new Processor( processorThreadNamePrefix + "-" + i );
+                return processors.length;
             }
-        }
-        else
-        {   // Remove one or more
-            newProcessors = Arrays.copyOf( processors, count );
-            for ( int i = newProcessors.length; i < processors.length; i++ )
+
+            int requestedNumber = processors.length + delta;
+            if ( delta > 0 )
             {
-                processors[i].shutDown = true;
+                requestedNumber = min( requestedNumber, maxProcessorCount );
+                if ( requestedNumber > processors.length )
+                {
+                    Processor[] newProcessors = Arrays.copyOf( processors, requestedNumber );
+                    for ( int i = processors.length; i < requestedNumber; i++ )
+                    {
+                        newProcessors[i] = new Processor( processorThreadNamePrefix + "-" + i );
+                    }
+                    this.processors = newProcessors;
+                }
             }
+            else
+            {
+                requestedNumber = max( 1, requestedNumber );
+                if ( requestedNumber < processors.length )
+                {
+                    Processor[] newProcessors = Arrays.copyOf( processors, requestedNumber );
+                    for ( int i = newProcessors.length; i < processors.length; i++ )
+                    {
+                        processors[i].processorShutDown = true;
+                    }
+                    this.processors = newProcessors;
+                }
+            }
+            return processors.length;
         }
-        this.processors = newProcessors;
-    }
-
-    @Override
-    public int numberOfProcessors()
-    {
-        return processors.length;
-    }
-
-    @Override
-    public synchronized boolean incrementNumberOfProcessors()
-    {
-        if ( numberOfProcessors() >= maxProcessorCount )
-        {
-            return false;
-        }
-        setNumberOfProcessors( numberOfProcessors() + 1 );
-        return true;
-    }
-
-    @Override
-    public synchronized boolean decrementNumberOfProcessors()
-    {
-        if ( numberOfProcessors() == 1 )
-        {
-            return false;
-        }
-        setNumberOfProcessors( numberOfProcessors() - 1 );
-        return true;
     }
 
     @Override
     public void submit( Task<LOCAL> task )
     {
         assertHealthy();
-        while ( !queue.offer( task ) )
-        {   // Then just stay here and try
-            parkAWhile();
-            assertHealthy();
+        try
+        {
+            while ( !queue.offer( task, 10, MILLISECONDS ) )
+            {   // Then just stay here and try
+                assertHealthy();
+            }
+            notifyProcessors();
         }
-        notifyProcessors();
+        catch ( InterruptedException e )
+        {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Override
@@ -148,10 +144,14 @@ public class DynamicTaskExecutor<LOCAL> implements TaskExecutor<LOCAL>
     {
         if ( shutDown )
         {
-            String message = "Executor has been shut down";
-            throw panic != null
-                    ? new IllegalStateException( message, panic )
-                    : new IllegalStateException( message );
+            if ( panic != null )
+            {
+                throw new TaskExecutionPanicException( "Executor has been shut down in panic", panic );
+            }
+            if ( abortQueued )
+            {
+                throw new TaskExecutionPanicException( "Executor has been shut down, aborting queued" );
+            }
         }
     }
 
@@ -164,26 +164,30 @@ public class DynamicTaskExecutor<LOCAL> implements TaskExecutor<LOCAL>
     }
 
     @Override
-    public synchronized void shutdown( boolean awaitAllCompleted )
+    public synchronized void shutdown( int flags )
     {
         if ( shutDown )
         {
             return;
         }
 
-        this.shutDown = true;
+        boolean awaitAllCompleted = (flags & TaskExecutor.SF_AWAIT_ALL_COMPLETED) != 0;
         while ( awaitAllCompleted && !queue.isEmpty() && panic == null /*all bets are off in the event of panic*/ )
         {
             parkAWhile();
         }
-        for ( Processor processor : processors )
-        {
-            processor.shutDown = true;
-        }
+        this.shutDown = true;
+        this.abortQueued = (flags & TaskExecutor.SF_ABORT_QUEUED) != 0;
         while ( awaitAllCompleted && anyAlive() && panic == null /*all bets are off in the event of panic*/ )
         {
             parkAWhile();
         }
+    }
+
+    @Override
+    public boolean isShutdown()
+    {
+        return shutDown;
     }
 
     private boolean anyAlive()
@@ -213,8 +217,9 @@ public class DynamicTaskExecutor<LOCAL> implements TaskExecutor<LOCAL>
 
     private class Processor extends Thread
     {
-        private volatile boolean shutDown;
-        private final LOCAL threadLocalState = initialLocalState.get();
+        // In addition to the global shutDown flag in the executor each processor has a local flag
+        // so that an individual processor can be shut down, for example when reducing number of processors
+        private volatile boolean processorShutDown;
 
         Processor( String name )
         {
@@ -226,7 +231,9 @@ public class DynamicTaskExecutor<LOCAL> implements TaskExecutor<LOCAL>
         @Override
         public void run()
         {
-            while ( !shutDown )
+            // Initialized here since it's the thread itself that needs to call it
+            final LOCAL threadLocalState = initialLocalState.get();
+            while ( !shutDown && !processorShutDown )
             {
                 Task<LOCAL> task = queue.poll();
                 if ( task != null )
@@ -238,12 +245,16 @@ public class DynamicTaskExecutor<LOCAL> implements TaskExecutor<LOCAL>
                     catch ( Throwable e )
                     {
                         panic = e;
-                        shutdown( false );
+                        shutdown( TaskExecutor.SF_ABORT_QUEUED );
                         throw launderedException( e );
                     }
                 }
                 else
                 {
+                    if ( processorShutDown )
+                    {
+                        break;
+                    }
                     parkAWhile();
                 }
             }

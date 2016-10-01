@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,7 +24,7 @@ import org.neo4j.cypher.internal.compiler.v3_0._
 import org.neo4j.cypher.internal.compiler.v3_0.ast.conditions.containsNamedPathOnlyForShortestPath
 import org.neo4j.cypher.internal.compiler.v3_0.ast.convert.plannerQuery.StatementConverters._
 import org.neo4j.cypher.internal.compiler.v3_0.ast.rewriters._
-import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{ExecutablePlanBuilder, NewRuntimeSuccessRateMonitor}
+import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{ExecutablePlanBuilder, NewRuntimeSuccessRateMonitor, PlanFingerprint, PlanFingerprintReference}
 import org.neo4j.cypher.internal.compiler.v3_0.helpers.closing
 import org.neo4j.cypher.internal.compiler.v3_0.planner.execution.PipeExecutionBuilderContext
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical._
@@ -33,7 +33,6 @@ import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.steps.LogicalPlan
 import org.neo4j.cypher.internal.compiler.v3_0.spi.PlanContext
 import org.neo4j.cypher.internal.compiler.v3_0.tracing.rewriters.{ApplyRewriter, RewriterCondition, RewriterStep, RewriterStepSequencer}
 import org.neo4j.cypher.internal.frontend.v3_0.ast._
-import org.neo4j.cypher.internal.frontend.v3_0.notification.{MissingLabelNotification, InternalNotification}
 import org.neo4j.cypher.internal.frontend.v3_0.{InternalException, Scope, SemanticTable}
 
 /* This class is responsible for taking a query from an AST object to a runnable object.  */
@@ -46,10 +45,13 @@ case class CostBasedExecutablePlanBuilder(monitors: Monitors,
                                           semanticChecker: SemanticChecker,
                                           plannerName: CostBasedPlannerName,
                                           runtimeBuilder: RuntimeBuilder,
-                                          useErrorsOverWarnings: Boolean)
+                                          updateStrategy: UpdateStrategy,
+                                          config: CypherCompilerConfiguration,
+                                          publicTypeConverter: Any => Any)
   extends ExecutablePlanBuilder {
 
-  def producePlan(inputQuery: PreparedQuery, planContext: PlanContext, tracer: CompilationPhaseTracer) = {
+  override def producePlan(inputQuery: PreparedQuerySemantics, planContext: PlanContext, tracer: CompilationPhaseTracer,
+                           createFingerprintReference: (Option[PlanFingerprint]) => PlanFingerprintReference) = {
     val statement =
       CostBasedExecutablePlanBuilder.rewriteStatement(
         statement = inputQuery.statement,
@@ -58,41 +60,46 @@ case class CostBasedExecutablePlanBuilder(monitors: Monitors,
         rewriterSequencer = rewriterSequencer,
         preConditions = inputQuery.conditions,
         monitor = monitors.newMonitor[AstRewritingMonitor](),
-        semanticChecker = semanticChecker
-      )
+        semanticChecker = semanticChecker)
 
     //monitor success of compilation
     val planBuilderMonitor = monitors.newMonitor[NewRuntimeSuccessRateMonitor](CypherCompilerFactory.monitorTag)
 
     statement match {
       case (ast: Query, rewrittenSemanticTable) =>
-        val (logicalPlan, pipeBuildContext) = closing(tracer.beginPhase(LOGICAL_PLANNING)) {
+        val (periodicCommit, logicalPlan, pipeBuildContext) = closing(tracer.beginPhase(LOGICAL_PLANNING)) {
           produceLogicalPlan(ast, rewrittenSemanticTable)(planContext, inputQuery.notificationLogger)
         }
-        runtimeBuilder(logicalPlan, pipeBuildContext, planContext, tracer, rewrittenSemanticTable, planBuilderMonitor,
-                      plannerName, inputQuery)
+        runtimeBuilder(periodicCommit, logicalPlan, pipeBuildContext, planContext, tracer, rewrittenSemanticTable,
+          planBuilderMonitor, plannerName, inputQuery, createFingerprintReference, config)
       case x =>
         throw new CantHandleQueryException(x.toString())
     }
   }
 
-
   def produceLogicalPlan(ast: Query, semanticTable: SemanticTable)
-                        (planContext: PlanContext,  notificationLogger: InternalNotificationLogger): (LogicalPlan, PipeExecutionBuilderContext) = {
+                        (planContext: PlanContext,
+                         notificationLogger: InternalNotificationLogger):
+  (Option[PeriodicCommit], LogicalPlan, PipeExecutionBuilderContext) = {
+
     tokenResolver.resolve(ast)(semanticTable, planContext)
-    val unionQuery = ast.asUnionQuery
+    val unionQuery = toUnionQuery(ast, semanticTable)
     val metrics = metricsFactory.newMetrics(planContext.statistics)
     val logicalPlanProducer = LogicalPlanProducer(metrics.cardinality)
-    val context: LogicalPlanningContext = LogicalPlanningContext(planContext, logicalPlanProducer, metrics, semanticTable, queryGraphSolver, notificationLogger = notificationLogger, useErrorsOverWarnings = useErrorsOverWarnings)
 
-    val plan = queryPlanner.plan(unionQuery)(context)
+    val context = LogicalPlanningContext(planContext, logicalPlanProducer, metrics, semanticTable,
+      queryGraphSolver, notificationLogger = notificationLogger, useErrorsOverWarnings = config.useErrorsOverWarnings,
+      errorIfShortestPathFallbackUsedAtRuntime = config.errorIfShortestPathFallbackUsedAtRuntime,
+      config = QueryPlannerConfiguration.default.withUpdateStrategy(updateStrategy))
+
+    val (periodicCommit, plan) = queryPlanner.plan(unionQuery)(context)
 
     val pipeBuildContext = PipeExecutionBuilderContext(metrics.cardinality, semanticTable, plannerName)
 
     //Check for unresolved tokens for read-only queries
-    if (plan.solved.readOnly) checkForUnresolvedTokens(ast, semanticTable).foreach(notificationLogger += _)
+    if (plan.solved.all(_.queryGraph.readOnly)) checkForUnresolvedTokens(ast, semanticTable).foreach(notificationLogger += _)
 
-    (plan, pipeBuildContext)
+    (periodicCommit, plan, pipeBuildContext)
   }
 }
 
@@ -111,19 +118,16 @@ object CostBasedExecutablePlanBuilder {
     val namespacer = Namespacer(statement, scopeTree)
     val namespacedStatement = statementRewriter.rewriteStatement(statement)(
       ApplyRewriter("Namespacer", namespacer.statementRewriter),
-      rewriteEqualityToInCollection,
+      rewriteEqualityToInPredicate,
       CNFNormalizer()(monitor)
     )
 
-//    val namespacedSemanticTable = namespacer.tableRewriter(semanticTable)
     val state = semanticChecker.check(namespacedStatement.toString, namespacedStatement, mkException = (msg, pos) => throw new InternalException(s"Unexpected error during late semantic checking: $msg"))
     val table = semanticTable.copy(types = state.typeTable, recordedScopes = state.recordedScopes)
 
-    val predicateSplitter = PredicateSplitter(table, namespacedStatement)
     val newStatement = statementRewriter.rewriteStatement(namespacedStatement)(
-      ApplyRewriter("PredicateSplitter", predicateSplitter.statementRewriter),
-      collapseInCollections,
-      nameUpdatingClauses /* this is actually needed as a precondition for projectedNamedPaths even though we do not handle updates in Ronja */,
+      collapseMultipleInPredicates,
+      nameUpdatingClauses /* this is actually needed as a precondition for projectedNamedPaths even though we do not handle updates in Ronja */ ,
       projectNamedPaths,
       enableCondition(containsNamedPathOnlyForShortestPath),
       projectFreshSortExpressions

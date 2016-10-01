@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -40,7 +40,7 @@ import org.neo4j.cypher.internal.frontend.v3_0.ast._
  */
 case class normalizeReturnClauses(mkException: (String, InputPosition) => CypherException) extends Rewriter {
 
-  def apply(that: AnyRef): AnyRef = bottomUp(instance).apply(that)
+  def apply(that: AnyRef): AnyRef = instance.apply(that)
 
   private val clauseRewriter: (Clause => Seq[Clause]) = {
     case clause @ Return(_, ri, None, _, _) =>
@@ -49,7 +49,7 @@ case class normalizeReturnClauses(mkException: (String, InputPosition) => Cypher
           i
         case i =>
           val newPosition = i.expression.position.bumped()
-          AliasedReturnItem(i.expression, Identifier(i.name)(newPosition))(i.position)
+          AliasedReturnItem(i.expression, Variable(i.name)(newPosition))(i.position)
       })
       Seq(
         clause.copy(returnItems = ri.copy(items = aliasedItems)(ri.position))(clause.position)
@@ -57,21 +57,21 @@ case class normalizeReturnClauses(mkException: (String, InputPosition) => Cypher
 
     case clause @ Return(distinct, ri, orderBy, skip, limit) =>
       clause.verifyOrderByAggregationUse((s,i) => throw mkException(s,i))
-      var rewrites = Map[Expression, Identifier]()
+      var rewrites = Map[Expression, Variable]()
 
       val (aliasProjection, finalProjection) = ri.items.map {
         i =>
           val returnColumn = i.alias match {
             case Some(alias) => alias
-            case None        => Identifier(i.name)(i.expression.position.bumped())
+            case None        => Variable(i.name)(i.expression.position.bumped())
           }
 
-          val newIdentifier = Identifier(FreshIdNameGenerator.name(i.expression.position))(i.expression.position)
+          val newVariable = Variable(FreshIdNameGenerator.name(i.expression.position))(i.expression.position)
 
-          rewrites = rewrites + (returnColumn -> newIdentifier)
-          rewrites = rewrites + (i.expression -> newIdentifier)
+          rewrites = rewrites + (returnColumn -> newVariable)
+          rewrites = rewrites + (i.expression -> newVariable)
 
-          (AliasedReturnItem(i.expression, newIdentifier)(i.position), AliasedReturnItem(newIdentifier.copyId, returnColumn)(i.position))
+          (AliasedReturnItem(i.expression, newVariable)(i.position), AliasedReturnItem(newVariable.copyId, returnColumn)(i.position))
       }.unzip
 
       val newOrderBy = orderBy.endoRewrite(topDown(Rewriter.lift {
@@ -87,8 +87,8 @@ case class normalizeReturnClauses(mkException: (String, InputPosition) => Cypher
       Seq(clause)
   }
 
-  private val instance: Rewriter = Rewriter.lift {
+  private val instance: Rewriter = bottomUp(Rewriter.lift {
     case query @ SingleQuery(clauses) =>
       query.copy(clauses = clauses.flatMap(clauseRewriter))(query.position)
-  }
+  })
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,12 +20,16 @@
 package org.neo4j.cypher.internal.frontend.v3_0.parser
 
 import org.neo4j.cypher.internal.frontend.v3_0.ast
+import org.neo4j.cypher.internal.frontend.v3_0.ast.Expression
 import org.parboiled.scala._
+
+import scala.collection.immutable.IndexedSeq
 
 trait Command extends Parser
   with Expressions
   with Literals
-  with Base {
+  with Base
+  with ProcedureCalls {
 
   def Command: Rule1[ast.Command] = rule(
     CreateUniqueConstraint
@@ -70,18 +74,24 @@ trait Command extends Parser
     group(keyword("DROP") ~~ RelationshipPropertyExistenceConstraintSyntax) ~~>> (ast.DropRelationshipPropertyExistenceConstraint(_, _, _))
   }
 
-  private def UniqueConstraintSyntax = keyword("CONSTRAINT ON") ~~ "(" ~~ Identifier ~~ NodeLabel ~~ ")" ~~
+  private def ProcedureArguments: Rule1[Option[Seq[Expression]]] = rule("arguments to a procedure") {
+    optional(group("(" ~~
+      zeroOrMore(Expression, separator = CommaSep) ~~ ")"
+    ) ~~> (_.toIndexedSeq))
+  }
+
+  private def UniqueConstraintSyntax = keyword("CONSTRAINT ON") ~~ "(" ~~ Variable ~~ NodeLabel ~~ ")" ~~
     keyword("ASSERT") ~~ PropertyExpression ~~ keyword("IS UNIQUE")
 
-  private def NodePropertyExistenceConstraintSyntax = keyword("CONSTRAINT ON") ~~ "(" ~~ Identifier ~~ NodeLabel ~~ ")" ~~
+  private def NodePropertyExistenceConstraintSyntax = keyword("CONSTRAINT ON") ~~ "(" ~~ Variable ~~ NodeLabel ~~ ")" ~~
     keyword("ASSERT EXISTS") ~~ "(" ~~ PropertyExpression ~~ ")"
 
   private def RelationshipPropertyExistenceConstraintSyntax = keyword("CONSTRAINT ON") ~~ RelationshipPatternSyntax ~~
     keyword("ASSERT EXISTS") ~~ "(" ~~ PropertyExpression ~~ ")"
 
   private def RelationshipPatternSyntax = rule(
-    ("()-[" ~~ Identifier ~~ RelType ~~ "]-()")
-      | ("()-[" ~~ Identifier ~~ RelType ~~ "]->()")
-      | ("()<-[" ~~ Identifier ~~ RelType ~~ "]-()")
+    ("()-[" ~~ Variable~~ RelType ~~ "]-()")
+      | ("()-[" ~~ Variable~~ RelType ~~ "]->()")
+      | ("()<-[" ~~ Variable~~ RelType ~~ "]-()")
   )
 }

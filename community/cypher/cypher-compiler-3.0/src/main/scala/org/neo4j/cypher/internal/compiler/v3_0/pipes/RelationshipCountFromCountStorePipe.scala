@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,34 +28,37 @@ import org.neo4j.cypher.internal.frontend.v3_0.NameId
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 
 case class RelationshipCountFromCountStorePipe(ident: String, startLabel: Option[LazyLabel],
-                                                 typeNames: LazyTypes, endLabel: Option[LazyLabel],
-                                                 bothDirections: Boolean)
+                                                 typeNames: LazyTypes, endLabel: Option[LazyLabel])
                                                 (val estimatedCardinality: Option[Double] = None)
                                                 (implicit pipeMonitor: PipeMonitor) extends Pipe with RonjaPipe {
 
   protected def internalCreateResults(state: QueryState): Iterator[ExecutionContext] = {
-    val baseContext = state.initialContext.getOrElse(ExecutionContext.empty)
-    val labelIds: Seq[Int] = Seq(startLabel, endLabel).map {
-      case Some(label) =>
-        val labelId: Int = label.id(state.query) match {
-          case Some(x) => x
-          case _ => throw new IllegalArgumentException("Cannot find id for label: " + label)
-        }
-        labelId
-      case _ => NameId.WILDCARD
+    val maybeStartLabelId = getLabelId(startLabel, state)
+    val maybeEndLabelId = getLabelId(endLabel, state)
+
+    val count = (maybeStartLabelId, maybeEndLabelId) match {
+      case (Some(startLabelId), Some(endLabelId)) =>
+        countOneDirection(state, typeNames, startLabelId, endLabelId)
+
+      // If any of the specified labels does not exist the count is zero
+      case _ =>
+        0
     }
-    val count = if (bothDirections)
-      countOneDirection(state, typeNames, labelIds) + countOneDirection(state, typeNames, labelIds.reverse)
-    else
-      countOneDirection(state, typeNames, labelIds)
+
+    val baseContext = state.initialContext.getOrElse(ExecutionContext.empty)
     Seq(baseContext.newWith1(ident, count)).iterator
   }
 
-  def countOneDirection(state: QueryState, typeNames: LazyTypes, labelIds: Seq[Int]) =
+  private def getLabelId(lazyLabel: Option[LazyLabel], state: QueryState): Option[Int] = lazyLabel match {
+      case Some(label) => label.getOptId(state.query).map(_.id)
+      case _ => Some(NameId.WILDCARD)
+    }
+
+  private def countOneDirection(state: QueryState, typeNames: LazyTypes, startLabelId: Int, endLabelId: Int) =
     typeNames.types(state.query) match {
-      case None => state.query.relationshipCountByCountStore(labelIds.head, NameId.WILDCARD, labelIds(1))
+      case None => state.query.relationshipCountByCountStore(startLabelId, NameId.WILDCARD, endLabelId)
       case Some(types) => types.foldLeft(0L) { (count, typeId) =>
-        count + state.query.relationshipCountByCountStore(labelIds.head, typeId, labelIds(1))
+        count + state.query.relationshipCountByCountStore(startLabelId, typeId, endLabelId)
       }
     }
 
@@ -63,7 +66,7 @@ case class RelationshipCountFromCountStorePipe(ident: String, startLabel: Option
 
   def planDescriptionWithoutCardinality = PlanDescriptionImpl(
     this.id, "RelationshipCountFromCountStore", NoChildren,
-    Seq(CountRelationshipsExpression(ident, startLabel, typeNames, endLabel, bothDirections)), identifiers)
+    Seq(CountRelationshipsExpression(ident, startLabel, typeNames, endLabel)), variables)
 
   def symbols = new SymbolTable(Map(ident -> CTInteger))
 

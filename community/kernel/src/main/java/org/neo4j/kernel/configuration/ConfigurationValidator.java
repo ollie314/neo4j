@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,8 +24,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.neo4j.graphdb.config.Setting;
-import org.neo4j.helpers.Functions;
-import org.neo4j.helpers.Pair;
+import org.neo4j.helpers.collection.Pair;
 
 /**
  * Given a set of annotated config classes,
@@ -47,7 +46,7 @@ public class ConfigurationValidator
     {
         for ( Setting<?> setting : settings.values() )
         {
-            setting.apply( Functions.map( rawConfig ) );
+            setting.apply( rawConfig::get );
         }
     }
 

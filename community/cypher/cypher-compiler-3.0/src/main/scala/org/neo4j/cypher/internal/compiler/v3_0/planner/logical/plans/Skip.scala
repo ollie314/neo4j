@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,7 +28,4 @@ case class Skip(left: LogicalPlan, count: Expression)
   val rhs = None
 
   def availableSymbols = left.availableSymbols
-
-  override def mapExpressions(f: (Set[IdName], Expression) => Expression): LogicalPlan =
-    copy(count = f(left.availableSymbols, count))(solved)
 }

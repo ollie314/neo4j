@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,14 +20,15 @@
 package org.neo4j.cypher.internal.compiler.v3_0.pipes.aggregation
 
 import org.neo4j.cypher.internal.compiler.v3_0._
-import commands.expressions.Expression
-import pipes.QueryState
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.Expression
+import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates.Equivalent
+import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 
 class DistinctFunction(value: Expression, inner: AggregationFunction) extends AggregationFunction {
-  val seen = scala.collection.mutable.Set[Any]()
-  var seenNull = false
+  private val seen = scala.collection.mutable.Set[Equivalent]()
+  private var seenNull = false
 
-  def apply(ctx: ExecutionContext)(implicit state: QueryState) {
+  override def apply(ctx: ExecutionContext)(implicit state: QueryState) {
     val data = value(ctx)
 
     if (data == null) {
@@ -35,11 +36,14 @@ class DistinctFunction(value: Expression, inner: AggregationFunction) extends Ag
         seenNull = true
         inner(ctx)
       }
-    } else if (!seen.contains(data)) {
-      seen += data
-      inner(ctx)
+    } else {
+      val equiValue = Equivalent(data)
+      if (!seen.contains(equiValue)) {
+        seen += equiValue
+        inner(ctx)
+      }
     }
   }
 
-  def result: Any = inner.result
+  override def result = inner.result
 }

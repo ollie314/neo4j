@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -34,7 +34,7 @@ case class PrefixSeekRangeExpression(range: PrefixRange[Expression]) extends Exp
 
   override def arguments: Seq[Expression] = Seq.empty
 
-  override protected def calculateType(symbols: SymbolTable): CypherType = CTCollection(CTNode)
+  override protected def calculateType(symbols: SymbolTable): CypherType = CTList(CTNode)
 
   override def symbolTableDependencies: Set[String] = Set.empty
 }

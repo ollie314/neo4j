@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,7 @@ import org.neo4j.cypher.internal.compiler.v3_0._
 import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Literal}
 import org.neo4j.cypher.internal.compiler.v3_0.commands.values.KeyToken
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{Effects, _}
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.{IsMap, CollectionSupport}
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.{IsMap, ListSupport}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import org.neo4j.cypher.internal.frontend.v3_0.{ParameterWrongTypeException, CypherTypeException}
@@ -34,7 +34,7 @@ import scala.collection.Map
 case class CreateNode(key: String, properties: Map[String, Expression], labels: Seq[KeyToken])
   extends UpdateAction
   with GraphElementPropertyFunctions
-  with CollectionSupport {
+  with ListSupport {
 
   def localEffects(symbols: SymbolTable) = if (labels.isEmpty)
     Effects(CreatesAnyNode)
@@ -91,7 +91,7 @@ case class CreateNode(key: String, properties: Map[String, Expression], labels: 
     }
   }
 
-  def identifiers = Seq(key -> CTNode)
+  def variables = Seq(key -> CTNode)
 
   override def children = properties.map(_._2).toSeq ++ labels.flatMap(_.children)
 

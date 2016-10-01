@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,12 +19,12 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.pipes
 
-import org.neo4j.graphdb.GraphDatabaseService
+import org.neo4j.kernel.GraphDatabaseQueryService
 import org.scalatest.Assertions
 
 
-class LazyIterator[T](count: Int, f: (Int, GraphDatabaseService) => T) extends Iterator[T]() with Assertions {
-  var db: Option[GraphDatabaseService] = None
+class LazyIterator[T](count: Int, f: (Int, GraphDatabaseQueryService) => T) extends Iterator[T]() with Assertions {
+  var db: Option[GraphDatabaseQueryService] = None
 
   def this(count: Int, f: Int => T) = {
     this(count, (count: Int, _) => f(count))

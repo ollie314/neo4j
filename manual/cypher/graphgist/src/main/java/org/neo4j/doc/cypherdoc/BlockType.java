@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,10 +19,15 @@
  */
 package org.neo4j.doc.cypherdoc;
 
+import org.apache.commons.lang3.StringUtils;
+import org.codehaus.jackson.map.ObjectMapper;
+import org.codehaus.jackson.map.ObjectWriter;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
@@ -33,11 +38,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.lang3.StringUtils;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.map.ObjectWriter;
-
-import org.neo4j.graphdb.Transaction;
+import org.neo4j.kernel.api.security.AccessMode;
+import org.neo4j.kernel.api.KernelTransaction;
+import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 import org.neo4j.visualization.asciidoc.AsciidocHelper;
 import org.neo4j.visualization.graphviz.AsciiDocSimpleStyle;
 import org.neo4j.visualization.graphviz.GraphvizWriter;
@@ -51,8 +54,8 @@ enum BlockType
         boolean isA( List<String> block )
         {
             int size = block.size();
-            return size > 0 && 
-                ( ( block.get( 0 ).startsWith( "=" ) 
+            return size > 0 &&
+                ( ( block.get( 0 ).startsWith( "=" )
                  && !block.get( 0 ).startsWith( "==" )));
         }
 
@@ -299,11 +302,11 @@ enum BlockType
                 if ( exec )
                 {
                     state.latestResult =
-                            new Result( fileQuery, state.engine.profile( fileQuery, state.parameters ), state.database );
-                    prettifiedStatements.add( state.engine.prettify( webQuery ) );
-                    try (Transaction tx = state.database.beginTx())
+                            new Result( fileQuery, state.database.getGraphDatabaseService().execute( "PROFILE " + fileQuery, state.parameters ), state.database );
+                    prettifiedStatements.add( state.prettify( webQuery ) );
+                    try ( InternalTransaction tx = state.database.beginTransaction(KernelTransaction.Type.explicit, AccessMode.Static.READ) )
                     {
-                        state.database.schema().awaitIndexesOnline( 10000, TimeUnit.SECONDS );
+                        state.database.getGraphDatabaseService().schema().awaitIndexesOnline( 10000, TimeUnit.SECONDS );
                         tx.success();
                     }
                 }
@@ -448,7 +451,7 @@ enum BlockType
         GraphvizWriter writer = new GraphvizWriter(
                 AsciiDocSimpleStyle.withAutomaticRelationshipTypeColors() );
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (Transaction tx = state.database.beginTx())
+        try ( InternalTransaction tx = state.database.beginTransaction(KernelTransaction.Type.explicit, AccessMode.Static.READ) )
         {
             if ( resultOnly )
             {
@@ -456,7 +459,7 @@ enum BlockType
             }
             else
             {
-                writer.emit( out, Walker.fullGraph( state.database ) );
+                writer.emit( out, Walker.fullGraph( state.database.getGraphDatabaseService() ) );
             }
             tx.success();
         }
@@ -467,7 +470,7 @@ enum BlockType
         StringBuilder output = new StringBuilder( 512 );
         try
         {
-            String dot = out.toString( "UTF-8" );
+            String dot = out.toString( StandardCharsets.UTF_8.name() );
             output.append( "[\"dot\", \"cypherdoc-" )
                     .append( id )
                     .append( '-' )

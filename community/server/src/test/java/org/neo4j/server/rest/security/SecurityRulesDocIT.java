@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,13 +19,13 @@
  */
 package org.neo4j.server.rest.security;
 
+import java.net.URI;
+import javax.ws.rs.core.MediaType;
+
 import org.dummy.web.service.DummyThirdPartyWebService;
 import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
-
-import java.net.URI;
-import javax.ws.rs.core.MediaType;
 
 import org.neo4j.kernel.impl.annotations.Documented;
 import org.neo4j.server.CommunityNeoServer;
@@ -38,7 +38,9 @@ import org.neo4j.test.TestData.Title;
 import org.neo4j.test.server.ExclusiveServerTestBase;
 
 import static org.hamcrest.Matchers.containsString;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 
 public class SecurityRulesDocIT extends ExclusiveServerTestBase
 {
@@ -46,9 +48,8 @@ public class SecurityRulesDocIT extends ExclusiveServerTestBase
 
     private FunctionalTestHelper functionalTestHelper;
 
-    public
     @Rule
-    TestData<RESTDocsGenerator> gen = TestData.producedThrough( RESTDocsGenerator.PRODUCER );
+    public TestData<RESTDocsGenerator> gen = TestData.producedThrough( RESTDocsGenerator.PRODUCER );
 
     @After
     public void stopServer()
@@ -59,37 +60,34 @@ public class SecurityRulesDocIT extends ExclusiveServerTestBase
         }
     }
 
-    /**
-     * In this example, a (dummy) failing security rule is registered to deny
-     * access to all URIs to the server by listing the rules class in
-     * 'neo4j-server.properties':
-     *
-     * @@config
-     *
-     * with the rule source code of:
-     *
-     * @@failingRule
-     *
-     * With this rule registered, any access to the server will be
-     * denied. In a production-quality implementation the rule
-     * will likely lookup credentials/claims in a 3rd-party
-     * directory service (e.g. LDAP) or in a local database of
-     * authorized users.
-     */
     @Test
-    @Documented
-    @Title("Enforcing Server Authorization Rules")
+    @Title( "Enforcing Server Authorization Rules" )
+    @Documented( "In this example, a (dummy) failing security rule is registered to deny\n" +
+                 "access to all URIs to the server by listing the rules class in\n" +
+                 "'neo4j.conf':\n" +
+                 "\n" +
+                 "@@config\n" +
+                 "\n" +
+                 "with the rule source code of:\n" +
+                 "\n" +
+                 "@@failingRule\n" +
+                 "\n" +
+                 "With this rule registered, any access to the server will be\n" +
+                 "denied. In a production-quality implementation the rule\n" +
+                 "will likely lookup credentials/claims in a 3rd-party\n" +
+                 "directory service (e.g. LDAP) or in a local database of\n" +
+                 "authorized users." )
     public void should401WithBasicChallengeWhenASecurityRuleFails()
             throws Exception
     {
         server = CommunityServerBuilder.server().withDefaultDatabaseTuning().withSecurityRules(
                 PermanentlyFailingSecurityRule.class.getCanonicalName() )
-                .usingDatabaseDir( folder.directory( name.getMethodName() ).getAbsolutePath() )
+                .usingDataDir( folder.directory( name.getMethodName() ).getAbsolutePath() )
                 .build();
         server.start();
         gen.get().addSnippet(
                 "config",
-                "\n[source,properties]\n----\norg.neo4j.server.rest.security_rules=my.rules" +
+                "\n[source,properties]\n----\ndbms.security.http_authorization_classes=my.rules" +
                         ".PermanentlyFailingSecurityRule\n----\n" );
         gen.get().addTestSourceSnippets( PermanentlyFailingSecurityRule.class,
                 "failingRule" );
@@ -110,7 +108,7 @@ public class SecurityRulesDocIT extends ExclusiveServerTestBase
         server = CommunityServerBuilder.server().withDefaultDatabaseTuning().withSecurityRules(
                 PermanentlyFailingSecurityRule.class.getCanonicalName(),
                 PermanentlyPassingSecurityRule.class.getCanonicalName() )
-                .usingDatabaseDir( folder.directory( name.getMethodName() ).getAbsolutePath() )
+                .usingDataDir( folder.directory( name.getMethodName() ).getAbsolutePath() )
                 .build();
         server.start();
         functionalTestHelper = new FunctionalTestHelper( server );
@@ -128,21 +126,17 @@ public class SecurityRulesDocIT extends ExclusiveServerTestBase
     {
         // given
         server = CommunityServerBuilder.server().withDefaultDatabaseTuning().withSecurityRules(
-                NoAccessToDatabaseSecurityRule.class.getCanonicalName(),
-                NoAccessToWebAdminSecurityRule.class.getCanonicalName() )
-                .usingDatabaseDir( folder.directory( name.getMethodName() ).getAbsolutePath() )
+                NoAccessToDatabaseSecurityRule.class.getCanonicalName())
+                .usingDataDir( folder.directory( name.getMethodName() ).getAbsolutePath() )
                 .build();
         server.start();
         functionalTestHelper = new FunctionalTestHelper( server );
 
         // when
         gen.get().expectedStatus( 401 ).get( functionalTestHelper.dataUri() ).response();
-        gen.get().expectedStatus( 401 ).expectedType( MediaType.TEXT_HTML_TYPE )
-                .get( functionalTestHelper.webAdminUri() ).response();
 
         // then
         assertTrue( NoAccessToDatabaseSecurityRule.wasInvoked() );
-        assertTrue(NoAccessToWebAdminSecurityRule.wasInvoked());
     }
 
     @Test
@@ -151,7 +145,7 @@ public class SecurityRulesDocIT extends ExclusiveServerTestBase
     {
         server = CommunityServerBuilder.server().withDefaultDatabaseTuning().withSecurityRules(
                 PermanentlyPassingSecurityRule.class.getCanonicalName() )
-                .usingDatabaseDir( folder.directory( name.getMethodName() ).getAbsolutePath() )
+                .usingDataDir( folder.directory( name.getMethodName() ).getAbsolutePath() )
                 .build();
         server.start();
         functionalTestHelper = new FunctionalTestHelper( server );
@@ -160,31 +154,28 @@ public class SecurityRulesDocIT extends ExclusiveServerTestBase
                 functionalTestHelper.nodeUri() ).response();
     }
 
-    /**
-     * In this example, a security rule is registered to deny
-     * access to all URIs to the server by listing the rule(s) class(es) in
-     * 'neo4j-server.properties'.
-     * In this case, the rule is registered
-     * using a wildcard URI path (where `*` characters can be used to signify
-     * any part of the path). For example `/users*` means the rule
-     * will be bound to any resources under the `/users` root path. Similarly
-     * `/users*type*` will bind the rule to resources matching
-     * URIs like `/users/fred/type/premium`.
-     *
-     * @@config
-     *
-     * with the rule source code of:
-     *
-     * @@failingRuleWithWildcardPath
-     *
-     * With this rule registered, any access to URIs under /protected/ will be
-     * denied by the server. Using wildcards allows flexible targeting of security rules to
-     * arbitrary parts of the server's API, including any unmanaged extensions or managed
-     * plugins that have been registered.
-     */
     @Test
-    @Documented
-    @Title("Using Wildcards to Target Security Rules")
+    @Title( "Using Wildcards to Target Security Rules" )
+    @Documented( "In this example, a security rule is registered to deny\n" +
+                 "access to all URIs to the server by listing the rule(s) class(es) in\n" +
+                 "'neo4j.conf'.\n" +
+                 "In this case, the rule is registered\n" +
+                 "using a wildcard URI path (where `*` characters can be used to signify\n" +
+                 "any part of the path). For example `/users*` means the rule\n" +
+                 "will be bound to any resources under the `/users` root path. Similarly\n" +
+                 "`/users*type*` will bind the rule to resources matching\n" +
+                 "URIs like `/users/fred/type/premium`.\n" +
+                 "\n" +
+                 "@@config\n" +
+                 "\n" +
+                 "with the rule source code of:\n" +
+                 "\n" +
+                 "@@failingRuleWithWildcardPath\n" +
+                 "\n" +
+                 "With this rule registered, any access to URIs under /protected/ will be\n" +
+                 "denied by the server. Using wildcards allows flexible targeting of security rules to\n" +
+                 "arbitrary parts of the server's API, including any unmanaged extensions or managed\n" +
+                 "plugins that have been registered." )
     public void aSimpleWildcardUriPathShould401OnAccessToProtectedSubPath()
             throws Exception
     {
@@ -194,14 +185,14 @@ public class SecurityRulesDocIT extends ExclusiveServerTestBase
                         mountPoint )
                 .withSecurityRules(
                         PermanentlyFailingSecurityRuleWithWildcardPath.class.getCanonicalName() )
-                .usingDatabaseDir( folder.directory( name.getMethodName() ).getAbsolutePath() )
+                .usingDataDir( folder.directory( name.getMethodName() ).getAbsolutePath() )
                 .build();
         server.start();
 
         gen.get()
                 .addSnippet(
                         "config",
-                        "\n[source,properties]\n----\norg.neo4j.server.rest.security_rules=my.rules" +
+                        "\n[source,properties]\n----\ndbms.security.http_authorization_classes=my.rules" +
                                 ".PermanentlyFailingSecurityRuleWithWildcardPath\n----\n" );
 
         gen.get().addTestSourceSnippets( PermanentlyFailingSecurityRuleWithWildcardPath.class,
@@ -222,20 +213,17 @@ public class SecurityRulesDocIT extends ExclusiveServerTestBase
         assertEquals(401, clientResponse.getStatus());
     }
 
-    /**
-     * In this example, a security rule is registered to deny
-     * access to all URIs matching a complex pattern.
-     * The config looks like this:
-     *
-     * @@config
-     *
-     * with the rule source code of:
-     *
-     * @@failingRuleWithComplexWildcardPath
-     */
     @Test
-    @Documented
-    @Title("Using Complex Wildcards to Target Security Rules")
+    @Title( "Using Complex Wildcards to Target Security Rules" )
+    @Documented( "In this example, a security rule is registered to deny\n" +
+                 "access to all URIs matching a complex pattern.\n" +
+                 "The config looks like this:\n" +
+                 "\n" +
+                 "@@config\n" +
+                 "\n" +
+                 "with the rule source code of:\n" +
+                 "\n" +
+                 "@@failingRuleWithComplexWildcardPath" )
     public void aComplexWildcardUriPathShould401OnAccessToProtectedSubPath()
             throws Exception
     {
@@ -246,12 +234,12 @@ public class SecurityRulesDocIT extends ExclusiveServerTestBase
                         mountPoint )
                 .withSecurityRules(
                         PermanentlyFailingSecurityRuleWithComplexWildcardPath.class.getCanonicalName() )
-                .usingDatabaseDir( folder.directory( name.getMethodName() ).getAbsolutePath() )
+                .usingDataDir( folder.directory( name.getMethodName() ).getAbsolutePath() )
                 .build();
         server.start();
         gen.get().addSnippet(
                 "config",
-                "\n[source,properties]\n----\norg.neo4j.server.rest.security_rules=my.rules" +
+                "\n[source,properties]\n----\ndbms.security.http_authorization_classes=my.rules" +
                         ".PermanentlyFailingSecurityRuleWithComplexWildcardPath\n----\n");
         gen.get().addTestSourceSnippets( PermanentlyFailingSecurityRuleWithComplexWildcardPath.class,
                 "failingRuleWithComplexWildcardPath" );
@@ -278,7 +266,7 @@ public class SecurityRulesDocIT extends ExclusiveServerTestBase
         server = CommunityServerBuilder.server().withDefaultDatabaseTuning().withSecurityRules(
                 PermanentlyForbiddenSecurityRule.class.getCanonicalName(),
                 PermanentlyPassingSecurityRule.class.getCanonicalName() )
-                .usingDatabaseDir( folder.directory( name.getMethodName() ).getAbsolutePath() )
+                .usingDataDir( folder.directory( name.getMethodName() ).getAbsolutePath() )
                 .build();
         server.start();
         functionalTestHelper = new FunctionalTestHelper( server );

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -34,6 +34,8 @@ import java.util.ServiceLoader;
 import java.util.Set;
 
 import org.neo4j.helpers.collection.PrefetchingIterator;
+
+import static org.neo4j.unsafe.impl.internal.dragons.FeatureToggles.flag;
 
 /**
  * A utility for locating services. This implements the same functionality as <a
@@ -117,7 +119,9 @@ public abstract class Service
      * Enabling this is useful for debugging why services aren't loaded where you would expect them to.
      */
     private static final boolean printServiceLoaderStackTraces =
-            Boolean.getBoolean( "org.neo4j.helpers.Service.printServiceLoaderStackTraces" );
+            flag( Service.class, "printServiceLoaderStackTraces", false );
+
+    final Set<String> keys;
 
     /**
      * Designates that a class implements the specified service and should be
@@ -195,6 +199,25 @@ public abstract class Service
     }
 
     /**
+     * Load the Service implementation with the specified key. This method will return null if requested service not found.
+     * @param type the type of the Service to load
+     * @param key the key that identifies the desired implementation
+     * @param <T> the type of the Service to load
+     * @return requested service
+     */
+    public static <T extends Service> T loadSilently( Class<T> type, String key )
+    {
+        for ( T service : load( type ) )
+        {
+            if ( service.matches( key ) )
+            {
+                return service;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Load the Service implementation with the specified key. This method should never return null.
      *
      * @param <T>  the type of the Service
@@ -204,19 +227,15 @@ public abstract class Service
      */
     public static <T extends Service> T load( Class<T> type, String key )
     {
-        for ( T impl : load( type ) )
+        T service = loadSilently( type, key );
+        if ( service == null )
         {
-            if ( impl.matches( key ) )
-            {
-                return impl;
-            }
+            throw new NoSuchElementException( String.format(
+                    "Could not find any implementation of %s with a key=\"%s\"",
+                    type.getName(), key ) );
         }
-        throw new NoSuchElementException( String.format(
-                "Could not find any implementation of %s with a key=\"%s\"",
-                type.getName(), key ) );
+        return service;
     }
-
-    final Set<String> keys;
 
     /**
      * Create a new instance of a service implementation identified with the
@@ -299,10 +318,7 @@ public abstract class Service
                             }
                             catch ( Throwable e )
                             {
-                                if ( printServiceLoaderStackTraces )
-                                {
-                                    e.printStackTrace();
-                                }
+                                e.printStackTrace();
                             }
                         }
                         return null;

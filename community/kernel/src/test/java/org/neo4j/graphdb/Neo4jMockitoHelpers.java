@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,18 +19,18 @@
  */
 package org.neo4j.graphdb;
 
-import java.util.Iterator;
-
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
+import java.util.Iterator;
+
 import org.neo4j.collection.primitive.PrimitiveIntCollections;
 import org.neo4j.collection.primitive.PrimitiveIntIterator;
+import org.neo4j.collection.primitive.PrimitiveLongCollections;
 import org.neo4j.collection.primitive.PrimitiveLongIterator;
-import org.neo4j.kernel.impl.util.PrimitiveLongResourceIterator;
+import org.neo4j.collection.primitive.PrimitiveLongResourceIterator;
 
 import static org.neo4j.collection.primitive.PrimitiveLongCollections.toPrimitiveIterator;
-import static org.neo4j.helpers.collection.IteratorUtil.resourceIterator;
 
 public class Neo4jMockitoHelpers
 {
@@ -53,7 +53,7 @@ public class Neo4jMockitoHelpers
             @Override
             public PrimitiveLongResourceIterator answer( InvocationOnMock invocation ) throws Throwable
             {
-                return resourceIterator( toPrimitiveIterator( values.iterator() ), NO_RESOURCE );
+                return PrimitiveLongCollections.resourceIterator( toPrimitiveIterator( values.iterator() ), NO_RESOURCE );
             }
         };
     }

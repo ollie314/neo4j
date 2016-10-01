@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,13 +26,10 @@ import org.neo4j.graphalgo.impl.util.PriorityMap.Converter;
 import org.neo4j.graphalgo.impl.util.PriorityMap.Entry;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.PathExpander;
-import org.neo4j.graphdb.RelationshipExpander;
 import org.neo4j.graphdb.traversal.BranchOrderingPolicy;
 import org.neo4j.graphdb.traversal.BranchSelector;
 import org.neo4j.graphdb.traversal.TraversalBranch;
 import org.neo4j.graphdb.traversal.TraversalContext;
-
-import static org.neo4j.kernel.StandardExpander.toPathExpander;
 
 public abstract class BestFirstSelectorFactory<P extends Comparable<P>, D>
         implements BranchOrderingPolicy
@@ -48,11 +45,6 @@ public abstract class BestFirstSelectorFactory<P extends Comparable<P>, D>
     public BranchSelector create( TraversalBranch startSource, PathExpander expander )
     {
         return new BestFirstSelector( startSource, getStartData(), expander );
-    }
-
-    public BranchSelector create( TraversalBranch startSource, RelationshipExpander expander )
-    {
-        return create( startSource, toPathExpander( expander ) );
     }
 
     protected abstract P getStartData();

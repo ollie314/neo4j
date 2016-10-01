@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,16 +23,13 @@ import org.neo4j.cypher.internal.frontend.v3_0.ast.{ContainerIndex, Function}
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 import org.neo4j.cypher.internal.frontend.v3_0.{SemanticError, ast}
 
+/*
+ * Note that HAS has been removed from Cypher,
+ * This is only kept to give users a proper error message.
+ */
 case object Has extends Function {
   def name = "HAS"
 
   def semanticCheck(ctx: ast.Expression.SemanticContext, invocation: ast.FunctionInvocation) =
-    checkArgs(invocation, 1) ifOkChain {
-      invocation.arguments.head.expectType(CTAny.covariant) chain
-      (invocation.arguments.head match {
-        case _: ast.Property => None
-        case _: ContainerIndex => None
-        case e => Some(SemanticError(s"Argument to ${invocation.name} is not a property", e.position, invocation.position))
-      })
-    } chain invocation.specifyType(CTBoolean)
+    SemanticError(s"HAS is no longer supported in Cypher, please use EXISTS instead", invocation.position)
 }

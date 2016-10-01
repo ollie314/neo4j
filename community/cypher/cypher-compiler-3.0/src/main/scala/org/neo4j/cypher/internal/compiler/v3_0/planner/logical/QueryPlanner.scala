@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,19 +24,18 @@ import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.{LogicalPla
 import org.neo4j.cypher.internal.frontend.v3_0.Rewriter
 
 trait QueryPlanner {
-  def plan(plannerQuery: UnionQuery)(implicit context: LogicalPlanningContext): LogicalPlan
+  def plan(plannerQuery: UnionQuery)(implicit context: LogicalPlanningContext): (Option[PeriodicCommit], LogicalPlan)
 }
 
 case class DefaultQueryPlanner(planRewriter: Rewriter,
-                               config: QueryPlannerConfiguration = QueryPlannerConfiguration.default,
                                planSingleQuery: LogicalPlanningFunction1[PlannerQuery, LogicalPlan] = PlanSingleQuery())
   extends QueryPlanner {
 
-  def plan(unionQuery: UnionQuery)(implicit context: LogicalPlanningContext): LogicalPlan = unionQuery match {
-    case UnionQuery(queries, distinct, returns) =>
+  def plan(unionQuery: UnionQuery)(implicit context: LogicalPlanningContext): (Option[PeriodicCommit], LogicalPlan) = unionQuery match {
+    case UnionQuery(queries, distinct, returns, periodicCommitHint) =>
       val plan = planQueries(queries, distinct)
       val rewrittenPlan = plan.endoRewrite(planRewriter)
-      createProduceResultOperator(rewrittenPlan, unionQuery)
+      (periodicCommitHint, createProduceResultOperator(rewrittenPlan, unionQuery))
 
     case _ =>
       throw new CantHandleQueryException

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,12 +21,11 @@ package org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans
 
 import java.lang.reflect.Method
 
-import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.{LogicalPlanningFunction2, QueryPlannerConfiguration}
-import org.neo4j.cypher.internal.compiler.v3_0.planner.{CardinalityEstimation, PlannerQuery, QueryGraph}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.QueryExpression
+import org.neo4j.cypher.internal.compiler.v3_0.planner.{CardinalityEstimation, PlannerQuery}
 import org.neo4j.cypher.internal.frontend.v3_0.Foldable._
 import org.neo4j.cypher.internal.frontend.v3_0.Rewritable._
-import org.neo4j.cypher.internal.frontend.v3_0.ast.{Expression, Identifier}
-import org.neo4j.cypher.internal.frontend.v3_0.perty._
+import org.neo4j.cypher.internal.frontend.v3_0.ast.{Expression, Variable}
 import org.neo4j.cypher.internal.frontend.v3_0.{InternalException, Rewritable}
 
 /*
@@ -38,15 +37,9 @@ to data in the database, to the root, which is the final operator producing the 
 abstract class LogicalPlan
   extends Product
   with Strictness
-  with Rewritable
-  with PageDocFormatting {
+  with Rewritable {
 
   self =>
-
-//  with ToPrettyString[LogicalPlan] {
-
-//  def toDefaultPrettyString(formatter: DocFormatter) =
-//    toPrettyString(formatter)(InternalDocHandler.docGen)
 
   def lhs: Option[LogicalPlan]
   def rhs: Option[LogicalPlan]
@@ -55,7 +48,7 @@ abstract class LogicalPlan
 
   def leaves: Seq[LogicalPlan] = this.treeFold(Seq.empty[LogicalPlan]) {
     case plan: LogicalPlan
-      if plan.lhs.isEmpty && plan.rhs.isEmpty => (acc, r) => r(acc :+ plan)
+      if plan.lhs.isEmpty && plan.rhs.isEmpty => acc => (acc :+ plan, Some(identity))
   }
 
   def updateSolved(newSolved: PlannerQuery with CardinalityEstimation): LogicalPlan = {
@@ -96,15 +89,27 @@ abstract class LogicalPlan
         constructor.invoke(this, args: _*).asInstanceOf[this.type]
     }
 
-  def mapExpressions(f: (Set[IdName], Expression) => Expression): LogicalPlan
-
   def isLeaf: Boolean = lhs.isEmpty && rhs.isEmpty
-}
 
-trait LogicalPlanWithoutExpressions {
-  self: LogicalPlan =>
+  override def toString = {
+    val children = lhs.toSeq ++ rhs.toSeq
+    val nonChildFields = productIterator.filterNot(children.contains).mkString(", ")
+    val l = lhs.map(p => indent("LHS -> " + p) + "\n").getOrElse("")
+    val r = rhs.map(p => indent("RHS -> " + p) + "\n").getOrElse("")
 
-  override def mapExpressions(f: (Set[IdName], Expression) => Expression): LogicalPlan = self
+    val childrenText = if (l+r == "") "{}" else s"""{
+                                               |$l$r}""".stripMargin
+
+    s"""$productPrefix($nonChildFields) $childrenText""".stripMargin
+  }
+
+  def satisfiesExpressionDependencies(e: Expression) = e.dependencies.map(IdName.fromVariable).forall(availableSymbols.contains)
+
+  private def indent(in: String) = {
+    in.split("\n").map("  " + _).mkString("\n")
+  }
+
+  def debugId: String = f"0x${hashCode()}%08x"
 }
 
 abstract class LogicalLeafPlan extends LogicalPlan with LazyLogicalPlan {
@@ -117,16 +122,14 @@ abstract class NodeLogicalLeafPlan extends LogicalLeafPlan {
   def idName: IdName
 }
 
-object LogicalLeafPlan {
-  type Finder = LogicalPlanningFunction2[QueryPlannerConfiguration, QueryGraph, Set[LogicalPlan]]
+abstract class IndexLeafPlan extends NodeLogicalLeafPlan {
+  def valueExpr: QueryExpression[Expression]
 }
 
-final case class IdName(name: String) extends PageDocFormatting // with ToPrettyString[IdName] {
-//  def toDefaultPrettyString(formatter: DocFormatter) =
-//    toPrettyString(formatter)(InternalDocHandler.docGen)
+final case class IdName(name: String)
 
 object IdName {
   implicit val byName = Ordering[String].on[IdName](_.name)
 
-  def fromIdentifier(identifier: Identifier) = IdName(identifier.name)
+  def fromVariable(variable: Variable) = IdName(variable.name)
 }

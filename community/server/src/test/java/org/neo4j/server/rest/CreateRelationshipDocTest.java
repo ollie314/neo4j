@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,14 +19,14 @@
  */
 package org.neo4j.server.rest;
 
-import java.util.Map;
-
-import javax.ws.rs.core.MediaType;
-
+import com.sun.jersey.api.client.ClientResponse.Status;
 import org.junit.Test;
 
-import org.neo4j.graphdb.DynamicRelationshipType;
+import java.util.Map;
+import javax.ws.rs.core.MediaType;
+
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.kernel.impl.annotations.Documented;
 import org.neo4j.server.rest.domain.JsonHelper;
@@ -34,18 +34,13 @@ import org.neo4j.server.rest.repr.RelationshipRepresentationTest;
 import org.neo4j.test.GraphDescription.Graph;
 import org.neo4j.test.TestData.Title;
 
-import com.sun.jersey.api.client.ClientResponse.Status;
 import static org.junit.Assert.assertTrue;
 
 public class CreateRelationshipDocTest extends AbstractRestFunctionalDocTestBase
 {
-    /**
-     * Upon successful creation of a relationship, the new relationship is
-     * returned.
-     */
     @Test
     @Graph( "Joe knows Sara" )
-    @Documented
+    @Documented( "Upon successful creation of a relationship, the new relationship is returned." )
     @Title( "Create a relationship with properties" )
     public void create_a_relationship_with_properties() throws Exception
     {
@@ -61,16 +56,12 @@ public class CreateRelationshipDocTest extends AbstractRestFunctionalDocTestBase
                 getNodeUri( i ) + "/relationships" );
         try ( Transaction tx = graphdb().beginTx() )
         {
-            assertTrue( i.hasRelationship( DynamicRelationshipType.withName( "LOVES" ) ) );
+            assertTrue( i.hasRelationship( RelationshipType.withName( "LOVES" ) ) );
         }
     }
 
-    /**
-     * Upon successful creation of a relationship, the new relationship is
-     * returned.
-     */
     @Test
-    @Documented
+    @Documented( "Upon successful creation of a relationship, the new relationship is returned." )
     @Title( "Create relationship" )
     @Graph( "Joe knows Sara" )
     public void create_relationship() throws Exception
@@ -87,7 +78,7 @@ public class CreateRelationshipDocTest extends AbstractRestFunctionalDocTestBase
                 .post( getNodeUri( i ) + "/relationships" ).entity();
         try ( Transaction tx = graphdb().beginTx() )
         {
-            assertTrue( i.hasRelationship( DynamicRelationshipType.withName( "LOVES" ) ) );
+            assertTrue( i.hasRelationship( RelationshipType.withName( "LOVES" ) ) );
         }
         assertProperRelationshipRepresentation( JsonHelper.jsonToMap( entity ) );
     }

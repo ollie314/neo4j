@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -29,6 +29,8 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.neo4j.io.pagecache.PageSwapper;
 
+import static org.neo4j.unsafe.impl.internal.dragons.FeatureToggles.packageFlag;
+
 /**
  * The default PageCacheTracer implementation, that just increments counters.
  */
@@ -41,8 +43,8 @@ public class DefaultPageCacheTracer implements PageCacheTracer
         try
         {
             // A hidden setting to have pin/unpin monitoring enabled from the start by default.
-            boolean alwaysEnabled = Boolean.getBoolean(
-                    "org.neo4j.io.pagecache.tracing.tracePinUnpin" );
+            // NOTE: This flag is documented in jmx.asciidoc
+            boolean alwaysEnabled = packageFlag( DefaultPageCacheTracer.class, "tracePinUnpin", false );
 
             MethodType type = MethodType.methodType( PinEvent.class );
             MethodHandles.Lookup lookup = MethodHandles.lookup();
@@ -280,7 +282,7 @@ public class DefaultPageCacheTracer implements PageCacheTracer
     }
 
     @Override
-    public PinEvent beginPin( boolean exclusiveLock, long filePageId, PageSwapper swapper )
+    public PinEvent beginPin( boolean writeLock, long filePageId, PageSwapper swapper )
     {
         try
         {
@@ -324,61 +326,61 @@ public class DefaultPageCacheTracer implements PageCacheTracer
     }
 
     @Override
-    public long countFaults()
+    public long faults()
     {
         return faults.get();
     }
 
     @Override
-    public long countEvictions()
+    public long evictions()
     {
         return evictions.get();
     }
 
     @Override
-    public long countPins()
+    public long pins()
     {
         return pins.get();
     }
 
     @Override
-    public long countUnpins()
+    public long unpins()
     {
         return unpins.get();
     }
 
     @Override
-    public long countFlushes()
+    public long flushes()
     {
         return flushes.get();
     }
 
     @Override
-    public long countBytesRead()
+    public long bytesRead()
     {
         return bytesRead.get();
     }
 
     @Override
-    public long countBytesWritten()
+    public long bytesWritten()
     {
         return bytesWritten.get();
     }
 
     @Override
-    public long countFilesMapped()
+    public long filesMapped()
     {
         return filesMapped.get();
     }
 
     @Override
-    public long countFilesUnmapped()
+    public long filesUnmapped()
     {
         return filesUnmapped.get();
     }
 
     @Override
-    public long countEvictionExceptions()
+    public long evictionExceptions()
     {
         return evictionExceptions.get();
     }

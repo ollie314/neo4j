@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -47,7 +47,7 @@ class ConstraintOperationPipe(op: PropertyConstraintOperation, keyToken: KeyToke
 
   def symbols = new SymbolTable()
 
-  def planDescription = new PlanDescriptionImpl(this.id, "ConstraintOperation", NoChildren, Seq.empty, identifiers)
+  def planDescription = new PlanDescriptionImpl(this.id, "ConstraintOperation", NoChildren, Seq.empty, variables)
 
   def exists(pred: Pipe => Boolean) = pred(this)
 

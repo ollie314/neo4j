@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,9 +26,7 @@ import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.traversal.Evaluation;
 import org.neo4j.graphdb.traversal.Evaluator;
 import org.neo4j.graphdb.traversal.TraversalDescription;
-import org.neo4j.kernel.Uniqueness;
-
-import static org.neo4j.kernel.Traversal.traversal;
+import org.neo4j.graphdb.traversal.Uniqueness;
 
 public class TestTraversalWithLoops extends TraversalTestBase
 {
@@ -55,7 +53,7 @@ public class TestTraversalWithLoops extends TraversalTestBase
                     return Evaluation.ofIncludes( path.endNode().equals( e ) );
                 }
             };
-            TraversalDescription basicTraverser = traversal().evaluator( onlyEndNode );
+            TraversalDescription basicTraverser = getGraphDb().traversalDescription().evaluator( onlyEndNode );
             expectPaths( basicTraverser.traverse( a ), "a,b,c,d,e" );
             expectPaths( basicTraverser.uniqueness( Uniqueness.RELATIONSHIP_PATH ).traverse( a ),
                     "a,b,c,d,e", "a,b,c,c,d,e", "a,b,c,d,d,e", "a,b,c,c,d,d,e" );

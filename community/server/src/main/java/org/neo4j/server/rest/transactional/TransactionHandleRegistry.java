@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,8 +24,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Predicate;
 
-import org.neo4j.function.Predicate;
 import org.neo4j.function.Predicates;
 import org.neo4j.helpers.Clock;
 import org.neo4j.logging.Log;
@@ -247,20 +247,15 @@ public class TransactionHandleRegistry implements TransactionRegistry
 
     public void rollbackSuspendedTransactionsIdleSince( final long oldestLastActiveTime )
     {
-        rollbackSuspended( new Predicate<TransactionMarker>()
-        {
-            @Override
-            public boolean test( TransactionMarker item )
+        rollbackSuspended( item -> {
+            try
             {
-                try
-                {
-                    SuspendedTransaction transaction = item.getSuspendedTransaction();
-                    return transaction.lastActiveTimestamp < oldestLastActiveTime;
-                }
-                catch ( InvalidConcurrentTransactionAccess concurrentTransactionAccessError )
-                {
-                    throw new RuntimeException( concurrentTransactionAccessError );
-                }
+                SuspendedTransaction transaction = item.getSuspendedTransaction();
+                return transaction.lastActiveTimestamp < oldestLastActiveTime;
+            }
+            catch ( InvalidConcurrentTransactionAccess concurrentTransactionAccessError )
+            {
+                throw new RuntimeException( concurrentTransactionAccessError );
             }
         } );
     }

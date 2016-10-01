@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,9 @@
  */
 package org.neo4j.kernel.impl.api.operations;
 
+import org.neo4j.kernel.api.index.IndexDescriptor;
 import org.neo4j.kernel.impl.api.KernelStatement;
+import org.neo4j.register.Register.DoubleLongRegister;
 
 public interface CountsOperations
 {
@@ -35,4 +37,8 @@ public interface CountsOperations
     /** @see org.neo4j.kernel.api.CountsRead#countsForRelationshipWithoutTxState(int, int, int) */
     long countsForRelationshipWithoutTxState( KernelStatement statement, int startLabelId, int typeId, int endLabelId );
 
+    DoubleLongRegister indexUpdatesAndSize( KernelStatement statement, IndexDescriptor index,
+            DoubleLongRegister target );
+
+    DoubleLongRegister indexSample( KernelStatement statement, IndexDescriptor index, DoubleLongRegister target );
 }

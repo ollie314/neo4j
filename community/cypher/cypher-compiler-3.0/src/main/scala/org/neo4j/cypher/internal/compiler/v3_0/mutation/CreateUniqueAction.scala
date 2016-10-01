@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,8 +26,7 @@ import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import org.neo4j.cypher.internal.frontend.v3_0.symbols.CypherType
 import org.neo4j.cypher.internal.frontend.v3_0.{PatternException, UniquePathNotUniqueException}
-import org.neo4j.graphdb.PropertyContainer
-import org.neo4j.helpers.ThisShouldNotHappenError
+import org.neo4j.graphdb.{Node, PropertyContainer}
 
 case class CreateUniqueAction(incomingLinks: UniqueLink*) extends UpdateAction {
 
@@ -48,15 +47,12 @@ case class CreateUniqueAction(incomingLinks: UniqueLink*) extends UpdateAction {
         executionContext = traverseNextStep(traversals, executionContext) //We've found some way to move forward. Let's use it
       } else if (updateCommands.nonEmpty) {
 
-        val lockingContext = state.query.upgradeToLockingQueryContext
+        val nodesToLock = extractNodesToLock(results, incomingExecContext)
+        state.query.lockNodes(nodesToLock.map(_.getId):_*)
 
-        try {
-          executionContext = tryAgain(linksToDo, executionContext, state.withQueryContext(lockingContext))
-        } finally {
-          lockingContext.releaseLocks()
-        }
+        executionContext = tryAgain(linksToDo, executionContext, state)
       } else {
-        throw new ThisShouldNotHappenError("Andres", "There was something in that result list I don't know how to handle.")
+        throw new AssertionError("There was something in that result list I don't know how to handle.")
       }
     }
 
@@ -81,22 +77,22 @@ case class CreateUniqueAction(incomingLinks: UniqueLink*) extends UpdateAction {
     val traversals = extractTraversals(results)
 
     if (results.isEmpty) {
-      throw new ThisShouldNotHappenError("Andres", "Second check should never return empty result set")
+      throw new AssertionError("Second check should never return empty result set")
     } else if (canNotAdvanced(results)) {
-      throw new ThisShouldNotHappenError("Andres", "Second check should never fail to move forward")
+      throw new AssertionError("Second check should never fail to move forward")
     } else if (traversals.nonEmpty) {
       traverseNextStep(traversals, context) //Ah, so this time we did find a traversal way forward. Great!
     } else if (updateCommands.nonEmpty) {
       runUpdateCommands(updateCommands.flatMap(_.cmds), context, state) //If we still can't find a way forward,
     } else {                                                            // let's build one
-      throw new ThisShouldNotHappenError("Andres", "There was something in that result list I don't know how to handle.")
+      throw new AssertionError("There was something in that result list I don't know how to handle.")
     }
   }
 
-  case class TraverseResult(identifier: String, element: PropertyContainer, link: UniqueLink)
+  case class TraverseResult(variable: String, element: PropertyContainer, link: UniqueLink)
 
   private def traverseNextStep(nextSteps: Seq[TraverseResult], oldContext: ExecutionContext): ExecutionContext = {
-    val uniqueKVPs = nextSteps.map(x => x.identifier -> x.element).distinct
+    val uniqueKVPs = nextSteps.map(x => x.variable -> x.element).distinct
     val uniqueKeys = uniqueKVPs.toMap
 
     if (uniqueKeys.size != uniqueKVPs.size) {
@@ -108,14 +104,14 @@ case class CreateUniqueAction(incomingLinks: UniqueLink*) extends UpdateAction {
 
   private def fail(nextSteps: Seq[TraverseResult]): Nothing = {
     //We can only go forward following a unique path. Fail.
-    val problemResultsByIdentifier: Map[String, Seq[TraverseResult]] = nextSteps.groupBy(_.identifier).
+    val problemResultsByVariable: Map[String, Seq[TraverseResult]] = nextSteps.groupBy(_.variable).
       filter(_._2.size > 1)
 
-    val message = problemResultsByIdentifier.map {
-      case (identifier, links: Seq[TraverseResult]) =>
+    val message = problemResultsByVariable.map {
+      case (variable, links: Seq[TraverseResult]) =>
         val hits = links.map(result => "%s found by : %s".format(result.element, result.link))
 
-        "Nodes for identifier: `%s` were found with differing values by these pattern relationships: %s".format(identifier, hits.mkString("\n  ", "\n  ", "\n"))
+        "Nodes for variable: `%s` were found with differing values by these pattern relationships: %s".format(variable, hits.mkString("\n  ", "\n  ", "\n"))
     }
 
     throw new UniquePathNotUniqueException(message.mkString("CREATE UNIQUE error\n", "\n", "\n"))
@@ -150,6 +146,17 @@ case class CreateUniqueAction(incomingLinks: UniqueLink*) extends UpdateAction {
     context
   }
 
+  private def extractNodesToLock(results: scala.Seq[(UniqueLink, CreateUniqueResult)], ctx: ExecutionContext): Seq[Node] =
+    results.flatMap {
+      case (UniqueLink(start, end, _, _, _), _) => Seq(start.name, end.name)
+      case _ => Seq.empty
+    }.collect {
+      case name if ctx.contains(name) => ctx(name) match {
+        case n: Node => Some(n)
+        case _ => None
+      }
+    }.flatten
+
   private def extractUpdateCommands(results: scala.Seq[(UniqueLink, CreateUniqueResult)]): Seq[Update] =
     results.flatMap {
       case (_, u: Update) => Some(u)
@@ -170,7 +177,7 @@ case class CreateUniqueAction(incomingLinks: UniqueLink*) extends UpdateAction {
 
   override def children = links.flatMap(_.children)
 
-  def identifiers: Seq[(String,CypherType)] = links.flatMap(_.identifier2).distinct
+  def variables: Seq[(String,CypherType)] = links.flatMap(_.variable2).distinct
 
   override def rewrite(f: (Expression) => Expression) = CreateUniqueAction(links.map(_.rewrite(f)): _*)
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -44,7 +44,6 @@ import static org.mockito.Matchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
-import static org.neo4j.kernel.impl.store.StoreFactory.SF_CREATE;
 import static org.neo4j.unsafe.impl.batchimport.Configuration.DEFAULT;
 
 public class PropertyEncoderStepTest
@@ -59,9 +58,8 @@ public class PropertyEncoderStepTest
     {
         File storeDir = new File( "dir" );
         pageCache = pageCacheRule.getPageCache( fsRule.get() );
-        StoreFactory storeFactory =
-                new StoreFactory( fsRule.get(), storeDir, pageCache, NullLogProvider.getInstance() );
-        neoStores = storeFactory.openNeoStores( SF_CREATE );
+        StoreFactory factory = new StoreFactory( storeDir, pageCache, fsRule.get(), NullLogProvider.getInstance() );
+        neoStores = factory.openAllNeoStores( true );
     }
 
     @After
@@ -78,7 +76,7 @@ public class PropertyEncoderStepTest
         // GIVEN
         StageControl control = mock( StageControl.class );
         BatchingPropertyKeyTokenRepository tokens =
-                new BatchingPropertyKeyTokenRepository( neoStores.getPropertyKeyTokenStore(), 0 );
+                new BatchingPropertyKeyTokenRepository( neoStores.getPropertyKeyTokenStore() );
         Step<Batch<InputNode,NodeRecord>> step =
                 new PropertyEncoderStep<>( control, DEFAULT, tokens, neoStores.getPropertyStore() );
         @SuppressWarnings( "rawtypes" )

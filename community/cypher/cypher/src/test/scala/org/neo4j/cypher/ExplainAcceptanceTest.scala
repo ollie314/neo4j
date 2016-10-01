@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -39,7 +39,7 @@ class ExplainAcceptanceTest extends ExecutionEngineFunSuite {
   }
 
   test("EXPLAIN for Cypher 3.0") {
-    val result = eengine.execute("explain match (n) return n")
+    val result = eengine.execute("explain match (n) return n", Map.empty[String, Object], graph.session())
     result.toList
     assert(result.planDescriptionRequested, "result not marked with planDescriptionRequested")
     result.executionPlanDescription().toString should include("Estimated Rows")
@@ -47,7 +47,7 @@ class ExplainAcceptanceTest extends ExecutionEngineFunSuite {
   }
 
   test("should report which node the merge starts from") {
-    val query = "EXPLAIN MERGE (first)-[:PIZZA]->(second)"
+    val query = "CYPHER planner=rule EXPLAIN MERGE (first)-[:PIZZA]->(second)"
 
     val result = execute(query)
     val plan = result.executionPlanDescription()

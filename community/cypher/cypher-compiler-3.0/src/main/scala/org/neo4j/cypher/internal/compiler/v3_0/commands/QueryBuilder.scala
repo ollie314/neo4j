@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -86,13 +86,13 @@ case class QueryBuilder(
 
     TODO: Kill the commands.Query class
      */
-    val allIdentifierss = Seq[ReturnColumn](AllIdentifiers())
+    val allVariables = Seq[ReturnColumn](AllVariables())
 
     val secondPart = Query(Return(columns(returnItems), returnItems: _*), Seq.empty, updates, matching, optional,
       using, where, aggregation, orderBy, slice, namedPaths, tail)
 
     Query.empty.copy(
-      returns = Return(columns(allIdentifierss), allIdentifierss:_*),
+      returns = Return(columns(allVariables), allVariables:_*),
       start = startItems,
       tail = Some(secondPart))
   } else

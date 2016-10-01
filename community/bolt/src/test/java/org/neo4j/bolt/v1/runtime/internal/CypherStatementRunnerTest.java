@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,20 +20,26 @@
 package org.neo4j.bolt.v1.runtime.internal;
 
 import org.junit.Test;
-import org.mockito.Mockito;
 
-import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Result;
+import org.neo4j.kernel.GraphDatabaseQueryService;
+import org.neo4j.kernel.impl.coreapi.PropertyContainerLocker;
+import org.neo4j.kernel.impl.query.QueryExecutionEngine;
+import org.neo4j.kernel.impl.query.QuerySession;
 
 import static java.util.Collections.EMPTY_MAP;
+import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
 
 public class CypherStatementRunnerTest
 {
-    private final GraphDatabaseService db = mock( GraphDatabaseService.class );
+    private final QueryExecutionEngine engine = mock( QueryExecutionEngine.class );
     private final SessionStateMachine ctx = mock( SessionStateMachine.class );
 
     @Test
@@ -41,17 +47,22 @@ public class CypherStatementRunnerTest
     public void shouldCreateImplicitTxIfNoneExists() throws Exception
     {
         // Given
-        Mockito.when( db.execute( anyString(), anyMap() ) ).thenReturn( mock( Result.class ) );
-        Mockito.when( ctx.hasTransaction() ).thenReturn( false );
+        when( engine.isPeriodicCommit( anyString() )).thenReturn( false );
+        when( engine.executeQuery( anyString(), anyMap(), any( QuerySession.class ) ) ).thenReturn( mock( Result.class ) );
+        when( ctx.hasTransaction() ).thenReturn( false );
 
-        CypherStatementRunner cypherRunner = new CypherStatementRunner( db );
+        CypherStatementRunner cypherRunner = new CypherStatementRunner( engine );
 
         // When
-        cypherRunner.run( ctx, "src/test", EMPTY_MAP );
+        cypherRunner.run( ctx, "<query>", EMPTY_MAP );
 
         // Then
+        verify( ctx ).createSession( any( GraphDatabaseQueryService.class ), any( PropertyContainerLocker.class ));
+        verify( ctx ).hasTransaction();
         verify( ctx ).beginImplicitTransaction();
-        verify( db ).execute( "src/test", EMPTY_MAP );
+        verify( engine ).isPeriodicCommit( "<query>" );
+        verify( engine ).queryService();
+        verify( engine ).executeQuery( eq( "<query>" ), eq( EMPTY_MAP ), any( QuerySession.class ) );
+        verifyNoMoreInteractions( engine, ctx );
     }
-
 }

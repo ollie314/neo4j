@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,17 +19,19 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0
 
+import java.time.Clock
 import java.util.concurrent._
 
 import org.junit.Assert._
 import org.mockito.Mockito._
 import org.neo4j.cypher.GraphDatabaseTestSupport
-import org.neo4j.cypher.internal.compatibility.{WrappedMonitors2_3, WrappedMonitors3_0}
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Identifier, Literal}
+import org.neo4j.cypher.internal.compatibility.WrappedMonitors3_0
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Literal, Variable}
 import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates.HasLabel
 import org.neo4j.cypher.internal.compiler.v3_0.commands.values.TokenType.{Label, PropertyKey}
 import org.neo4j.cypher.internal.compiler.v3_0.commands.{ReturnItem, _}
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{ExecutionPlanInProgress, _}
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.IdentityTypeConverter
 import org.neo4j.cypher.internal.compiler.v3_0.mutation.{CreateNode, DeletePropertyAction}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes._
 import org.neo4j.cypher.internal.compiler.v3_0.planDescription.InternalPlanDescription
@@ -41,10 +43,14 @@ import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import org.neo4j.cypher.internal.compiler.v3_0.tracing.rewriters.RewriterStepSequencer
 import org.neo4j.cypher.internal.frontend.v3_0.ast.Statement
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
-import org.neo4j.cypher.internal.frontend.v3_0.{Rewriter, InternalException, Scope, SemanticTable}
-import org.neo4j.cypher.internal.spi.v3_0.{GeneratedQueryStructure, TransactionBoundQueryContext}
-import org.neo4j.graphdb.DynamicLabel
-import org.neo4j.helpers.Clock
+import org.neo4j.cypher.internal.frontend.v3_0.{InternalException, Rewriter, Scope, SemanticTable}
+import org.neo4j.cypher.internal.spi.TransactionalContextWrapper
+import org.neo4j.cypher.internal.spi.v3_0.TransactionBoundQueryContext
+import org.neo4j.graphdb.Label.label
+import org.neo4j.kernel.api.KernelTransaction
+import org.neo4j.kernel.api.security.AccessMode
+import org.neo4j.kernel.impl.coreapi.PropertyContainerLocker
+import org.neo4j.kernel.impl.query.Neo4jTransactionalContext
 import org.scalatest.mock.MockitoSugar
 
 import scala.collection.Seq
@@ -55,6 +61,7 @@ class RuleExecutablePlanBuilderTest
   with Timed
   with MockitoSugar {
 
+  val locker: PropertyContainerLocker = new PropertyContainerLocker
   val ast = mock[Statement]
   val rewriterSequencer = RewriterStepSequencer.newValidating _
   val queryPlanner = new DefaultQueryPlanner(LogicalPlanRewriter(rewriterSequencer))
@@ -64,19 +71,21 @@ class RuleExecutablePlanBuilderTest
     queryPlanner = queryPlanner,
     rewriterSequencer = rewriterSequencer,
     plannerName = None,
-    runtimeBuilder = SilentFallbackRuntimeBuilder(InterpretedPlanBuilder(Clock.SYSTEM_CLOCK, mock[Monitors]), CompiledPlanBuilder(Clock.SYSTEM_CLOCK,GeneratedQueryStructure)),
+    runtimeBuilder = InterpretedRuntimeBuilder(InterpretedPlanBuilder(Clock.systemUTC(), mock[Monitors], IdentityTypeConverter)),
     semanticChecker = mock[SemanticChecker],
-    useErrorsOverWarnings = false
+    updateStrategy = None,
+    config = config,
+    publicTypeConverter = identity
   )
 
-  class FakePreparedQuery(q: AbstractQuery)
-    extends PreparedQuery(mock[Statement], "q", Map.empty)(SemanticTable(), Set.empty, Scope(Map.empty, Seq.empty), devNullLogger) {
+  class FakePreparedSemanticQuery(q: AbstractQuery)
+    extends PreparedQuerySemantics(mock[Statement], "q", None, Map.empty, mock[SemanticTable], mock[Scope])(devNullLogger) {
 
     override def abstractQuery: AbstractQuery = q
 
     override def isPeriodicCommit: Boolean = q.isInstanceOf[PeriodicCommitQuery]
 
-    override def rewrite(rewriter: Rewriter): PreparedQuery = this
+    override def rewrite(rewriter: Rewriter): PreparedQuerySemantics = this
   }
 
 
@@ -85,9 +94,9 @@ class RuleExecutablePlanBuilderTest
     val planContext = mock[PlanContext]
 
     val exception = intercept[ExecutionException](timeoutAfter(5) {
-      val pipeBuilder = new LegacyExecutablePlanBuilderWithCustomPlanBuilders(Seq(new BadBuilder), new WrappedMonitors3_0(kernelMonitors))
-      val query = new FakePreparedQuery(q)
-      pipeBuilder.producePlan(query, planContext)
+      val pipeBuilder = new LegacyExecutablePlanBuilderWithCustomPlanBuilders(Seq(new BadBuilder), new WrappedMonitors3_0(kernelMonitors), config)
+      val query = new FakePreparedSemanticQuery(q)
+      pipeBuilder.producePipe(query, planContext, CompilationPhaseTracer.NO_TRACING)
     })
 
     assertTrue("Execution plan builder didn't throw expected exception - was " + exception.getMessage,
@@ -96,27 +105,30 @@ class RuleExecutablePlanBuilderTest
 
   test("should resolve property keys") {
     // given
-    val tx = graph.beginTx()
+    val tx = graph.beginTransaction(KernelTransaction.Type.explicit, AccessMode.Static.WRITE)
     try {
       val node = graph.createNode()
       node.setProperty("foo", 12l)
 
-      val identifier = Identifier("x")
+      val variable = Variable("x")
       val q = Query
         .start(NodeById("x", node.getId))
-        .updates(DeletePropertyAction(identifier, PropertyKey("foo")))
-        .returns(ReturnItem(Identifier("x"), "x"))
+        .updates(DeletePropertyAction(variable, PropertyKey("foo")))
+        .returns(ReturnItem(Variable("x"), "x"))
 
-      val pipeBuilder = new LegacyExecutablePlanBuilder(new WrappedMonitors3_0(kernelMonitors), RewriterStepSequencer.newValidating)
-      val queryContext = new TransactionBoundQueryContext(graph, tx, isTopLevelTx = true, statement)
+      val pipeBuilder = new LegacyExecutablePlanBuilder(new WrappedMonitors3_0(kernelMonitors), config,
+        RewriterStepSequencer.newValidating, typeConverter = IdentityTypeConverter)
+
+      val transactionalContext = new TransactionalContextWrapper(new Neo4jTransactionalContext(graph, tx, statement, locker))
+      val queryContext = new TransactionBoundQueryContext(transactionalContext)(indexSearchMonitor)
       val pkId = queryContext.getPropertyKeyId("foo")
-      val parsedQ = new FakePreparedQuery(q)
+      val parsedQ = new FakePreparedSemanticQuery(q)
 
       // when
 
-      val commands = pipeBuilder.producePlan(parsedQ, planContext).right.toOption.get.pipe.asInstanceOf[ExecuteUpdateCommandsPipe].commands
+      val commands = pipeBuilder.producePipe(parsedQ, planContext, CompilationPhaseTracer.NO_TRACING).pipe.asInstanceOf[ExecuteUpdateCommandsPipe].commands
 
-      assertTrue("Property was not resolved", commands == Seq(DeletePropertyAction(identifier, PropertyKey("foo", pkId))))
+      assertTrue("Property was not resolved", commands == Seq(DeletePropertyAction(variable, PropertyKey("foo", pkId))))
     } finally {
       tx.close()
     }
@@ -124,24 +136,26 @@ class RuleExecutablePlanBuilderTest
 
   test("should resolve label ids") {
     // given
-    val tx = graph.beginTx()
+    val tx = graph.beginTransaction(KernelTransaction.Type.explicit, AccessMode.Static.WRITE)
     try {
-      val node = graph.createNode(DynamicLabel.label("Person"))
+      val node = graph.createNode(label("Person"))
 
       val q = Query
         .start(NodeById("x", node.getId))
-        .where(HasLabel(Identifier("x"), Label("Person")))
-        .returns(ReturnItem(Identifier("x"), "x"))
+        .where(HasLabel(Variable("x"), Label("Person")))
+        .returns(ReturnItem(Variable("x"), "x"))
 
-      val execPlanBuilder = new LegacyExecutablePlanBuilder(new WrappedMonitors3_0(kernelMonitors), RewriterStepSequencer.newValidating)
-      val queryContext = new TransactionBoundQueryContext(graph, tx, isTopLevelTx = true, statement)
+      val execPlanBuilder = new LegacyExecutablePlanBuilder(new WrappedMonitors3_0(kernelMonitors), config,
+        RewriterStepSequencer.newValidating, typeConverter = IdentityTypeConverter)
+      val transactionalContext = new TransactionalContextWrapper(new Neo4jTransactionalContext(graph, tx, statement, locker))
+      val queryContext = new TransactionBoundQueryContext(transactionalContext)(indexSearchMonitor)
       val labelId = queryContext.getLabelId("Person")
-      val parsedQ = new FakePreparedQuery(q)
+      val parsedQ = new FakePreparedSemanticQuery(q)
 
       // when
-      val predicate = execPlanBuilder.producePlan(parsedQ, planContext).right.toOption.get.pipe.asInstanceOf[FilterPipe].predicate
+      val predicate = execPlanBuilder.producePipe(parsedQ, planContext,CompilationPhaseTracer.NO_TRACING).pipe.asInstanceOf[FilterPipe].predicate
 
-      assertTrue("Label was not resolved", predicate == HasLabel(Identifier("x"), Label("Person", labelId)))
+      assertTrue("Label was not resolved", predicate == HasLabel(Variable("x"), Label("Person", labelId)))
     } finally {
       tx.close()
     }
@@ -160,11 +174,12 @@ class RuleExecutablePlanBuilderTest
           .updates(CreateNode("  UNNAMED3456", Map.empty, Seq.empty))
           .returns()
         )
-        .returns(AllIdentifiers())
-      val parsedQ = new FakePreparedQuery(q)
+        .returns(AllVariables())
+      val parsedQ = new FakePreparedSemanticQuery(q)
 
-      val pipeBuilder = new LegacyExecutablePlanBuilder(new WrappedMonitors3_0(kernelMonitors), RewriterStepSequencer.newValidating)
-      val pipe = pipeBuilder.producePlan(parsedQ, planContext).right.toOption.get.pipe
+      val pipeBuilder = new LegacyExecutablePlanBuilder(new WrappedMonitors3_0(kernelMonitors), config,
+        RewriterStepSequencer.newValidating, typeConverter = IdentityTypeConverter)
+      val pipe = pipeBuilder.producePipe(parsedQ, planContext, CompilationPhaseTracer.NO_TRACING).pipe
 
       toSeq(pipe) should equal (Seq(
         classOf[EmptyResultPipe],
@@ -188,11 +203,12 @@ class RuleExecutablePlanBuilderTest
           )
           .returns()
         )
-        .returns(AllIdentifiers())
-      val parsedQ = new FakePreparedQuery(q)
+        .returns(AllVariables())
+      val parsedQ = new FakePreparedSemanticQuery(q)
 
-      val pipeBuilder = new LegacyExecutablePlanBuilder(new WrappedMonitors3_0(kernelMonitors), RewriterStepSequencer.newValidating)
-      val pipe = pipeBuilder.producePlan(parsedQ, planContext).right.toOption.get.pipe
+      val pipeBuilder = new LegacyExecutablePlanBuilder(new WrappedMonitors3_0(kernelMonitors), config,
+        RewriterStepSequencer.newValidating, typeConverter = IdentityTypeConverter)
+      val pipe = pipeBuilder.producePipe(parsedQ, planContext, CompilationPhaseTracer.NO_TRACING).pipe
 
       toSeq(pipe) should equal (Seq(
         classOf[EmptyResultPipe],
@@ -214,12 +230,13 @@ class RuleExecutablePlanBuilderTest
           .updates(CreateNode("  UNNAMED3456", Map.empty, Seq.empty))
           .returns()
         )
-        .returns(AllIdentifiers())
-      val parsedQ = new FakePreparedQuery(q)
+        .returns(AllVariables())
+      val parsedQ = new FakePreparedSemanticQuery(q)
 
 
-      val execPlanBuilder = new LegacyExecutablePlanBuilder(new WrappedMonitors3_0(kernelMonitors), RewriterStepSequencer.newValidating)
-      val pipe = execPlanBuilder.producePlan(parsedQ, planContext).right.toOption.get.pipe
+      val execPlanBuilder = new LegacyExecutablePlanBuilder(new WrappedMonitors3_0(kernelMonitors), config,
+        RewriterStepSequencer.newValidating, typeConverter = IdentityTypeConverter)
+      val pipe = execPlanBuilder.producePipe(parsedQ, planContext, CompilationPhaseTracer.NO_TRACING).pipe
 
       toSeq(pipe) should equal (Seq(
         classOf[EmptyResultPipe],
@@ -232,7 +249,7 @@ class RuleExecutablePlanBuilderTest
 
   test("should set the periodic commit flag") {
     // given
-    val tx = graph.beginTx()
+    val tx = graph.beginTransaction(KernelTransaction.Type.explicit, AccessMode.Static.READ)
     try {
       val q = PeriodicCommitQuery(
         Query.
@@ -240,12 +257,13 @@ class RuleExecutablePlanBuilderTest
           returns(),
         None
       )
-      val parsedQ = new FakePreparedQuery(q)
+      val parsedQ = new FakePreparedSemanticQuery(q)
 
-      val pipeBuilder = new LegacyExecutablePlanBuilder(new WrappedMonitors3_0(kernelMonitors), RewriterStepSequencer.newValidating)
+      val pipeBuilder = new LegacyExecutablePlanBuilder(new WrappedMonitors3_0(kernelMonitors), config,
+        RewriterStepSequencer.newValidating, typeConverter = IdentityTypeConverter)
 
       // when
-      val periodicCommit = pipeBuilder.producePlan(parsedQ, planContext).right.toOption.get.periodicCommit
+      val periodicCommit = pipeBuilder.producePipe(parsedQ, planContext, CompilationPhaseTracer.NO_TRACING).periodicCommit
 
       assert(periodicCommit === Some(PeriodicCommitInfo(None)))
     } finally {
@@ -254,7 +272,8 @@ class RuleExecutablePlanBuilderTest
   }
 }
 
-class LegacyExecutablePlanBuilderWithCustomPlanBuilders(innerBuilders: Seq[PlanBuilder], monitors:Monitors) extends LegacyExecutablePlanBuilder(monitors, RewriterStepSequencer.newValidating) {
+class LegacyExecutablePlanBuilderWithCustomPlanBuilders(innerBuilders: Seq[PlanBuilder], monitors: Monitors, config: CypherCompilerConfiguration)
+  extends LegacyExecutablePlanBuilder(monitors, config, RewriterStepSequencer.newValidating, typeConverter = IdentityTypeConverter) {
   override val phases = new Phase { def myBuilders: Seq[PlanBuilder] = innerBuilders }
 }
 

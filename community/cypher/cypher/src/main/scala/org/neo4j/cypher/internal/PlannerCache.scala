@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,10 +19,11 @@
  */
 package org.neo4j.cypher.internal
 
-import org.neo4j.cypher.internal.compatibility.{CompatibilityFor3_0, CompatibilityFor3_0Cost, CompatibilityFor3_0Rule, CompatibilityFor2_3, CompatibilityFor2_3Cost, CompatibilityFor2_3Rule}
+import org.neo4j.cypher.internal.compatibility.{CompatibilityFor2_3, CompatibilityFor2_3Cost, CompatibilityFor2_3Rule, CompatibilityFor3_0, CompatibilityFor3_0Cost, CompatibilityFor3_0Rule}
 import org.neo4j.cypher.internal.compiler.v3_0.CypherCompilerConfiguration
-import org.neo4j.cypher.{CypherPlanner, CypherRuntime}
-import org.neo4j.graphdb.GraphDatabaseService
+import org.neo4j.cypher.{CypherPlanner, CypherRuntime, CypherUpdateStrategy}
+import org.neo4j.helpers.Clock
+import org.neo4j.kernel.GraphDatabaseQueryService
 import org.neo4j.kernel.api.KernelAPI
 import org.neo4j.kernel.monitoring.{Monitors => KernelMonitors}
 import org.neo4j.logging.Log
@@ -31,23 +32,23 @@ import scala.collection.mutable
 
 sealed trait PlannerSpec
 final case class PlannerSpec_v2_3(planner: CypherPlanner, runtime: CypherRuntime) extends PlannerSpec
-final case class PlannerSpec_v3_0(planner: CypherPlanner, runtime: CypherRuntime) extends PlannerSpec
+final case class PlannerSpec_v3_0(planner: CypherPlanner, runtime: CypherRuntime, updateStrategy: CypherUpdateStrategy) extends PlannerSpec
 
-class PlannerFactory(graph: GraphDatabaseService, kernelAPI: KernelAPI, kernelMonitors: KernelMonitors, log: Log,
+class PlannerFactory(graph: GraphDatabaseQueryService, kernelAPI: KernelAPI, kernelMonitors: KernelMonitors, log: Log,
                      config: CypherCompilerConfiguration) {
 
   import helpers.wrappersFor2_3._
 
   def create(spec: PlannerSpec_v2_3) =  spec.planner match {
-    case CypherPlanner.rule => CompatibilityFor2_3Rule(graph, as2_3(config), CypherCompiler.CLOCK, kernelMonitors, kernelAPI)
+    case CypherPlanner.rule => CompatibilityFor2_3Rule(graph, as2_3(config), Clock.SYSTEM_CLOCK, kernelMonitors, kernelAPI)
     case _ => CompatibilityFor2_3Cost(graph, as2_3(config),
-      CypherCompiler.CLOCK, kernelMonitors, kernelAPI, log, spec.planner, spec.runtime)
+                                      Clock.SYSTEM_CLOCK, kernelMonitors, kernelAPI, log, spec.planner, spec.runtime)
   }
 
   def create(spec: PlannerSpec_v3_0) =  spec.planner match {
     case CypherPlanner.rule => CompatibilityFor3_0Rule(graph, config, CypherCompiler.CLOCK, kernelMonitors, kernelAPI)
     case _ => CompatibilityFor3_0Cost(graph, config,
-      CypherCompiler.CLOCK, kernelMonitors, kernelAPI, log, spec.planner, spec.runtime)
+      CypherCompiler.CLOCK, kernelMonitors, kernelAPI, log, spec.planner, spec.runtime, spec.updateStrategy)
   }
 }
 

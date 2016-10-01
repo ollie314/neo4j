@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,18 +19,18 @@
  */
 package org.neo4j.internal.cypher.acceptance
 
-import org.neo4j.cypher.{SyntaxException, NewPlannerTestSupport, ExecutionEngineFunSuite}
+import org.neo4j.cypher.{ExecutionEngineFunSuite, SyntaxException}
 
 class SkipLimitAcceptanceTest extends ExecutionEngineFunSuite {
-  test("SKIP should not allow identifiers") {
+  test("SKIP should not allow variables") {
     intercept[SyntaxException](execute("MATCH (n) RETURN n SKIP n.count"))
   }
 
-  test("LIMIT should not allow identifiers") {
+  test("LIMIT should not allow variables") {
     intercept[SyntaxException](execute("MATCH (n) RETURN n LIMIT n.count"))
   }
 
-  test("SKIP with an expression that does not depend on identifiers should work") {
+  test("SKIP with an expression that does not depend on variables should work") {
     1 to 10 foreach { _ => createNode() }
 
     val query = "MATCH (n) RETURN n SKIP toInt(rand()*9)"
@@ -39,12 +39,21 @@ class SkipLimitAcceptanceTest extends ExecutionEngineFunSuite {
     result.toList should not be empty
   }
 
-  test("LIMIT with an expression that does not depend on identifiers should work") {
+  test("LIMIT with an expression that does not depend on variables should work") {
     1 to 3 foreach { _ => createNode() }
 
     val query = "MATCH (n) RETURN n LIMIT toInt(ceil(1.7))"
     val result = execute(query)
 
     result.toList should have size 2
+  }
+
+  test("ORDER BY LIMIT should use a TopPipe") {
+    1 to 3 foreach { _ => createNode() }
+
+    val query = "MATCH (n) RETURN n ORDER BY n.prop LIMIT 10"
+    val result = execute(query)
+
+    result.executionPlanDescription().find("Top") should not be empty
   }
 }

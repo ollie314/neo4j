@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,9 +23,11 @@ import java.io.Serializable;
 
 public class Welcome implements Serializable
 {
-    private final String message;
-    private final Serializable id;
-    private final String prompt;
+    private static final long serialVersionUID = -1737055318869376647L;
+    
+    private String message;
+    private Serializable id;
+    private String prompt;
     
     public Welcome( String message, Serializable id, String prompt )
     {

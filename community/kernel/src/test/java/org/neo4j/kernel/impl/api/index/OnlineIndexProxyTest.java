@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -35,7 +35,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 public class OnlineIndexProxyTest
 {
     private final IndexDescriptor descriptor = new IndexDescriptor( 1, 2 );
-    private final IndexConfiguration config = new IndexConfiguration( false );
+    private final IndexConfiguration config = IndexConfiguration.NON_UNIQUE;
     private final SchemaIndexProvider.Descriptor providerDescriptor = mock( SchemaIndexProvider.Descriptor.class );
     private final IndexAccessor accessor = mock( IndexAccessor.class );
     private final IndexStoreView storeView = mock( IndexStoreView.class );
@@ -44,7 +44,8 @@ public class OnlineIndexProxyTest
     public void shouldRemoveIndexCountsWhenTheIndexItselfIsDropped() throws IOException
     {
         // given
-        OnlineIndexProxy index = new OnlineIndexProxy( descriptor, config, accessor, storeView, providerDescriptor );
+        OnlineIndexProxy index = new OnlineIndexProxy( descriptor, config, accessor,
+                storeView, providerDescriptor, false );
 
         // when
         index.drop();

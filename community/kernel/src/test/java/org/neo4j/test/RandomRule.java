@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,7 +28,6 @@ import java.util.Random;
 import org.neo4j.test.Randoms.Configuration;
 
 import static java.lang.System.currentTimeMillis;
-
 import static org.neo4j.helpers.Exceptions.withMessage;
 
 /**
@@ -43,10 +42,17 @@ public class RandomRule implements TestRule
     private long seed;
     private Random random;
     private Randoms randoms;
+    private Configuration config = Randoms.DEFAULT;
 
     public RandomRule withSeed( long seed )
     {
         this.specificSeed = seed;
+        return this;
+    }
+
+    public RandomRule withConfiguration( Randoms.Configuration config )
+    {
+        this.config = config;
         return this;
     }
 
@@ -106,6 +112,11 @@ public class RandomRule implements TestRule
         return random.nextInt( n );
     }
 
+    public int nextInt( int origin, int bound )
+    {
+        return random.nextInt( (bound - origin) + 1 ) + origin;
+    }
+
     public double nextGaussian()
     {
         return random.nextGaussian();
@@ -114,6 +125,11 @@ public class RandomRule implements TestRule
     public long nextLong()
     {
         return random.nextLong();
+    }
+
+    public long nextLong( long n )
+    {
+        return Math.abs( nextLong() ) % n;
     }
 
     // ============================
@@ -162,7 +178,7 @@ public class RandomRule implements TestRule
     public void reset()
     {
         random = new Random( seed );
-        randoms = new Randoms( random, Randoms.DEFAULT );
+        randoms = new Randoms( random, config );
     }
 
     public Randoms fork( Configuration configuration )

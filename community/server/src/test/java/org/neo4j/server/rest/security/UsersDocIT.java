@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,30 +19,28 @@
  */
 package org.neo4j.server.rest.security;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.charset.Charset;
-
 import javax.ws.rs.core.HttpHeaders;
 
+import com.sun.jersey.core.util.Base64;
 import org.codehaus.jackson.JsonNode;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 
+import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.kernel.impl.annotations.Documented;
 import org.neo4j.server.CommunityNeoServer;
-import org.neo4j.server.configuration.ServerSettings;
 import org.neo4j.server.helpers.CommunityServerBuilder;
 import org.neo4j.server.rest.RESTDocsGenerator;
 import org.neo4j.server.rest.domain.JsonHelper;
 import org.neo4j.server.rest.domain.JsonParseException;
+import org.neo4j.string.UTF8;
 import org.neo4j.test.TestData;
 import org.neo4j.test.server.ExclusiveServerTestBase;
 import org.neo4j.test.server.HTTP;
 
-import com.sun.jersey.core.util.Base64;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
@@ -58,13 +56,10 @@ public class UsersDocIT extends ExclusiveServerTestBase
         gen.get().setSection( "dev/rest-api" );
     }
 
-    /**
-     * User status
-     *
-     * Given that you know the current password, you can ask the server for the user status.
-     */
     @Test
-    @Documented
+    @Documented( "User status\n" +
+                 "\n" +
+                 "Given that you know the current password, you can ask the server for the user status." )
     public void user_status() throws JsonParseException, IOException
     {
         // Given
@@ -84,13 +79,10 @@ public class UsersDocIT extends ExclusiveServerTestBase
         assertThat( data.get( "password_change" ).asText(), equalTo( passwordURL( "neo4j" ) ) );
     }
 
-    /**
-     * User status on first access
-     *
-     * On first access, and using the default password, the user status will indicate that the users password requires changing.
-     */
     @Test
-    @Documented
+    @Documented( "User status on first access\n" +
+                 "\n" +
+                 "On first access, and using the default password, the user status will indicate that the users password requires changing." )
     public void user_status_first_access() throws JsonParseException, IOException
     {
         // Given
@@ -110,14 +102,11 @@ public class UsersDocIT extends ExclusiveServerTestBase
         assertThat( data.get( "password_change" ).asText(), equalTo( passwordURL( "neo4j" ) ) );
     }
 
-    /**
-     * Changing the user password
-     *
-     * Given that you know the current password, you can ask the server to change a users password. You can choose any
-     * password you like, as long as it is different from the current password.
-     */
     @Test
-    @Documented
+    @Documented( "Changing the user password\n" +
+                 "\n" +
+                 "Given that you know the current password, you can ask the server to change a users password. You can choose any\n" +
+                 "password you like, as long as it is different from the current password." )
     public void change_password() throws JsonParseException, IOException
     {
         // Given
@@ -161,9 +150,9 @@ public class UsersDocIT extends ExclusiveServerTestBase
 
     public void startServer(boolean authEnabled) throws IOException
     {
-        new File( "neo4j-home/data/dbms/authorization" ).delete(); // TODO: Implement a common component for managing Neo4j file structure and use that here
-        server = CommunityServerBuilder.server().withProperty( ServerSettings.auth_enabled.name(),
-                Boolean.toString( authEnabled ) ).build();
+        server = CommunityServerBuilder.server()
+                .withProperty( GraphDatabaseSettings.auth_enabled.name(), Boolean.toString( authEnabled ) )
+                .build();
         server.start();
     }
 
@@ -200,8 +189,7 @@ public class UsersDocIT extends ExclusiveServerTestBase
 
     private String base64(String value)
     {
-        return new String( Base64.encode( value ), Charset
-                .forName( "UTF-8" ));
+        return UTF8.decode( Base64.encode( value ) );
     }
 
     private String quotedJson( String singleQuoted )

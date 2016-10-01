@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,22 +24,22 @@ import org.neo4j.cypher.internal.frontend.v3_0.{Rewriter, topDown}
 
 case object normalizeComparisons extends Rewriter {
 
-  override def apply(that: AnyRef): AnyRef = topDown(instance)(that)
+  override def apply(that: AnyRef): AnyRef = instance(that)
 
-  private val instance: Rewriter = Rewriter.lift {
+  private val instance: Rewriter = topDown(Rewriter.lift {
     case c@NotEquals(lhs, rhs) =>
-      NotEquals(lhs.endoRewrite(copyIdentifiers), rhs.endoRewrite(copyIdentifiers))(c.position)
+      NotEquals(lhs.endoRewrite(copyVariables), rhs.endoRewrite(copyVariables))(c.position)
     case c@Equals(lhs, rhs) =>
-      Equals(lhs.endoRewrite(copyIdentifiers), rhs.endoRewrite(copyIdentifiers))(c.position)
+      Equals(lhs.endoRewrite(copyVariables), rhs.endoRewrite(copyVariables))(c.position)
     case c@LessThan(lhs, rhs) =>
-      LessThan(lhs.endoRewrite(copyIdentifiers), rhs.endoRewrite(copyIdentifiers))(c.position)
+      LessThan(lhs.endoRewrite(copyVariables), rhs.endoRewrite(copyVariables))(c.position)
     case c@LessThanOrEqual(lhs, rhs) =>
-      LessThanOrEqual(lhs.endoRewrite(copyIdentifiers), rhs.endoRewrite(copyIdentifiers))(c.position)
+      LessThanOrEqual(lhs.endoRewrite(copyVariables), rhs.endoRewrite(copyVariables))(c.position)
     case c@GreaterThan(lhs, rhs) =>
-      GreaterThan(lhs.endoRewrite(copyIdentifiers), rhs.endoRewrite(copyIdentifiers))(c.position)
+      GreaterThan(lhs.endoRewrite(copyVariables), rhs.endoRewrite(copyVariables))(c.position)
     case c@GreaterThanOrEqual(lhs, rhs) =>
-      GreaterThanOrEqual(lhs.endoRewrite(copyIdentifiers), rhs.endoRewrite(copyIdentifiers))(c.position)
+      GreaterThanOrEqual(lhs.endoRewrite(copyVariables), rhs.endoRewrite(copyVariables))(c.position)
     case c@InvalidNotEquals(lhs, rhs) =>
-      InvalidNotEquals(lhs.endoRewrite(copyIdentifiers), rhs.endoRewrite(copyIdentifiers))(c.position)
-  }
+      InvalidNotEquals(lhs.endoRewrite(copyVariables), rhs.endoRewrite(copyVariables))(c.position)
+  })
 }

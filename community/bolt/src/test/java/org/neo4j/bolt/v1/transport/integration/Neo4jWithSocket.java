@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,16 +23,39 @@ import org.junit.rules.TestRule;
 import org.junit.runner.Description;
 import org.junit.runners.model.Statement;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import org.neo4j.bolt.BoltKernelExtension;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.config.Setting;
+import org.neo4j.kernel.impl.factory.GraphDatabaseFacade;
+import org.neo4j.kernel.impl.store.StoreId;
 import org.neo4j.test.TestGraphDatabaseFactory;
+
+import static org.neo4j.graphdb.factory.GraphDatabaseSettings.BoltConnector.EncryptionLevel.OPTIONAL;
+import static org.neo4j.graphdb.factory.GraphDatabaseSettings.boltConnector;
 
 public class Neo4jWithSocket implements TestRule
 {
+    private final Consumer<Map<Setting<?>,String>> configure;
+    private StoreId storeId;
+    private  GraphDatabaseService gdb;
+
+    public Neo4jWithSocket()
+    {
+        this( settings -> {} );
+    }
+
+    public Neo4jWithSocket( Consumer<Map<Setting<?>, String>> configure )
+    {
+        this.configure = configure;
+    }
+
     @Override
     public Statement apply( final Statement statement, Description description )
     {
@@ -41,10 +64,14 @@ public class Neo4jWithSocket implements TestRule
             @Override
             public void evaluate() throws Throwable
             {
-                Map<Setting<?>, String> settings = new HashMap<>(  );
-                settings.put( BoltKernelExtension.Settings.enabled, "true");
-                settings.put( BoltKernelExtension.Settings.tls_enabled, "true");
-                final GraphDatabaseService gdb = new TestGraphDatabaseFactory().newImpermanentDatabase(settings);
+                Map<Setting<?>, String> settings = new HashMap<>();
+                settings.put( boltConnector( "0" ).enabled, "true" );
+                settings.put( boltConnector( "0" ).encryption_level, OPTIONAL.name() );
+                settings.put( BoltKernelExtension.Settings.tls_key_file, tempPath( "key", ".key" ) );
+                settings.put( BoltKernelExtension.Settings.tls_certificate_file, tempPath( "cert", ".cert" ) );
+                configure.accept( settings );
+                gdb = new TestGraphDatabaseFactory().newImpermanentDatabase( settings );
+                storeId = ((GraphDatabaseFacade) gdb).storeId();
                 try
                 {
                     statement.evaluate();
@@ -55,5 +82,19 @@ public class Neo4jWithSocket implements TestRule
                 }
             }
         };
+    }
+
+    public GraphDatabaseService graphDatabaseService()
+    {
+        return gdb;
+    }
+
+    private String tempPath(String prefix, String suffix ) throws IOException
+    {
+        Path path = Files.createTempFile( prefix, suffix );
+        // We don't want an existing file just the path to a temporary file
+        // a little silly to do it this way
+        Files.delete( path );
+        return path.toString();
     }
 }

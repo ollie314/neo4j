@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,7 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.executionplan.builders
 
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{CachedExpression, Expression, Identifier}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{CachedExpression, Expression, Variable}
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{ExecutionPlanInProgress, PlanBuilder}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.{LegacySortPipe, PipeMonitor}
 import org.neo4j.cypher.internal.compiler.v3_0.spi.PlanContext
@@ -61,7 +61,7 @@ trait SortingPreparations {
   def extractBeforeSort(plan: ExecutionPlanInProgress)(implicit pipeMonitor: PipeMonitor): ExecutionPlanInProgress = {
     val sortExpressionsToExtract: Seq[(String, Expression)] = plan.query.sort.flatMap(x => x.token.expression match {
       case _: CachedExpression => None
-      case _: Identifier       => None
+      case _: Variable       => None
       case e                   => Some("  UNNAMEDS" + e.## -> e)
     })
 

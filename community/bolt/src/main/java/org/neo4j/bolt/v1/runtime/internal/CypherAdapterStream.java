@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,15 +19,20 @@
  */
 package org.neo4j.bolt.v1.runtime.internal;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
+import org.neo4j.bolt.v1.messaging.BoltIOException;
+import org.neo4j.bolt.v1.runtime.spi.Record;
 import org.neo4j.bolt.v1.runtime.spi.RecordStream;
 import org.neo4j.graphdb.ExecutionPlanDescription;
+import org.neo4j.graphdb.InputPosition;
+import org.neo4j.graphdb.Notification;
 import org.neo4j.graphdb.QueryExecutionType;
 import org.neo4j.graphdb.QueryStatistics;
 import org.neo4j.graphdb.Result;
-import org.neo4j.bolt.v1.runtime.spi.Record;
 
 public class CypherAdapterStream implements RecordStream
 {
@@ -57,14 +62,9 @@ public class CypherAdapterStream implements RecordStream
     @Override
     public void accept( final Visitor visitor ) throws Exception
     {
-        delegate.accept( new Result.ResultVisitor<Exception>()
-        {
-            @Override
-            public boolean visit( Result.ResultRow row ) throws Exception
-            {
-                visitor.visit( currentRecord.reset( row ) );
-                return true;
-            }
+        delegate.accept( row -> {
+            visitor.visit( currentRecord.reset( row ) );
+            return true;
         } );
 
         QueryExecutionType qt = delegate.getQueryExecutionType();
@@ -80,6 +80,12 @@ public class CypherAdapterStream implements RecordStream
             ExecutionPlanDescription rootPlanTreeNode = delegate.getExecutionPlanDescription();
             String metadataFieldName = rootPlanTreeNode.hasProfilerStatistics() ? "profile" : "plan";
             visitor.addMetadata( metadataFieldName, ExecutionPlanConverter.convert( rootPlanTreeNode ) );
+        }
+
+        Iterable<Notification> notifications = delegate.getNotifications();
+        if ( notifications.iterator().hasNext() )
+        {
+            visitor.addMetadata( "notifications", NotificationConverter.convert( notifications ) );
         }
     }
 
@@ -128,7 +134,7 @@ public class CypherAdapterStream implements RecordStream
             default:
                 return queryType.name();
         }
-    };
+    }
 
     private static class CypherAdapterRecord implements Record
     {
@@ -147,13 +153,43 @@ public class CypherAdapterStream implements RecordStream
             return fields;
         }
 
-        public CypherAdapterRecord reset( Result.ResultRow cypherRecord )
+        public CypherAdapterRecord reset( Result.ResultRow cypherRecord ) throws BoltIOException
         {
             for ( int i = 0; i < fields.length; i++ )
             {
                 fields[i] = cypherRecord.get( fieldNames[i] );
             }
             return this;
+        }
+    }
+
+    private static class NotificationConverter
+    {
+        public static Object convert( Iterable<Notification> notifications )
+        {
+            List<Object> out = new ArrayList<>();
+            for ( Notification notification : notifications )
+            {
+                Map<String, Object> notificationMap = new HashMap<>( 4 );
+                notificationMap.put( "code", notification.getCode() );
+                notificationMap.put( "title", notification.getTitle() );
+                notificationMap.put( "description", notification.getDescription() );
+                notificationMap.put( "severity", notification.getSeverity().toString() );
+
+                InputPosition pos = notification.getPosition(); // position is optional
+                if( !pos.equals( InputPosition.empty ) )
+                {
+                    // only add the position if it is not empty
+                    Map<String, Object> posMap = new HashMap<>( 3 );
+                    posMap.put( "offset", pos.getOffset() );
+                    posMap.put( "line", pos.getLine() );
+                    posMap.put( "column", pos.getColumn() );
+                    notificationMap.put( "position", posMap );
+                }
+
+                out.add( notificationMap );
+            }
+            return out;
         }
     }
 }

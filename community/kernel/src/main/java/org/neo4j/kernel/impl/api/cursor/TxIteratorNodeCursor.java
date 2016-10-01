@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,11 +20,11 @@
 package org.neo4j.kernel.impl.api.cursor;
 
 import java.util.Iterator;
+import java.util.function.Consumer;
 
 import org.neo4j.cursor.Cursor;
-import org.neo4j.function.Consumer;
-import org.neo4j.kernel.api.cursor.NodeItem;
 import org.neo4j.kernel.api.txstate.TransactionState;
+import org.neo4j.storageengine.api.NodeItem;
 
 /**
  * Overlays transaction state on a {@link NodeItem} cursor.
@@ -89,5 +89,4 @@ public class TxIteratorNodeCursor
             return false;
         }
     }
-
 }

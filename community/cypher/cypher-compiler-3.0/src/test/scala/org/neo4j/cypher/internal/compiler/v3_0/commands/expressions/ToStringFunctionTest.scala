@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -50,8 +50,17 @@ class ToStringFunctionTest extends CypherFunSuite {
     toStringFunction(-12) should be("-12")
   }
 
-  test("should throw an exception if the argument is an object which cannot be converted to a float") {
-    evaluating { toStringFunction(new Object) } should produce[ParameterWrongTypeException]
+  test("should handle boolean false") {
+    toStringFunction(false) should be("false")
+  }
+
+  test("should handle boolean true") {
+    toStringFunction(true) should be("true")
+  }
+
+  test("should throw an exception if the argument is an object which cannot be converted to a string") {
+    val caughtException = evaluating { toStringFunction(new Object) } should produce[ParameterWrongTypeException]
+    caughtException.getMessage should startWith("Expected a String, Number or Boolean, got: ")
   }
 
   private def toStringFunction(orig: Any) = {

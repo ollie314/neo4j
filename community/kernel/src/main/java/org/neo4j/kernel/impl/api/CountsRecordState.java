@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -29,6 +29,7 @@ import org.neo4j.kernel.impl.store.counts.keys.CountsKey;
 import org.neo4j.kernel.impl.transaction.command.Command;
 import org.neo4j.kernel.impl.transaction.state.RecordState;
 import org.neo4j.register.Register.DoubleLongRegister;
+import org.neo4j.storageengine.api.StorageCommand;
 import org.neo4j.register.Registers;
 
 import static java.util.Objects.requireNonNull;
@@ -124,7 +125,7 @@ public class CountsRecordState implements CountsAccessor, RecordState, CountsAcc
     }
 
     @Override
-    public void extractCommands( Collection<Command> target )
+    public void extractCommands( Collection<StorageCommand> target )
     {
         accept( new CommandCollector( target ) );
     }
@@ -140,17 +141,6 @@ public class CountsRecordState implements CountsAccessor, RecordState, CountsAcc
     public boolean hasChanges()
     {
         return !counts.isEmpty();
-    }
-
-    /**
-     * Set this counter up to a pristine state, as if it had just been initialized.
-     */
-    public void clear()
-    {
-        if ( !counts.isEmpty() )
-        {
-            counts.clear();
-        }
     }
 
     public static final class Difference
@@ -248,9 +238,9 @@ public class CountsRecordState implements CountsAccessor, RecordState, CountsAcc
 
     private static class CommandCollector extends CountsVisitor.Adapter
     {
-        private final Collection<Command> commands;
+        private final Collection<StorageCommand> commands;
 
-        CommandCollector( Collection<Command> commands )
+        CommandCollector( Collection<StorageCommand> commands )
         {
             this.commands = commands;
         }
@@ -260,7 +250,7 @@ public class CountsRecordState implements CountsAccessor, RecordState, CountsAcc
         {
             if ( count != 0 )
             {   // Only add commands for counts that actually change
-                commands.add( new Command.NodeCountsCommand().init( labelId, count ) );
+                commands.add( new Command.NodeCountsCommand( labelId, count ) );
             }
         }
 
@@ -269,7 +259,7 @@ public class CountsRecordState implements CountsAccessor, RecordState, CountsAcc
         {
             if ( count != 0 )
             {   // Only add commands for counts that actually change
-                commands.add( new Command.RelationshipCountsCommand().init( startLabelId, typeId, endLabelId, count ) );
+                commands.add( new Command.RelationshipCountsCommand( startLabelId, typeId, endLabelId, count ) );
             }
         }
     }

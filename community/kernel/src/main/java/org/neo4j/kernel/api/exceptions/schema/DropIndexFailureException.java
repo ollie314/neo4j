@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -33,7 +33,7 @@ public class DropIndexFailureException extends SchemaKernelException
 
     public DropIndexFailureException( IndexDescriptor indexDescriptor, SchemaKernelException cause )
     {
-        super( Status.Schema.IndexDropFailure, format( message, indexDescriptor, cause.getMessage() ), cause );
+        super( Status.Schema.IndexDropFailed, format( message, indexDescriptor, cause.getMessage() ), cause );
         this.indexDescriptor = indexDescriptor;
     }
 

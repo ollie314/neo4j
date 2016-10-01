@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,15 +24,15 @@ import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.lifecycle.Lifecycle;
 import org.neo4j.logging.Log;
 
-import static org.neo4j.helpers.Settings.DURATION;
-import static org.neo4j.helpers.Settings.setting;
+import static org.neo4j.kernel.configuration.Settings.DURATION;
+import static org.neo4j.kernel.configuration.Settings.setting;
 
 public class MonitorGc implements Lifecycle
 {
     public static class Configuration
     {
-        public static final Setting<Long> gc_monitor_wait_time = setting( "gc_monitor_wait_time", DURATION, "100ms" );
-        public static final Setting<Long> gc_monitor_threshold = setting("gc_monitor_threshold", DURATION, "200ms" );
+        public static final Setting<Long> gc_monitor_wait_time = setting( "unsupported.dbms.gc_monitor_wait_time", DURATION, "100ms" );
+        public static final Setting<Long> gc_monitor_threshold = setting("unsupported.dbms.gc_monitor_threshold", DURATION, "200ms" );
     }
 
     private final Config config;

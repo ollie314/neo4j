@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,10 +21,12 @@ package org.neo4j.kernel.ha;
 
 import org.junit.Test;
 
-import org.neo4j.graphdb.TransientFailureException;
-import org.neo4j.logging.NullLogProvider;
+import org.neo4j.graphdb.TransactionFailureException;
+import org.neo4j.graphdb.TransientDatabaseFailureException;
 
+import static org.hamcrest.Matchers.instanceOf;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
 public class DelegateInvocationHandlerTest
@@ -42,8 +44,26 @@ public class DelegateInvocationHandlerTest
             value.get();
             fail( "Should fail" );
         }
-        catch ( TransientFailureException e )
-        {   // THEN
+        catch ( Exception e )
+        {
+            // THEN
+            assertThat( e, instanceOf( TransientDatabaseFailureException.class ) );
+        }
+    }
+
+    @Test
+    public void throwsWhenDelegateIsNotSet()
+    {
+        DelegateInvocationHandler<Value> handler = newDelegateInvocationHandler();
+
+        try
+        {
+            handler.invoke( new Object(), Value.class.getDeclaredMethod( "get" ), new Object[0] );
+            fail( "Exception expected" );
+        }
+        catch ( Throwable t )
+        {
+            assertThat( t, instanceOf( TransactionFailureException.class ) );
         }
     }
 
@@ -114,7 +134,7 @@ public class DelegateInvocationHandlerTest
 
     private static DelegateInvocationHandler<Value> newDelegateInvocationHandler()
     {
-        return new DelegateInvocationHandler<>( Value.class, NullLogProvider.getInstance() );
+        return new DelegateInvocationHandler<>( Value.class );
     }
 
     private interface Value

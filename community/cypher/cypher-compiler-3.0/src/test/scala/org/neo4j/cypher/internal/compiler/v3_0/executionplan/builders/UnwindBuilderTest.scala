@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,18 +19,18 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.executionplan.builders
 
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Collection, Identifier, Literal}
-import org.neo4j.cypher.internal.compiler.v3_0.commands.{AllIdentifiers, Query, ReturnItem, Unwind}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{ListLiteral, Variable, Literal}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.{AllVariables, Query, ReturnItem, Unwind}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.UnwindPipe
 
 class UnwindBuilderTest extends BuilderTest {
   val builder = new UnwindBuilder
 
   test("should_accept_queries_containing_unsolved_load_csv_items") {
-    val unwind = Unwind(Collection(Literal(1),Literal(2)),"y")
+    val unwind = Unwind(ListLiteral(Literal(1), Literal(2)), "y")
     val q = Query.
       start(unwind).
-      returns(ReturnItem(Identifier("y"),"y"))
+      returns(ReturnItem(Variable("y"),"y"))
 
     val result = assertAccepts(q)
 
@@ -39,7 +39,7 @@ class UnwindBuilderTest extends BuilderTest {
   }
 
   test("should_reject_queries_containing_no_unsolved_load_csv_items") {
-    val q = Query.start().returns(AllIdentifiers())
+    val q = Query.start().returns(AllVariables())
     assertRejects(q)
   }
 }

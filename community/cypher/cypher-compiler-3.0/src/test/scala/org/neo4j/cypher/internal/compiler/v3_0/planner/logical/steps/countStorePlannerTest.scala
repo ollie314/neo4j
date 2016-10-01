@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,7 +24,7 @@ import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.{LogicalPlanningC
 import org.neo4j.cypher.internal.compiler.v3_0.planner.{AggregatingQueryProjection, LogicalPlanningTestSupport}
 import org.neo4j.cypher.internal.compiler.v3_0.spi.PlanContext
 import org.neo4j.cypher.internal.frontend.v3_0.SemanticTable
-import org.neo4j.cypher.internal.frontend.v3_0.ast.{AstConstructionTestSupport, FunctionInvocation, FunctionName, Identifier}
+import org.neo4j.cypher.internal.frontend.v3_0.ast.{AstConstructionTestSupport, FunctionInvocation, FunctionName, Variable}
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
 import org.scalatest.matchers.{MatchResult, Matcher}
 
@@ -85,7 +85,7 @@ class countStorePlannerTest extends CypherFunSuite with LogicalPlanningTestSuppo
   test("should plan a count for rel count with no direction") {
     val plannerQuery = producePlannerQuery("MATCH ()-[r]-()", "r")
 
-    countStorePlanner(plannerQuery) should beCountPlanFor("r")
+    countStorePlanner(plannerQuery) should notBeCountPlan
   }
 
   test("should plan a count for rel count with no type") {
@@ -115,7 +115,7 @@ class countStorePlannerTest extends CypherFunSuite with LogicalPlanningTestSuppo
   test("should not plan a count for rel count with type but no direction") {
     val plannerQuery = producePlannerQuery("MATCH ()-[r:X]-()", "r")
 
-    countStorePlanner(plannerQuery) should beCountPlanFor("r")
+    countStorePlanner(plannerQuery) should notBeCountPlan
   }
 
   test("should plan a count for rel count with rel type") {
@@ -144,13 +144,13 @@ class countStorePlannerTest extends CypherFunSuite with LogicalPlanningTestSuppo
 
   implicit val context = LogicalPlanningContext(mock[PlanContext], LogicalPlanProducer(mock[Metrics.CardinalityModel]), mock[Metrics], SemanticTable(), mock[QueryGraphSolver])
 
-  def producePlannerQuery(query: String, identifier: String) = {
+  def producePlannerQuery(query: String, variable: String) = {
     val (pq, _) = producePlannerQueryForPattern(query)
     pq.withHorizon(AggregatingQueryProjection(
-      aggregationExpressions = Map(s"count($identifier)" -> FunctionInvocation(FunctionName("count") _, Identifier(identifier) _) _)))
+      aggregationExpressions = Map(s"count($variable)" -> FunctionInvocation(FunctionName("count") _, Variable(variable) _) _)))
   }
 
-  case class IsCountPlan(identifier: String, noneExpected: Boolean) extends Matcher[Option[LogicalPlan]] {
+  case class IsCountPlan(variable: String, noneExpected: Boolean) extends Matcher[Option[LogicalPlan]] {
 
     override def apply(plan: Option[LogicalPlan]): MatchResult = {
       if (noneExpected) {
@@ -158,9 +158,9 @@ class countStorePlannerTest extends CypherFunSuite with LogicalPlanningTestSuppo
       } else {
         MatchResult(
           plan match {
-            case Some(NodeCountFromCountStore(IdName(countId), _, _)) if countId == s"count($identifier)" =>
+            case Some(NodeCountFromCountStore(IdName(countId), _, _)) if countId == s"count($variable)" =>
               true
-            case Some(RelationshipCountFromCountStore(IdName(countId), _, _, _, _, _)) if countId == s"count($identifier)" =>
+            case Some(RelationshipCountFromCountStore(IdName(countId), _, _, _, _)) if countId == s"count($variable)" =>
               true
             case _ =>
               false
@@ -169,7 +169,7 @@ class countStorePlannerTest extends CypherFunSuite with LogicalPlanningTestSuppo
     }
   }
 
-  private def beCountPlanFor(identifier: String) = new IsCountPlan(identifier, false)
+  private def beCountPlanFor(variable: String) = new IsCountPlan(variable, false)
   private def notBeCountPlan = new IsCountPlan("", true)
 
 }

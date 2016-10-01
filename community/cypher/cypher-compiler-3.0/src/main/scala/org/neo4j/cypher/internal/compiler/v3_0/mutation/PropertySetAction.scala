@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,13 +24,18 @@ import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions._
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.Effects
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
+import org.neo4j.cypher.internal.frontend.v3_0.InvalidArgumentException
 import org.neo4j.graphdb.{Node, Relationship}
-import org.neo4j.helpers.ThisShouldNotHappenError
 
 case class PropertySetAction(prop: Property, valueExpression: Expression)
   extends SetAction {
 
   val Property(mapExpr, propertyKey) = prop
+
+  private val needsExclusiveLock = mapExpr match {
+    case Variable(entityName) => Expression.hasPropertyReadDependency(entityName, valueExpression, propertyKey.name)
+    case _ => true // we don't know so better safe than sorry!
+  }
 
   def localEffects(symbols: SymbolTable) = Effects.propertyWrite(mapExpr, symbols)(propertyKey.name)
 
@@ -44,19 +49,23 @@ case class PropertySetAction(prop: Property, valueExpression: Expression)
       val (id, ops) = expr match {
         case (e: Relationship) => (e.getId, qtx.relationshipOps)
         case (e: Node) => (e.getId, qtx.nodeOps)
-        case _ => throw new ThisShouldNotHappenError("Stefan", "This should be a node or a relationship")
+        case _ => throw new InvalidArgumentException(s"The expression $mapExpr should have been a node or a relationship, but got $expr")
       }
+
+      if (needsExclusiveLock) ops.acquireExclusiveLock(id)
 
       makeValueNeoSafe(valueExpression(context)) match {
         case null => propertyKey.getOptId(qtx).foreach(ops.removeProperty(id, _))
         case value => ops.setProperty(id, propertyKey.getOrCreateId(qtx), value)
       }
+
+      if (needsExclusiveLock) ops.releaseExclusiveLock(id)
     }
 
     Iterator(context)
   }
 
-  def identifiers = Nil
+  def variables = Nil
 
   def children = Seq(prop, valueExpression)
 

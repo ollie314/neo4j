@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -68,8 +68,8 @@ class QueryTaggerTest extends CypherFunSuite {
     QueryTagger("MATCH ()-[]->() RETURN 1") should not contain SingleNodePatternTag
   }
 
-  test(queryTag(IdentifierExpressionTag)) {
-    QueryTagger("RETURN n") should contain(IdentifierExpressionTag)
+  test(queryTag(VariableExpressionTag)) {
+    QueryTagger("RETURN n") should contain(VariableExpressionTag)
   }
 
   test(queryTag(LiteralExpressionTag)) {
@@ -136,7 +136,7 @@ class QueryTaggerTest extends CypherFunSuite {
       RegularMatchTag,
       SingleNodePatternTag,
       ReturnTag,
-      IdentifierExpressionTag)
+      VariableExpressionTag)
     )
   }
 

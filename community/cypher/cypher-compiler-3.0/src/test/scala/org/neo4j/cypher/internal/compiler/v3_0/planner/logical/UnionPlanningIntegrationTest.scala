@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,10 +19,9 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner.logical
 
-import org.neo4j.cypher.internal.frontend.v3_0.ast.{Identifier, LabelName}
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.LazyLabel
 import org.neo4j.cypher.internal.compiler.v3_0.planner.LogicalPlanningTestSupport2
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans._
+import org.neo4j.cypher.internal.frontend.v3_0.ast.Variable
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
 
 class UnionPlanningIntegrationTest extends CypherFunSuite with LogicalPlanningTestSupport2 {
@@ -32,18 +31,18 @@ class UnionPlanningIntegrationTest extends CypherFunSuite with LogicalPlanningTe
     val setup = new given {
       knownLabels = Set("A", "B")
     }
-    implicit val (logicalPlan, semanticTable) = setup.getLogicalPlanFor("MATCH (a:A) RETURN a AS a UNION ALL MATCH (a:B) RETURN a AS a")
+    implicit val (_, logicalPlan, _) = setup.getLogicalPlanFor("MATCH (a:A) RETURN a AS a UNION ALL MATCH (a:B) RETURN a AS a")
 
     logicalPlan should equal(
       ProduceResult(Seq("a"),
         Union(
           Projection(
-            NodeByLabelScan("  a@7", LazyLabel(LabelName("A") _), Set.empty)(solved),
-            Map("a" -> Identifier("  a@7") _)
+            NodeByLabelScan("  a@7", lblName("A"), Set.empty)(solved),
+            Map("a" -> Variable("  a@7") _)
           )(solved),
           Projection(
-            NodeByLabelScan("  a@43", LazyLabel(LabelName("B") _), Set.empty)(solved),
-            Map("a" -> Identifier("  a@43") _)
+            NodeByLabelScan("  a@43", lblName("B"), Set.empty)(solved),
+            Map("a" -> Variable("  a@43") _)
           )(solved)
         )(solved)
       )
@@ -55,22 +54,22 @@ class UnionPlanningIntegrationTest extends CypherFunSuite with LogicalPlanningTe
     val setup = new given {
       knownLabels = Set("A", "B")
     }
-    implicit val (logicalPlan, semanticTable) = setup.getLogicalPlanFor("MATCH (a:A) RETURN a AS a UNION MATCH (a:B) RETURN a AS a")
+    implicit val (_, logicalPlan, _) = setup.getLogicalPlanFor("MATCH (a:A) RETURN a AS a UNION MATCH (a:B) RETURN a AS a")
 
     logicalPlan should equal(
       ProduceResult(Seq("a"),
         Aggregation(
           left = Union(
             Projection(
-              NodeByLabelScan("  a@7", LazyLabel(LabelName("A") _), Set.empty)(solved),
-              Map("a" -> Identifier("  a@7") _)
+              NodeByLabelScan("  a@7", lblName("A"), Set.empty)(solved),
+              Map("a" -> Variable("  a@7") _)
             )(solved),
             Projection(
-              NodeByLabelScan("  a@39", LazyLabel(LabelName("B") _), Set.empty)(solved),
-              Map("a" -> Identifier("  a@39") _)
+              NodeByLabelScan("  a@39", lblName("B"), Set.empty)(solved),
+              Map("a" -> Variable("  a@39") _)
             )(solved)
           )(solved),
-          groupingExpressions = Map("a" -> ident("a")),
+          groupingExpressions = Map("a" -> varFor("a")),
           aggregationExpression = Map.empty
         )(solved)
       )

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -74,7 +74,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
 
     val query = "MATCH (l:Location) WHERE l.name STARTS WITH 'Lon' RETURN l"
 
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     result should (use(IndexSeekByRange.name) and evaluateTo(List(Map("l" -> london))))
   }
@@ -90,7 +90,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
         |CREATE (L:Location {name: toUpper(l.name)})
         |RETURN L.name AS NAME""".stripMargin
 
-    val result = updateWithBothPlanners(query)
+    val result = updateWithBothPlannersAndCompatibilityMode(query)
 
     result should (use("NodeIndexSeekByRange") and evaluateTo(List(Map("NAME" -> "LONDON"))))
   }
@@ -115,7 +115,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
 
     val query = "MATCH (l:Location) WHERE l.name STARTS WITH 'Lon' RETURN l"
 
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     result should (use(IndexSeekByRange.name) and evaluateTo(List(Map("l" -> london))))
   }
@@ -138,7 +138,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     graph.createIndex("Address", "prop")
 
     // Add an uninteresting predicate using a parameter to stop autoparameterization from happening
-    val result = executeWithAllPlanners(
+    val result = executeWithAllPlannersAndCompatibilityMode(
       """MATCH (a:Address)
         |WHERE 43 = {apa}
         |  AND a.prop STARTS WITH 'w'
@@ -165,7 +165,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
 
     graph.createIndex("Address", "prop")
 
-    val result = executeWithAllPlanners("MATCH (a:Address) WHERE a.prop STARTS WITH 'www' RETURN a")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a:Address) WHERE a.prop STARTS WITH 'www' RETURN a")
 
     result should (use(IndexSeekByRange.name) and evaluateTo(List(Map("a" -> a1), Map("a" -> a2))))
   }
@@ -187,7 +187,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
 
     graph.createConstraint("Address", "prop")
 
-    val result = executeWithAllPlanners("MATCH (a:Address) WHERE a.prop STARTS WITH 'www' RETURN a")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a:Address) WHERE a.prop STARTS WITH 'www' RETURN a")
 
     result should (use(UniqueIndexSeekByRange.name) and evaluateTo(List(Map("a" -> a1), Map("a" -> a2))))
   }
@@ -215,7 +215,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop < 10 RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result should (use("NodeIndexSeekByRange") and
@@ -250,7 +250,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE NOT n.prop >= 10 RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result should (use("NodeIndexSeekByRange") and
@@ -285,7 +285,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop <= 10 RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result should (use("NodeIndexSeekByRange") and
@@ -323,7 +323,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE NOT n.prop > 10 RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result should (use("NodeIndexSeekByRange") and
@@ -361,11 +361,12 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop > 5 RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlannersReplaceNaNs(query)
+    val result = executeWithAllPlannersAndCompatibilityModeReplaceNaNs(query)
 
     // Then
     val values = result.columnAs[Number]("prop").toSeq
-    values.exists(d => java.lang.Double.isNaN(d.doubleValue())) should be(right = true)
+    // TODO: this check should not be here, waiting for cypher to update NaN treatment behaviour
+    // values.exists(d => java.lang.Double.isNaN(d.doubleValue())) should be(right = true)
     val saneValues = values.filter(d => !java.lang.Double.isNaN(d.doubleValue()))
     saneValues should equal(Seq(10, 10.0, 100, Double.PositiveInfinity))
     result should use("NodeIndexSeekByRange")
@@ -394,11 +395,12 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE NOT n.prop <= 5 RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlannersReplaceNaNs(query)
+    val result = executeWithAllPlannersAndCompatibilityModeReplaceNaNs(query)
 
     // Then
     val values = result.columnAs[Number]("prop").toSeq
-    values.exists(d => java.lang.Double.isNaN(d.doubleValue())) should be(right = true)
+    // TODO: this check should not be here, waiting for cypher to update NaN treatment behaviour
+    //values.exists(d => java.lang.Double.isNaN(d.doubleValue())) should be(right = true)
     val saneValues = values.filter(d => !java.lang.Double.isNaN(d.doubleValue()))
     saneValues should equal(Seq(10, 10.0, 100, Double.PositiveInfinity))
     result should use("NodeIndexSeekByRange")
@@ -427,11 +429,12 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop >= 5 RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlannersReplaceNaNs(query)
+    val result = executeWithAllPlannersAndCompatibilityModeReplaceNaNs(query)
 
     // Then
     val values = result.columnAs[Number]("prop").toSeq
-    values.exists(d => java.lang.Double.isNaN(d.doubleValue())) should be(right = true)
+    // TODO: this check should not be here, waiting for cypher to update NaN treatment behaviour
+    //values.exists(d => java.lang.Double.isNaN(d.doubleValue())) should be(right = true)
     val saneValues = values.filter(d => !java.lang.Double.isNaN(d.doubleValue()))
     saneValues should equal(Seq(5, 5.0, 10, 10.0, 100, Double.PositiveInfinity))
     result should use("NodeIndexSeekByRange")
@@ -460,11 +463,12 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE NOT n.prop < 5 RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlannersReplaceNaNs(query)
+    val result = executeWithAllPlannersAndCompatibilityModeReplaceNaNs(query)
 
     // Then
     val values = result.columnAs[Number]("prop").toSeq
-    values.exists(d => java.lang.Double.isNaN(d.doubleValue())) should be(right = true)
+    // TODO: this check should not be here, waiting for cypher to update NaN treatment behaviour
+    // values.exists(d => java.lang.Double.isNaN(d.doubleValue())) should be(right = true)
     val saneValues = values.filter(d => !java.lang.Double.isNaN(d.doubleValue()))
     saneValues should equal(Seq(5, 5.0, 10, 10.0, 100, Double.PositiveInfinity))
     result should use("NodeIndexSeekByRange")
@@ -491,7 +495,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop < '15' RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result.columnAs[String]("prop").toList should equal(Seq("", "-5", "0", "10", "14whatever"))
@@ -520,7 +524,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop <= '15' RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result.columnAs[String]("prop").toSet should equal(Set("", "-5", "0", "10", "15", "14whatever"))
@@ -551,10 +555,10 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop > '15' RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
-    result.columnAs[String]("prop").toList should equal(Seq(smallValue, "5" ,"5"))
+    result.columnAs[String]("prop").toList should equal(Seq(smallValue, "5", "5"))
     result should use("NodeIndexSeekByRange")
   }
 
@@ -582,7 +586,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop >= '15' RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result.columnAs[String]("prop").toList should equal(Seq("15", smallValue, "5", "5"))
@@ -612,7 +616,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop >= '15' AND n.prop2 > 5 RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
 
@@ -637,7 +641,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop <= 10 AND n.prop > 10 RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result should (use("NodeIndexSeekByRange") and be(empty))
@@ -661,7 +665,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop <= null RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result should (use("NodeIndexSeekByRange") and be(empty))
@@ -691,7 +695,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop >=5 AND n.prop < 10 RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result should (use("NodeIndexSeekByRange") and
@@ -727,7 +731,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop >= 0 AND n.prop >=5 AND n.prop < 10 AND n.prop < 100 RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result should (use("NodeIndexSeekByRange") and
@@ -760,7 +764,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop < '15' AND n.prop >= '15' RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result should (use("NodeIndexSeekByRange") and be(empty))
@@ -788,7 +792,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop < null RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result should (use("NodeIndexSeekByRange") and be(empty))
@@ -818,7 +822,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop >= '10' AND n.prop < '15' RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result should (use("NodeIndexSeekByRange") and
@@ -852,7 +856,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop > '1' AND n.prop >= '10' AND n.prop < '15' AND n.prop <= '14whatever' RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result should (use("NodeIndexSeekByRange") and
@@ -875,7 +879,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop > '1' AND n.prop > 10 RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result should (use("NodeIndexSeekByRange") and be(empty))
@@ -894,7 +898,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop > '1' AND n.prop > 10 RETURN n.prop AS prop"
 
     // When
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     // Then
     result.columnAs[String]("prop").toList should equal(List.empty)
@@ -914,10 +918,10 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop >= '1' AND n.prop > 10 RETURN n.prop AS prop"
 
     an[IllegalArgumentException] should be thrownBy {
-      executeWithAllPlanners(query).toList
+      executeWithAllPlannersAndCompatibilityMode(query).toList
     }
 
-    executeWithAllPlanners(s"EXPLAIN $query") should use("NodeIndexSeekByRange")
+    executeWithAllPlannersAndCompatibilityMode(s"EXPLAIN $query") should use("NodeIndexSeekByRange")
   }
 
   test("should refuse to execute index seeks using inequalities over incomparable types (detected at compile time)") {
@@ -925,7 +929,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop >= [1, 2, 3] RETURN n.prop AS prop"
 
     an[SyntaxException] should be thrownBy {
-      executeWithAllPlanners(query).toList
+      executeWithAllPlannersAndCompatibilityMode(query).toList
     }
   }
 
@@ -939,10 +943,10 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
     val query = "MATCH (n:Label) WHERE n.prop >= {param} RETURN n.prop AS prop"
 
     an[IllegalArgumentException] should be thrownBy {
-      executeWithAllPlanners(query, "param" -> Array[Int](1, 2, 3)).toList
+      executeWithAllPlannersAndCompatibilityMode(query, "param" -> Array[Int](1, 2, 3)).toList
     }
 
-    executeWithAllPlanners(s"EXPLAIN $query") should use("NodeIndexSeekByRange")
+    executeWithAllPlannersAndCompatibilityMode(s"EXPLAIN $query") should use("NodeIndexSeekByRange")
   }
 
   test("should return no rows when executing index seeks using inequalities over incomparable types but also comparing against null") {
@@ -954,7 +958,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
 
     val query = "MATCH (n:Label) WHERE n.prop >= {param} AND n.prop < null RETURN n.prop AS prop"
 
-    executeWithAllPlanners(query, "param" -> Array[Int](1, 2, 3)) should (use("NodeIndexSeekByRange") and be(empty))
+    executeWithAllPlannersAndCompatibilityMode(query, "param" -> Array[Int](1, 2, 3)) should (use("NodeIndexSeekByRange") and be(empty))
   }
 
   test("should plan range index seeks matching characters against properties (coerced to string wrt the inequality)") {
@@ -972,7 +976,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
 
     val query = "MATCH (n:Label) WHERE n.prop >= {param} RETURN n.prop AS prop"
 
-    val result = executeWithAllPlanners(query, "param" -> matchingChar)
+    val result = executeWithAllPlannersAndCompatibilityMode(query, "param" -> matchingChar)
 
     result should (use("NodeIndexSeekByRange") and evaluateTo(List(Map("prop" -> matchingChar), Map("prop" -> matchingChar.toString))))
   }
@@ -992,7 +996,7 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
 
     val query = "MATCH (n:Label) WHERE n.prop >= {param} RETURN n.prop AS prop"
 
-    val result = executeWithAllPlanners(query, "param" -> matchingChar.toString)
+    val result = executeWithAllPlannersAndCompatibilityMode(query, "param" -> matchingChar.toString)
 
     result should (use("NodeIndexSeekByRange") and evaluateTo(List(Map("prop" -> matchingChar), Map("prop" -> matchingChar.toString))))
   }
@@ -1006,9 +1010,112 @@ class NodeIndexSeekByRangeAcceptanceTest extends ExecutionEngineFunSuite with Ne
 
     val query = "MATCH (n:Label) WHERE n.prop < 10 CREATE () RETURN n.prop"
 
-    val result = updateWithBothPlanners(query)
+    val result = updateWithBothPlannersAndCompatibilityMode(query)
 
     result should (use("NodeIndexSeekByRange") and evaluateTo(List(Map("n.prop" -> 1), Map("n.prop" -> 5))))
   }
 
+  test("should not use index seek by range when rhs of > inequality depends on property") {
+    // Given
+    val size = createTestModelBigEnoughToConsiderPickingIndexSeek
+
+    // When
+    val query = "MATCH (a)-->(b:Label) WHERE b.prop > a.prop RETURN count(a) as c"
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
+
+    // Then
+    result should evaluateTo(List(Map("c" -> size / 2)))
+    result shouldNot use("NodeIndexSeekByRange")
+  }
+
+  test("should not use index seek by range when rhs of <= inequality depends on property") {
+    // Given
+    val size = createTestModelBigEnoughToConsiderPickingIndexSeek
+
+    // When
+    val query = "MATCH (a)-->(b:Label) WHERE b.prop <= a.prop RETURN count(a) as c"
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
+
+    // Then
+    result should evaluateTo(List(Map("c" -> size / 2)))
+    result shouldNot use("NodeIndexSeekByRange")
+  }
+
+  test("should not use index seek by range when rhs of >= inequality depends on same property") {
+    // Given
+    val size = createTestModelBigEnoughToConsiderPickingIndexSeek
+
+    // When
+    val query = "MATCH (a)-->(b:Label) WHERE b.prop >= b.prop RETURN count(a) as c"
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
+
+    // Then
+    result should evaluateTo(List(Map("c" -> size)))
+    result shouldNot use("NodeIndexSeekByRange")
+  }
+
+  test("should use index seek by range with literal on the lhs of inequality") {
+    // Given
+    val size = createTestModelBigEnoughToConsiderPickingIndexSeek
+
+    // When
+    val query = s"MATCH (a)-->(b:Label) WHERE ${size / 2} < b.prop RETURN count(a) as c"
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
+
+    // Then
+    assert(size > 20)
+    result should use("NodeIndexSeekByRange")
+    result should evaluateTo(List(Map("c" -> (size / 2))))
+  }
+
+  test("should use index seek by range with double inequalities") {
+    // Given
+    val size = createTestModelBigEnoughToConsiderPickingIndexSeek
+
+    // When
+    val query = s"MATCH (a)-->(b:Label) WHERE 10 < b.prop <= ${size - 10} RETURN count(a) as c"
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
+
+    // Then
+    assert(size > 20)
+    result should use("NodeIndexSeekByRange")
+    result should evaluateTo(List(Map("c" -> (size - 20))))
+  }
+
+  test("should use the index of inequality range scans") {
+    graph.inTx {
+      (1 to 60).foreach { i =>
+        createLabeledNode(Map("gender" -> "male"), "Person")
+      }
+      (1 to 30).foreach { i =>
+        createLabeledNode(Map("gender" -> "female"), "Person")
+      }
+      (1 to 2).foreach { i =>
+        createLabeledNode("Person")
+      }
+    }
+
+    graph.createIndex("Person", "gender")
+
+    val result = graph.execute("CYPHER PROFILE MATCH (a:Person) WHERE a.gender > 'female' RETURN count(a) as c")
+
+    import scala.collection.JavaConverters._
+    result.asScala.toList.map(_.asScala) should equal(List(Map("c" -> 60)))
+    result.getExecutionPlanDescription.toString should include("NodeIndexSeekByRange")
+    result.close()
+  }
+
+  private def createTestModelBigEnoughToConsiderPickingIndexSeek: Int = {
+    val size = 400
+
+    graph.createIndex("Label", "prop")
+
+    (1 to size).foreach { i =>
+      // Half of unlabeled nodes has prop = 0 (for even i:s prop = 0, for odd i:s prop = i)
+      val a = createNode(Map("prop" -> (i & 1) * i))
+      val b = createLabeledNode(Map("prop" -> i), "Label")
+      relate(a, b)
+    }
+    size
+  }
 }

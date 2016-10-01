@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,7 @@ import org.neo4j.cypher.internal.compiler.v3_0.spi.{Operations, QueryContext}
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
 import org.neo4j.graphdb.{Node, Relationship}
 import org.mockito.Mockito
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Collection, Literal}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{ListLiteral, Literal}
 import org.neo4j.cypher.internal.compiler.v3_0.ExecutionContext
 
 class DirectedDirectedRelationshipByIdSeekPipeTest extends CypherFunSuite {
@@ -67,7 +67,7 @@ class DirectedDirectedRelationshipByIdSeekPipeTest extends CypherFunSuite {
     val relName = "a"
     // whens
     val result =
-      DirectedRelationshipByIdSeekPipe(relName, ManySeekArgs(Collection(Literal(42), Literal(21))), to, from)().createResults(queryState)
+      DirectedRelationshipByIdSeekPipe(relName, ManySeekArgs(ListLiteral(Literal(42), Literal(21))), to, from)().createResults(queryState)
 
     // then
     result.toList should equal(List(

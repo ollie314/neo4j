@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,10 +24,10 @@ import org.neo4j.cypher.internal.frontend.v3_0.{InputPosition, SemanticCheckable
 
 sealed trait SetItem extends ASTNode with ASTPhrase with SemanticCheckable
 
-case class SetLabelItem(expression: Expression, labels: Seq[LabelName])(val position: InputPosition) extends SetItem {
+case class SetLabelItem(variable: Variable, labels: Seq[LabelName])(val position: InputPosition) extends SetItem {
   def semanticCheck =
-    expression.semanticCheck(Expression.SemanticContext.Simple) chain
-    expression.expectType(CTNode.covariant)
+    variable.semanticCheck(Expression.SemanticContext.Simple) chain
+    variable.expectType(CTNode.covariant)
 }
 
 sealed trait SetProperty extends SetItem
@@ -39,20 +39,20 @@ case class SetPropertyItem(property: Property, expression: Expression)(val posit
       property.map.expectType(CTNode.covariant | CTRelationship.covariant)
 }
 
-case class SetExactPropertiesFromMapItem(identifier: Identifier, expression: Expression)
+case class SetExactPropertiesFromMapItem(variable: Variable, expression: Expression)
                                         (val position: InputPosition) extends SetProperty {
   def semanticCheck =
-    identifier.semanticCheck(Expression.SemanticContext.Simple) chain
-    identifier.expectType(CTNode.covariant | CTRelationship.covariant) chain
+    variable.semanticCheck(Expression.SemanticContext.Simple) chain
+    variable.expectType(CTNode.covariant | CTRelationship.covariant) chain
     expression.semanticCheck(Expression.SemanticContext.Simple) chain
     expression.expectType(CTMap.covariant)
 }
 
-case class SetIncludingPropertiesFromMapItem(identifier: Identifier, expression: Expression)
+case class SetIncludingPropertiesFromMapItem(variable: Variable, expression: Expression)
                                         (val position: InputPosition) extends SetProperty {
   def semanticCheck =
-    identifier.semanticCheck(Expression.SemanticContext.Simple) chain
-    identifier.expectType(CTNode.covariant | CTRelationship.covariant) chain
+    variable.semanticCheck(Expression.SemanticContext.Simple) chain
+    variable.expectType(CTNode.covariant | CTRelationship.covariant) chain
     expression.semanticCheck(Expression.SemanticContext.Simple) chain
     expression.expectType(CTMap.covariant)
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -17,7 +17,6 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 package org.neo4j.cypher.internal.compiler.v3_0.pipes
 
 import org.neo4j.collection.primitive.{Primitive, PrimitiveLongSet}
@@ -70,11 +69,11 @@ extends PipeWithSource(left, pipeMonitor) with RonjaPipe with NoEffectsPipe {
     name = "TriadicSelection",
     children = TwoChildren(left.planDescription, right.planDescription),
     arguments = Seq(KeyNames(Seq(source, seen, target))),
-    identifiers = identifiers)
+    variables = variables)
 
   override def withEstimatedCardinality(estimated: Double) = copy()(Some(estimated))
 
-  override def symbols: SymbolTable = left.symbols.add(right.symbols.identifiers)
+  override def symbols: SymbolTable = left.symbols.add(right.symbols.variables)
 
   override def dup(sources: List[Pipe]) = {
     val (left :: right :: Nil) = sources

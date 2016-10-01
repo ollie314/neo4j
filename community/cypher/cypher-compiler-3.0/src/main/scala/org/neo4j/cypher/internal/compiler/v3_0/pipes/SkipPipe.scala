@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -46,7 +46,7 @@ case class SkipPipe(source: Pipe, exp: Expression)
 
   def planDescriptionWithoutCardinality = source
     .planDescription
-    .andThen(this.id, "Skip", identifiers, LegacyExpression(exp))
+    .andThen(this.id, "Skip", variables, LegacyExpression(exp))
 
   def symbols: SymbolTable = source.symbols
 

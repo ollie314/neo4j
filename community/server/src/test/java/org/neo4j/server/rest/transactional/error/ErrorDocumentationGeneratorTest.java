@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,13 +19,13 @@
  */
 package org.neo4j.server.rest.transactional.error;
 
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-
 import org.junit.Test;
 
-import static java.util.Arrays.asList;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 
+import static java.util.Arrays.asList;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.stringContainsInOrder;
@@ -45,12 +45,12 @@ public class ErrorDocumentationGeneratorTest
 
         // When
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        PrintStream out = new PrintStream( buf, false, "UTF-8" );
+        PrintStream out = new PrintStream( buf, false, StandardCharsets.UTF_8.name() );
         table.print( out );
         out.flush();
 
         // Then
-        String result = buf.toString( "UTF-8" );
+        String result = buf.toString( StandardCharsets.UTF_8.name() );
         String n = System.lineSeparator();
         String expected =
                 "[options=\"header\", cols=\"COLS\"]" + n +
@@ -74,8 +74,8 @@ public class ErrorDocumentationGeneratorTest
 
         // Then
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        table.print( new PrintStream( buf, true, "UTF-8" ) );
-        String actual = buf.toString( "UTF-8" );
+        table.print( new PrintStream( buf, true, StandardCharsets.UTF_8.name() ) );
+        String actual = buf.toString( StandardCharsets.UTF_8.name() );
 
         // More or less randomly chosen bits of text that should be in the output:
         assertThat( actual, stringContainsInOrder( asList( "DatabaseError", "Rollback" ) ) );
@@ -92,10 +92,10 @@ public class ErrorDocumentationGeneratorTest
 
         // Then
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        table.print( new PrintStream( buf, true, "UTF-8" ) );
-        String actual = buf.toString( "UTF-8" );
+        table.print( new PrintStream( buf, true, StandardCharsets.UTF_8.name() ) );
+        String actual = buf.toString( StandardCharsets.UTF_8.name() );
 
         // More or less randomly chosen bits of text that should be in the output:
-        assertThat( actual, stringContainsInOrder( asList( "UnknownFailure", "An unknown failure occurred" ) ) );
+        assertThat( actual, stringContainsInOrder( asList( "UnknownError", "An unknown error occurred" ) ) );
     }
 }

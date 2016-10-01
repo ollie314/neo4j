@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,10 +21,13 @@ package org.neo4j.cypher.internal.compiler.v3_0
 
 import java.util
 
-import collection.JavaConverters._
 import org.neo4j.cypher.GraphDatabaseFunSuite
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Identifier, ParameterExpression}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{ParameterExpression, Variable}
 import org.neo4j.cypher.internal.compiler.v3_0.mutation.{CreateRelationship, RelationshipEndpoint}
+import org.neo4j.kernel.api.KernelTransaction
+import org.neo4j.kernel.api.security.AccessMode
+
+import scala.collection.JavaConverters._
 
 class CreateRelationshipTest extends GraphDatabaseFunSuite {
 
@@ -34,11 +37,11 @@ class CreateRelationshipTest extends GraphDatabaseFunSuite {
     val b = createNode()
     val javaArray: util.List[Int] = util.Arrays.asList(1, 2, 3)
     val props = Map("props" -> Map("array" -> javaArray))
-    val aEndNode = RelationshipEndpoint(Identifier("a"), Map(), Seq.empty)
-    val bEndNode = RelationshipEndpoint(Identifier("b"), Map(), Seq.empty)
+    val aEndNode = RelationshipEndpoint(Variable("a"), Map(), Seq.empty)
+    val bEndNode = RelationshipEndpoint(Variable("b"), Map(), Seq.empty)
     val relCreator = new CreateRelationship("r", aEndNode, bEndNode, "RELTYPE", Map("*" -> ParameterExpression("props")))
 
-    val tx = graph.beginTx()
+    val tx = graph.beginTransaction( KernelTransaction.Type.explicit, AccessMode.Static.WRITE )
     try {
       val state = QueryStateHelper.queryStateFrom(graph, tx, props)
       val ctx = ExecutionContext.from("a" -> a, "b" -> b)

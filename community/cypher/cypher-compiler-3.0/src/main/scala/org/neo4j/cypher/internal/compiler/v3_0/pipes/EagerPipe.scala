@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -36,12 +36,12 @@ trait NoEffectsPipe {
 case class EagerPipe(src: Pipe)(val estimatedCardinality: Option[Double] = None)(implicit pipeMonitor: PipeMonitor) extends PipeWithSource(src, pipeMonitor) with NoEffectsPipe with RonjaPipe {
   def symbols: SymbolTable = src.symbols
 
-  override def planDescription = src.planDescription.andThen(this.id, "Eager", identifiers)
+  override def planDescription = src.planDescription.andThen(this.id, "Eager", variables)
 
   protected def internalCreateResults(input: Iterator[ExecutionContext], state: QueryState): Iterator[ExecutionContext] =
-    input.toList.toIterator
+    input.toVector.toIterator
 
-  override def planDescriptionWithoutCardinality: InternalPlanDescription = src.planDescription.andThen(this.id, "Eager", identifiers)
+  override def planDescriptionWithoutCardinality: InternalPlanDescription = src.planDescription.andThen(this.id, "Eager", variables)
 
   override def withEstimatedCardinality(estimated: Double) = copy()(Some(estimated))
 

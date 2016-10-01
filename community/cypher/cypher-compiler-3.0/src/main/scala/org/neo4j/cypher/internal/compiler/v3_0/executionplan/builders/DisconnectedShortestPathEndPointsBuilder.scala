@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -55,8 +55,8 @@ class DisconnectedShortestPathEndPointsBuilder extends PlanBuilder {
 
     shortestPathEndPoints.filter {
       case p =>
-        !plan.pipe.symbols.hasIdentifierNamed(p) &&
-        !plan.query.start.exists(startItem => p == startItem.token.identifierName)
+        !plan.pipe.symbols.hasVariableNamed(p) &&
+        !plan.query.start.exists(startItem => p == startItem.token.variableName)
     }
   }
 }

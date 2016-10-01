@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -91,8 +91,8 @@ public interface JobScheduler extends Lifecycle
      * This is an exhaustive list of job types that run in the database. It should be expanded as needed for new groups
      * of jobs.
      *
-     * For now, this does naming only, but it will allow us to define per-group configuration, such as how to handle
-     * failures, shared threads and (later on) affinity strategies.
+     * For now, this does minimal configuration, but opens up for things like common
+     * failure handling, shared threads and affinity strategies.
      */
     class Groups
     {
@@ -145,6 +145,21 @@ public interface JobScheduler extends Lifecycle
          * Network IO threads for the Bolt protocol.
          */
         public static final Group boltNetworkIO = new Group( "BoltNetworkIO", NEW_THREAD );
+
+        /**
+         * Reporting thread for Metrics events
+         */
+        public static final Group metricsEvent = new Group( "MetricsEvent", POOLED );
+
+        /**
+         * UDC timed events.
+         */
+        public static Group udc  = new Group( "UsageDataCollection", POOLED );
+
+        /**
+         * Storage maintenance.
+         */
+        public static Group storageMaintenance = new Group( "StorageMaintenance", POOLED );
     }
 
     interface JobHandle

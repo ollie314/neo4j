@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,6 +21,7 @@ package org.neo4j.cypher.internal.compiler.v3_0.ast.convert.plannerQuery
 
 import org.neo4j.cypher.internal.frontend.v3_0.ast._
 import org.neo4j.cypher.internal.compiler.v3_0.ast.convert.plannerQuery.ExpressionConverters._
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.FreshIdNameGenerator
 import org.neo4j.cypher.internal.compiler.v3_0.planner.CantHandleQueryException
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.{IdName, PatternRelationship, ShortestPathPattern}
 
@@ -43,7 +44,7 @@ object PatternConverters {
 
   implicit class NodePatternConverter(val node: NodePattern) extends AnyVal {
     def destructedNodePattern =
-      DestructResult(nodeIds = Seq(IdName(node.identifier.get.name)), Seq.empty, Seq.empty)
+      DestructResult(nodeIds = Seq(IdName(node.variable.get.name)), Seq.empty, Seq.empty)
   }
 
   implicit class RelationshipChainDestructor(val chain: RelationshipChain) extends AnyVal {
@@ -83,7 +84,7 @@ object PatternConverters {
 
         case (acc, sps@ShortestPaths(element, single)) =>
           val destructedElement = element.destructed
-          val newShortest = ShortestPathPattern(None, destructedElement.rels.head, single)(sps)
+          val newShortest = ShortestPathPattern(Some(IdName(FreshIdNameGenerator.name(sps.position))), destructedElement.rels.head, single)(sps)
           acc.
             addNodeId(destructedElement.nodeIds:_*).
             addShortestPaths(newShortest)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,9 +22,9 @@ package org.neo4j.bolt.v1.runtime.internal.concurrent;
 import java.util.ArrayList;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import org.neo4j.bolt.v1.runtime.Session;
-import org.neo4j.function.Consumer;
 import org.neo4j.kernel.impl.logging.LogService;
 import org.neo4j.logging.Log;
 
@@ -34,14 +34,7 @@ import org.neo4j.logging.Log;
 public class SessionWorker implements Runnable
 {
     /** Poison pill for closing the session and shutting down the worker */
-    public static final Consumer<Session> SHUTDOWN = new Consumer<Session>()
-    {
-        @Override
-        public void accept( Session session )
-        {
-
-        }
-    };
+    public static final Consumer<Session> SHUTDOWN = session1 -> {};
 
     private final static int workQueueSize = Integer.getInteger( "org.neo4j.bolt.workQueueSize", 100 );
 
@@ -122,5 +115,15 @@ public class SessionWorker implements Runnable
         {
             work.accept( session );
         }
+    }
+
+    /**
+     * Interrupt this worker, making it cancel any currently active message
+     * processing, and then ignore all inbound messages until a RESET message
+     * is recieved.
+     */
+    public void interrupt()
+    {
+        session.interrupt();
     }
 }

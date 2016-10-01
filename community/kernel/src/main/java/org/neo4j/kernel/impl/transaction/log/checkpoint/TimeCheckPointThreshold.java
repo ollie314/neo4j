@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,7 @@
  */
 package org.neo4j.kernel.impl.transaction.log.checkpoint;
 
-import org.neo4j.helpers.Clock;
+import java.time.Clock;
 
 public class TimeCheckPointThreshold extends AbstractCheckPointThreshold
 {
@@ -33,7 +33,7 @@ public class TimeCheckPointThreshold extends AbstractCheckPointThreshold
     {
         this.timeMillisThreshold = timeMillisThreshold;
         this.clock = clock;
-        this.nextCheckPointTime = clock.currentTimeMillis() + timeMillisThreshold;
+        this.nextCheckPointTime = clock.millis() + timeMillisThreshold;
 
     }
 
@@ -47,7 +47,7 @@ public class TimeCheckPointThreshold extends AbstractCheckPointThreshold
     protected boolean thresholdReached( long lastCommittedTransactionId )
     {
         return lastCommittedTransactionId > lastCheckPointedTransactionId &&
-               clock.currentTimeMillis() >= nextCheckPointTime;
+               clock.millis() >= nextCheckPointTime;
     }
 
     @Override
@@ -59,7 +59,7 @@ public class TimeCheckPointThreshold extends AbstractCheckPointThreshold
     @Override
     public void checkPointHappened( long transactionId )
     {
-        nextCheckPointTime = clock.currentTimeMillis() + timeMillisThreshold;
+        nextCheckPointTime = clock.millis() + timeMillisThreshold;
         lastCheckPointedTransactionId = transactionId;
     }
 }

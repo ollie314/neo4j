@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,7 +20,7 @@
 package org.neo4j.cypher.internal.compiler.v3_0.mutation
 
 import org.neo4j.cypher.internal.compiler.v3_0._
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Identifier}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Variable}
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{Effects, _}
 import org.neo4j.cypher.internal.compiler.v3_0.helpers.{IsMap, MapSupport}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
@@ -35,24 +35,39 @@ import scala.collection.Map
 case class MapPropertySetAction(element: Expression, mapExpression: Expression, removeOtherProps:Boolean)
   extends SetAction with MapSupport {
 
+  private val needsExclusiveLock = element match {
+    case Variable(elementName) =>
+      Expression.mapExpressionHasPropertyReadDependency(elementName, mapExpression)
+    case _ => false
+  }
+
   def exec(context: ExecutionContext, state: QueryState) = {
     val qtx = state.query
+    val item = element(context)(state)
+    if (item != null) {
+      val ops = item match {
+        case n: Node =>
+          qtx.nodeOps
+        case r: Relationship =>
+          qtx.relationshipOps
+        case x =>
+          throw new CypherTypeException("Expected %s to be a node or a relationship, but it was :`%s`".format(element, x))
+      }
 
-    /* Make the map expression look like a map */
-    val map = mapExpression(context)(state) match {
-      case IsMap(createMapFrom) => propertyKeyMap(qtx, createMapFrom(state.query))
-      case x                    =>
-        throw new CypherTypeException("Expected %s to be a map, but it was :`%s`".format(element, x))
+      val itemId = id(item)
+      if (needsExclusiveLock) ops.acquireExclusiveLock(itemId)
+
+      /* Make the map expression look like a map */
+      val map = mapExpression(context)(state) match {
+        case IsMap(createMapFrom) => propertyKeyMap(qtx, createMapFrom(state.query))
+        case x =>
+          throw new CypherTypeException(s"Expected $mapExpression to be a map, but it was :`$x`")
+      }
+
+      setProperties(qtx, ops, itemId, map)
+
+      if (needsExclusiveLock) ops.releaseExclusiveLock(itemId)
     }
-
-    /*Find the property container we'll be working on*/
-    element(context)(state) match {
-      case n: Node         => setProperties(qtx, qtx.nodeOps, n, map)
-      case r: Relationship => setProperties(qtx, qtx.relationshipOps, r, map)
-      case x               =>
-        throw new CypherTypeException("Expected %s to be a node or a relationship, but it was :`%s`".format(element, x))
-    }
-
     Iterator(context)
   }
 
@@ -74,46 +89,48 @@ case class MapPropertySetAction(element: Expression, mapExpression: Expression, 
     builder.result()
   }
 
-
-  def setProperties[T <: PropertyContainer](qtx: QueryContext, ops: Operations[T], target: T, map: Map[Int, Any]) {
+  def setProperties[T <: PropertyContainer](qtx: QueryContext, ops: Operations[T], itemId: Long, map: Map[Int, Any]) {
     /*Set all map values on the property container*/
     for ( (k, v) <- map) {
       if (null == v)
-        ops.removeProperty(id(target), k)
+        ops.removeProperty(itemId, k)
       else
-        ops.setProperty(id(target), k, makeValueNeoSafe(v))
+        ops.setProperty(itemId, k, makeValueNeoSafe(v))
     }
 
-    val properties = ops.propertyKeyIds(id(target)).filterNot(map.contains).toSet
+    val properties = ops.propertyKeyIds(itemId).filterNot(map.contains).toSet
 
     /*Remove all other properties from the property container*/
     if (removeOtherProps) {
       for (propertyKeyId <- properties) {
-        ops.removeProperty(id(target), propertyKeyId)
+        ops.removeProperty(itemId, propertyKeyId)
       }
     }
   }
 
-  def identifiers = Nil
+  def variables = Nil
 
   def children = Seq(element, mapExpression)
 
-  def rewrite(f: (Expression) => Expression): MapPropertySetAction = MapPropertySetAction(element.rewrite(f), mapExpression.rewrite(f), removeOtherProps)
+  def rewrite(f: (Expression) => Expression): MapPropertySetAction =
+    MapPropertySetAction(element.rewrite(f).asInstanceOf[Variable], mapExpression.rewrite(f), removeOtherProps)
 
   def symbolTableDependencies = element.symbolTableDependencies ++ mapExpression.symbolTableDependencies
 
-  private def id(x: PropertyContainer) = x match {
+  private def id(x: Any) = x match {
     case n: Node         => n.getId
     case r: Relationship => r.getId
+    case _ =>
+      throw new CypherTypeException(s"Expected $x to be a node or a relationship")
   }
 
   def localEffects(symbols: SymbolTable) = element match {
-    case i: Identifier => symbols.identifiers(i.entityName) match {
-      case _: NodeType => Effects(SetAnyNodeProperty)
-      case _: RelationshipType => Effects(WritesAnyRelationshipProperty)
+    case v: Variable => symbols.variables(v.entityName) match {
+      case _: NodeType => Effects(WriteAnyNodeProperty)
+      case _: RelationshipType => Effects(WriteAnyRelationshipProperty)
       case _ => Effects()
     }
-    case _ => Effects(SetAnyNodeProperty, WritesAnyRelationshipProperty)
+    case _ => Effects(WriteAnyNodeProperty, WriteAnyRelationshipProperty)
   }
 
 }

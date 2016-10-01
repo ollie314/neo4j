@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,7 +20,7 @@
 package org.neo4j.cypher.internal.compiler.v3_0.pipes
 
 import org.mockito.Mockito._
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Identifier, Literal}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Variable, Literal}
 import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates.{HasLabel, True}
 import org.neo4j.cypher.internal.compiler.v3_0.commands.values.UnresolvedLabel
 import org.neo4j.cypher.internal.compiler.v3_0.commands.{RelatedTo, ReturnItem}
@@ -58,7 +58,7 @@ class PipeEffectsTest extends CypherFunSuite with TableDrivenPropertyChecks {
   NodeStartPipe(SingleRowPipe(), "n", mock[EntityProducer[Node]])()
     -> Effects(ReadsAllNodes).asLeafEffects,
 
-  LoadCSVPipe(SingleRowPipe(), null, Literal("apa"), "line", None)
+  LoadCSVPipe(SingleRowPipe(), null, Literal("apa"), "line", None)()
     -> Effects(),
 
   EmptyResultPipe(SingleRowPipe())
@@ -67,7 +67,7 @@ class PipeEffectsTest extends CypherFunSuite with TableDrivenPropertyChecks {
   FilterPipe(SingleRowPipe(), True())()
     -> Effects(),
 
-  FilterPipe(SingleRowPipe(), HasLabel(Identifier("a"), UnresolvedLabel("Apa")))()
+  FilterPipe(SingleRowPipe(), HasLabel(Variable("a"), UnresolvedLabel("Apa")))()
     -> Effects(ReadsNodesWithLabels("Apa")),
 
   ColumnFilterPipe(SingleRowPipe(), Seq(ReturnItem(Literal(42), "a")))

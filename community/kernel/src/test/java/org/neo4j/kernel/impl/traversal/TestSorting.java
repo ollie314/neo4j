@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,15 +24,15 @@ import java.util.Collections;
 import java.util.List;
 
 import org.junit.Test;
+
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Transaction;
+import org.neo4j.helpers.collection.Iterables;
 
 import static java.util.Arrays.asList;
 import static org.junit.Assert.assertEquals;
 import static org.neo4j.graphdb.traversal.Evaluators.excludeStartPosition;
 import static org.neo4j.graphdb.traversal.Sorting.endNodeProperty;
-import static org.neo4j.helpers.collection.IteratorUtil.asCollection;
-import static org.neo4j.kernel.Traversal.traversal;
 
 public class TestSorting extends TraversalTestBase
 {
@@ -64,7 +64,7 @@ public class TestSorting extends TraversalTestBase
         try (Transaction tx = beginTx())
         {
             List<Node> nodes = asNodes( abraham, george, dan, zack, andreas, nicholas );
-            assertEquals( nodes, asCollection( traversal().evaluator( excludeStartPosition() )
+            assertEquals( nodes, Iterables.asCollection( getGraphDb().traversalDescription().evaluator( excludeStartPosition() )
                     .sort( endNodeProperty( "name" ) ).traverse( getNodeWithName( me ) ).nodes() ) );
             tx.success();
         }

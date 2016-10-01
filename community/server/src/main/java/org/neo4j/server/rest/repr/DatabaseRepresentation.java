@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,19 +19,20 @@
  */
 package org.neo4j.server.rest.repr;
 
+import org.neo4j.kernel.internal.Version;
+
 import static org.neo4j.server.rest.web.Surface.PATH_BATCH;
 import static org.neo4j.server.rest.web.Surface.PATH_CYPHER;
 import static org.neo4j.server.rest.web.Surface.PATH_EXTENSIONS;
 import static org.neo4j.server.rest.web.Surface.PATH_LABELS;
 import static org.neo4j.server.rest.web.Surface.PATH_NODES;
 import static org.neo4j.server.rest.web.Surface.PATH_NODE_INDEX;
+import static org.neo4j.server.rest.web.Surface.PATH_RELATIONSHIPS;
 import static org.neo4j.server.rest.web.Surface.PATH_RELATIONSHIP_INDEX;
 import static org.neo4j.server.rest.web.Surface.PATH_RELATIONSHIP_TYPES;
 import static org.neo4j.server.rest.web.Surface.PATH_SCHEMA_CONSTRAINT;
 import static org.neo4j.server.rest.web.Surface.PATH_SCHEMA_INDEX;
 import static org.neo4j.server.rest.web.Surface.PATH_TRANSACTION;
-
-import org.neo4j.kernel.Version;
 
 public class DatabaseRepresentation extends MappingRepresentation implements ExtensibleRepresentation
 {
@@ -52,6 +53,7 @@ public class DatabaseRepresentation extends MappingRepresentation implements Ext
     protected void serialize( MappingSerializer serializer )
     {
         serializer.putUri( "node", PATH_NODES );
+        serializer.putUri( "relationship", PATH_RELATIONSHIPS );
         serializer.putUri( "node_index", PATH_NODE_INDEX );
         serializer.putUri( "relationship_index", PATH_RELATIONSHIP_INDEX );
         serializer.putUri( "extensions_info", PATH_EXTENSIONS );
@@ -62,6 +64,6 @@ public class DatabaseRepresentation extends MappingRepresentation implements Ext
         serializer.putUri( "constraints", PATH_SCHEMA_CONSTRAINT );
         serializer.putUri( "transaction", PATH_TRANSACTION );
         serializer.putUri( "node_labels", PATH_LABELS );
-        serializer.putString( "neo4j_version", Version.getKernel().getReleaseVersion() );
+        serializer.putString( "neo4j_version", Version.getNeo4jVersion() );
     }
 }

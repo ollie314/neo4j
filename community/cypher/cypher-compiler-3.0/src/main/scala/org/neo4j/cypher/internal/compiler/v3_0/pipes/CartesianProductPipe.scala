@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,9 +30,9 @@ case class CartesianProductPipe(lhs: Pipe, rhs: Pipe)(val estimatedCardinality: 
 
   def planDescriptionWithoutCardinality =
     new PlanDescriptionImpl(this.id, "CartesianProduct", TwoChildren(lhs.planDescription, rhs.planDescription), Seq.empty,
-      identifiers)
+      variables)
 
-  def symbols: SymbolTable = lhs.symbols.add(rhs.symbols.identifiers)
+  def symbols: SymbolTable = lhs.symbols.add(rhs.symbols.variables)
 
   protected def internalCreateResults(state: QueryState): Iterator[ExecutionContext] = {
     for (outer <- lhs.createResults(state);

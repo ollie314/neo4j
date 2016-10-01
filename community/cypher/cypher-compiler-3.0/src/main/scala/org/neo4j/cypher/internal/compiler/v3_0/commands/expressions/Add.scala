@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,7 +20,7 @@
 package org.neo4j.cypher.internal.compiler.v3_0.commands.expressions
 
 import org.neo4j.cypher.internal.compiler.v3_0._
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.{IsCollection, TypeSafeMathSupport}
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.{IsList, TypeSafeMathSupport}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import org.neo4j.cypher.internal.frontend.v3_0.CypherTypeException
@@ -36,9 +36,9 @@ case class Add(a: Expression, b: Expression) extends Expression with TypeSafeMat
       case (_, null)                          => null
       case (x: Number, y: Number)             => plus(x,y)
       case (x: String, y: String)             => x + y
-      case (IsCollection(x), IsCollection(y)) => x ++ y
-      case (IsCollection(x), y)               => x ++ Seq(y)
-      case (x, IsCollection(y))               => Seq(x) ++ y
+      case (IsList(x), IsList(y)) => x ++ y
+      case (IsList(x), y)               => x ++ Seq(y)
+      case (x, IsList(y))               => Seq(x) ++ y
       case (x: String, y: Number)             => x + y.toString
       case (x: Number, y: String)             => x.toString + y
       case _                                  => throw new CypherTypeException("Don't know how to add `" + aVal.toString + "` and `" + bVal.toString + "`")
@@ -54,7 +54,7 @@ case class Add(a: Expression, b: Expression) extends Expression with TypeSafeMat
     val aT = a.getType(symbols)
     val bT = b.getType(symbols)
 
-    (CTCollection(CTAny).isAssignableFrom(aT), CTCollection(CTAny).isAssignableFrom(bT)) match {
+    (CTList(CTAny).isAssignableFrom(aT), CTList(CTAny).isAssignableFrom(bT)) match {
       case (true, false) => mergeWithCollection(collection = aT, singleElement = bT)
       case (false, true) => mergeWithCollection(collection = bT, singleElement = aT)
       case _ => (aT, bT) match {
@@ -66,9 +66,9 @@ case class Add(a: Expression, b: Expression) extends Expression with TypeSafeMat
   }
 
   private def mergeWithCollection(collection: CypherType, singleElement: CypherType):CypherType= {
-    val collectionType = collection.asInstanceOf[CollectionType]
+    val collectionType = collection.asInstanceOf[ListType]
     val mergedInnerType = collectionType.innerType.leastUpperBound(singleElement)
-    CTCollection(mergedInnerType)
+    CTList(mergedInnerType)
   }
 
   def symbolTableDependencies = a.symbolTableDependencies ++ b.symbolTableDependencies

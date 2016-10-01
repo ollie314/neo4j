@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -106,7 +106,8 @@ class PrettifierParser extends Parser with Base with Strings {
         keyword("FROM") |
         keyword("STARTS WITH") |
         keyword("ENDS WITH") |
-        keyword("CONTAINS")
+        keyword("CONTAINS") |
+        keyword("YIELD")
     ) ~> NonBreakingKeywords
   }
 
@@ -147,7 +148,9 @@ class PrettifierParser extends Parser with Base with Strings {
       keyword("ELSE") |
       keyword("ASSERT") |
       keyword("SCAN") |
-      keyword("UNION")
+      keyword("CALL") |
+      keyword("UNION") |
+      keyword("YIELD")
     ) ~> BreakingKeywords
   }
 
@@ -195,9 +198,13 @@ class PrettifierParser extends Parser with Base with Strings {
     keyword("WHERE") ~> NonBreakingKeywords
   }
 
-  def parse(input: String): Seq[SyntaxToken] = parserunners.ReportingParseRunner(main).run(input) match {
-    case (output: ParsingResult[_]) if output.matched => output.result.get
-    case (output: ParsingResult[Seq[SyntaxToken]])    => throw new SyntaxException(output.parseErrors.mkString("\n"))
+  def parse(input: String): Seq[SyntaxToken] = {
+    val runner = parserunners.ReportingParseRunner(main)
+    val v = runner.run(input)
+    v match {
+      case (output: ParsingResult[_]) if output.matched => output.result.get
+      case (output: ParsingResult[Seq[SyntaxToken]])    => throw new SyntaxException(output.parseErrors.mkString("\n"))
+    }
   }
 }
 

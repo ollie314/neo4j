@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,6 +26,7 @@ import org.mockito.Mockito;
 import java.util.Collections;
 import java.util.Map;
 
+import org.neo4j.bolt.security.auth.Authentication;
 import org.neo4j.bolt.v1.runtime.Session;
 import org.neo4j.bolt.v1.runtime.StatementMetadata;
 import org.neo4j.bolt.v1.runtime.integration.RecordingCallback;
@@ -33,13 +34,15 @@ import org.neo4j.bolt.v1.runtime.integration.SessionMatchers;
 import org.neo4j.bolt.v1.runtime.spi.RecordStream;
 import org.neo4j.bolt.v1.runtime.spi.StatementRunner;
 import org.neo4j.cypher.SyntaxException;
-import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.TransactionFailureException;
-import org.neo4j.kernel.TopLevelTransaction;
+import org.neo4j.kernel.api.security.AccessMode;
+import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.api.exceptions.Status;
 import org.neo4j.kernel.impl.core.ThreadToStatementContextBridge;
+import org.neo4j.kernel.impl.coreapi.InternalTransaction;
+import org.neo4j.kernel.impl.factory.GraphDatabaseFacade;
 import org.neo4j.kernel.impl.logging.NullLogService;
+import org.neo4j.kernel.impl.util.JobScheduler;
 import org.neo4j.udc.UsageData;
 
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -47,21 +50,24 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.neo4j.bolt.v1.runtime.integration.SessionMatchers.failedWith;
+import static org.neo4j.helpers.collection.MapUtil.map;
 
 public class StateMachineErrorTest
 {
     private static final Map<String, Object> EMPTY_PARAMS = Collections.emptyMap();
 
-    private GraphDatabaseService db = mock( GraphDatabaseService.class );
+    private GraphDatabaseFacade db = mock( GraphDatabaseFacade.class );
     private ThreadToStatementContextBridge txBridge = mock( ThreadToStatementContextBridge.class );
     private StatementRunner runner = mock( StatementRunner.class );
-    private Transaction tx = mock( TopLevelTransaction.class );
+    private InternalTransaction tx = mock( InternalTransaction.class );
+    private JobScheduler scheduler = mock(JobScheduler.class );
 
     @Before
     public void setup()
     {
-        Mockito.when( db.beginTx() ).thenReturn( tx );
+        when( db.beginTransaction( any( KernelTransaction.Type.class ), any( AccessMode.class )) ).thenReturn( tx );
     }
 
     @Test
@@ -79,15 +85,15 @@ public class StateMachineErrorTest
         machine.run( "this is nonsense", EMPTY_PARAMS, null, responses );
 
         // Then
-        assertThat( responses.next(), failedWith( Status.Statement.InvalidSyntax ) );
+        assertThat( responses.next(), failedWith( Status.Statement.SyntaxError ) );
         assertThat( machine.state(), equalTo( SessionStateMachine.State.ERROR ) );
     }
 
     private SessionStateMachine newIdleMachine()
     {
-        SessionStateMachine machine = new SessionStateMachine( new UsageData(), db, txBridge, runner, NullLogService
-                .getInstance() );
-        machine.init( "FunClient", null, Session.Callback.NO_OP );
+        SessionStateMachine machine = new SessionStateMachine( "<idle>", new UsageData( scheduler ), db, txBridge, runner, NullLogService
+                .getInstance(), Authentication.NONE );
+        machine.init( "FunClient", map(), null, Session.Callback.NO_OP );
         return machine;
     }
 
@@ -103,7 +109,7 @@ public class StateMachineErrorTest
                 throw new RuntimeException( "Well, that didn't work out very well." );
             }
         };
-        Mockito.when( runner.run( any( SessionState.class ), any( String.class ), any( Map.class ) ) )
+        when( runner.run( any( SessionState.class ), any( String.class ), any( Map.class ) ) )
                 .thenReturn( mock( RecordStream.class ) );
 
         SessionStateMachine machine = newIdleMachine();
@@ -115,7 +121,7 @@ public class StateMachineErrorTest
         machine.pullAll( null, failingCallback );
 
         // Then
-        assertThat( failingCallback.next(), failedWith( Status.General.UnknownFailure ) );
+        assertThat( failingCallback.next(), failedWith( Status.General.UnknownError ) );
         assertThat( machine.state(), equalTo( SessionStateMachine.State.ERROR ) );
     }
 
@@ -144,7 +150,7 @@ public class StateMachineErrorTest
         // Given
         RecordingCallback<StatementMetadata, Object> messages = new RecordingCallback<>();
         RecordingCallback<RecordStream, Object> pulling = new RecordingCallback<>();
-        RecordingCallback<Void, Object> initializing = new RecordingCallback<>();
+        RecordingCallback<Boolean, Object> initializing = new RecordingCallback<>();
 
         SessionStateMachine machine = newIdleMachine();
 
@@ -176,7 +182,7 @@ public class StateMachineErrorTest
         assertThat( machine.state(), equalTo( SessionStateMachine.State.ERROR ) );
         assertThat( pulling.next(), SessionMatchers.ignored() );
 
-        machine.init( "", null, initializing );
+        machine.init( "", Collections.emptyMap(), null, initializing );
         assertThat( machine.state(), equalTo( SessionStateMachine.State.ERROR ) );
         assertThat( initializing.next(), SessionMatchers.ignored() );
 
@@ -185,7 +191,7 @@ public class StateMachineErrorTest
     }
 
     @Test
-    public void testAcknowledgingError() throws Throwable
+    public void testUsingResetToAcknowledgeError() throws Throwable
     {
         // Given
         RecordingCallback<StatementMetadata, Object> messages = new RecordingCallback<>();
@@ -197,7 +203,7 @@ public class StateMachineErrorTest
         machine.commitTransaction(); // No tx to be committed!
 
         // When
-        machine.acknowledgeFailure( null, failures );
+        machine.reset( null, failures );
 
         // Then
         assertThat( failures.next(), SessionMatchers.success() );
@@ -215,8 +221,8 @@ public class StateMachineErrorTest
     {
         // Given
         RecordingCallback messages = new RecordingCallback();
-        SessionStateMachine machine = new SessionStateMachine( new UsageData(), db, txBridge, runner, NullLogService
-                .getInstance() );
+        SessionStateMachine machine = new SessionStateMachine( "<test>", new UsageData( scheduler ), db, txBridge, runner, NullLogService
+                .getInstance(), Authentication.NONE );
 
         // When
         machine.run( "RETURN 1", null, null, messages );

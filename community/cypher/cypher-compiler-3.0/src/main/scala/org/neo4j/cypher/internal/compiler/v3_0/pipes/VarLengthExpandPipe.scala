@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,6 +28,20 @@ import org.neo4j.graphdb.{Node, Relationship}
 
 import scala.collection.mutable
 
+trait VarlenghtPredicate {
+  def filterNode(row: ExecutionContext, state:QueryState)(node: Node): Boolean
+  def filterRelationship(row: ExecutionContext, state:QueryState)(rel: Relationship): Boolean
+}
+
+object VarlenghtPredicate {
+
+  val NONE = new VarlenghtPredicate {
+
+    override def filterNode(row: ExecutionContext, state:QueryState)(node: Node): Boolean = true
+
+    override def filterRelationship(row: ExecutionContext, state:QueryState)(rel: Relationship): Boolean = true
+  }
+}
 case class VarLengthExpandPipe(source: Pipe,
                                fromName: String,
                                relName: String,
@@ -38,7 +52,7 @@ case class VarLengthExpandPipe(source: Pipe,
                                min: Int,
                                max: Option[Int],
                                nodeInScope: Boolean,
-                               filteringStep: (ExecutionContext, QueryState, Relationship) => Boolean = (_, _, _) => true)
+                               filteringStep: VarlenghtPredicate = VarlenghtPredicate.NONE)
                               (val estimatedCardinality: Option[Double] = None)
                               (implicit pipeMonitor: PipeMonitor) extends PipeWithSource(source, pipeMonitor) with RonjaPipe {
 
@@ -50,11 +64,12 @@ case class VarLengthExpandPipe(source: Pipe,
     new Iterator[(Node, Seq[Relationship])] {
       def next(): (Node, Seq[Relationship]) = {
         val (node, rels) = stack.pop()
-        if (rels.length < maxDepth.getOrElse(Int.MaxValue)) {
+        if (rels.length < maxDepth.getOrElse(Int.MaxValue) && filteringStep.filterNode(row,state)(node)) {
           val relationships: Iterator[Relationship] = state.query.getRelationshipsForIds(node, dir, types.types(state.query))
-          relationships.filter(filteringStep.curried(row)(state)).foreach { rel =>
+
+          relationships.filter(filteringStep.filterRelationship(row, state)).foreach { rel =>
             val otherNode = rel.getOtherNode(node)
-            if (!rels.contains(rel)) {
+            if (!rels.contains(rel) && filteringStep.filterNode(row,state)(otherNode)) {
               stack.push((otherNode, rels :+ rel))
             }
           }
@@ -101,9 +116,9 @@ case class VarLengthExpandPipe(source: Pipe,
     row.getOrElse(name, throw new InternalException(s"Expected to find a node at $name but found nothing"))
 
   def planDescriptionWithoutCardinality = source.planDescription.
-    andThen(this.id, s"VarLengthExpand(${if (nodeInScope) "Into" else "All"})", identifiers, ExpandExpression(fromName, relName, types.names, toName, projectedDir, varLength = true))
+    andThen(this.id, s"VarLengthExpand(${if (nodeInScope) "Into" else "All"})", variables, ExpandExpression(fromName, relName, types.names, toName, projectedDir, varLength = true))
 
-  def symbols = source.symbols.add(toName, CTNode).add(relName, CTCollection(CTRelationship))
+  def symbols = source.symbols.add(toName, CTNode).add(relName, CTList(CTRelationship))
 
   override def localEffects = Effects(ReadsAllNodes, ReadsAllRelationships)
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,19 +19,21 @@
  */
 package org.neo4j.backup;
 
+import java.io.File;
+
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.factory.GraphDatabaseFactory;
-import org.neo4j.helpers.Pair;
+import org.neo4j.helpers.collection.Pair;
 import org.neo4j.test.subprocess.SubProcess;
 
-public class ServerProcess extends SubProcess<ServerInterface, Pair<String, String>> implements ServerInterface
+public class ServerProcess extends SubProcess<ServerInterface, Pair<File, String>> implements ServerInterface
 {
     private volatile transient GraphDatabaseService db;
 
     @Override
-    public void startup( Pair<String, String> config ) throws Throwable
+    public void startup( Pair<File, String> config ) throws Throwable
     {
-        String storeDir = config.first();
+        File storeDir = config.first();
         String backupConfigValue = config.other();
         if ( backupConfigValue == null )
         {

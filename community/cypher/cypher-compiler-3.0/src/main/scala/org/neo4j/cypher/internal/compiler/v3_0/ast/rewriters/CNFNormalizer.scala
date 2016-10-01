@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,7 +22,9 @@ package org.neo4j.cypher.internal.compiler.v3_0.ast.rewriters
 import org.neo4j.cypher.internal.compiler.v3_0._
 import org.neo4j.cypher.internal.frontend.v3_0.ast._
 import org.neo4j.cypher.internal.frontend.v3_0.Rewritable._
-import org.neo4j.cypher.internal.frontend.v3_0.{Rewriter, bottomUp, inSequence, repeat}
+import org.neo4j.cypher.internal.frontend.v3_0.Foldable._
+import org.neo4j.cypher.internal.frontend.v3_0.helpers.fixedPoint
+import org.neo4j.cypher.internal.frontend.v3_0.{Rewriter, bottomUp, inSequence}
 
 case class CNFNormalizer()(implicit monitor: AstRewritingMonitor) extends Rewriter {
 
@@ -44,7 +46,7 @@ case class deMorganRewriter()(implicit monitor: AstRewritingMonitor) extends Rew
 
   private val step = Rewriter.lift {
     case p@Xor(expr1, expr2) =>
-      And(Or(expr1, expr2)(p.position), Not(And(expr1.endoRewrite(copyIdentifiers), expr2.endoRewrite(copyIdentifiers))(p.position))(p.position))(p.position)
+      And(Or(expr1, expr2)(p.position), Not(And(expr1.endoRewrite(copyVariables), expr2.endoRewrite(copyVariables))(p.position))(p.position))(p.position)
     case p@Not(And(exp1, exp2)) =>
       Or(Not(exp1)(p.position), Not(exp2)(p.position))(p.position)
     case p@Not(Or(exp1, exp2)) =>
@@ -54,12 +56,30 @@ case class deMorganRewriter()(implicit monitor: AstRewritingMonitor) extends Rew
   private val instance: Rewriter = repeatWithSizeLimit(bottomUp(step))(monitor)
 }
 
+object distributeLawsRewriter {
+  // converting from DNF to CNF is exponentially expensive, so we only do it for a small amount of clauses
+  // see https://en.wikipedia.org/wiki/Conjunctive_normal_form#Conversion_into_CNF
+  val DNF_CONVERSION_LIMIT = 8
+}
+
 case class distributeLawsRewriter()(implicit monitor: AstRewritingMonitor) extends Rewriter {
-  def apply(that: AnyRef): AnyRef = instance(that)
+  def apply(that: AnyRef): AnyRef = {
+    if (dnfCounts(that) < distributeLawsRewriter.DNF_CONVERSION_LIMIT)
+      instance(that)
+    else {
+      monitor.abortedRewritingDueToLargeDNF(that)
+      that
+    }
+  }
+
+  private def dnfCounts(value: Any) = value.treeFold(1) {
+    case Or(lhs, a: And) => acc => (acc + 1, Some(identity))
+    case Or(a: And, rhs) => acc => (acc + 1, Some(identity))
+  }
 
   private val step = Rewriter.lift {
-    case p@Or(exp1, And(exp2, exp3)) => And(Or(exp1, exp2)(p.position), Or(exp1.endoRewrite(copyIdentifiers), exp3)(p.position))(p.position)
-    case p@Or(And(exp1, exp2), exp3) => And(Or(exp1, exp3)(p.position), Or(exp2, exp3.endoRewrite(copyIdentifiers))(p.position))(p.position)
+    case p@Or(exp1, And(exp2, exp3)) => And(Or(exp1, exp2)(p.position), Or(exp1.endoRewrite(copyVariables), exp3)(p.position))(p.position)
+    case p@Or(And(exp1, exp2), exp3) => And(Or(exp1, exp3)(p.position), Or(exp2, exp3.endoRewrite(copyVariables))(p.position))(p.position)
   }
 
   private val instance: Rewriter = repeatWithSizeLimit(bottomUp(step))(monitor)
@@ -84,7 +104,7 @@ object flattenBooleanOperators extends Rewriter {
     })(p.position)
   }
 
-  private val instance = inSequence(bottomUp(firstStep), repeat(bottomUp(secondStep)))
+  private val instance = inSequence(bottomUp(firstStep), fixedPoint(bottomUp(secondStep)))
 }
 
 object simplifyPredicates extends Rewriter {
@@ -103,5 +123,5 @@ object simplifyPredicates extends Rewriter {
     case p@Ors(exps) if exps.size == 1    => exps.head
   }
 
-  private val instance = repeat(bottomUp(step))
+  private val instance = fixedPoint(bottomUp(step))
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,11 +19,10 @@
  */
 package org.neo4j.cypher.docgen.cookbook
 
-import org.junit.Test
 import org.junit.Assert._
+import org.junit.Test
 import org.neo4j.cypher.docgen.DocumentingTestBase
-import org.neo4j.visualization.graphviz.GraphStyle
-import org.neo4j.visualization.graphviz.AsciiDocSimpleStyle
+import org.neo4j.visualization.graphviz.{AsciiDocSimpleStyle, GraphStyle}
 
 class NewsFeedTest extends DocumentingTestBase {
 

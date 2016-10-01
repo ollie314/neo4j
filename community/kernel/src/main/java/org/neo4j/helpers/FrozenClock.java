@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,18 +19,32 @@
  */
 package org.neo4j.helpers;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * @deprecated please use {@link java.time.Clock#fixed(Instant, ZoneId)} instead
+ */
+@Deprecated
 public class FrozenClock implements Clock
 {
-    private final long millis;
+    private final long nanos;
 
-    public FrozenClock( long millis )
+    public FrozenClock( long time, TimeUnit timeUnit )
     {
-        this.millis = millis;
+        this.nanos = timeUnit.toNanos( time );
     }
 
     @Override
     public long currentTimeMillis()
     {
-        return millis;
+        return TimeUnit.NANOSECONDS.toMillis( nanos );
+    }
+
+    @Override
+    public long nanoTime()
+    {
+        return nanos;
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,19 +21,21 @@ package org.neo4j.cypher.internal.compiler.v3_0.spi
 
 import java.io._
 import java.net.{CookieHandler, CookieManager, CookiePolicy, URL}
-import java.nio.charset.Charset
+import java.nio.charset.StandardCharsets
 import java.nio.file.Paths
 import java.util.zip.{GZIPInputStream, InflaterInputStream}
 
 import org.neo4j.csv.reader._
 import org.neo4j.cypher.internal.compiler.v3_0.TaskCloser
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.ExternalResource
+import org.neo4j.cypher.internal.compiler.v3_0.pipes.ExternalCSVResource
 import org.neo4j.cypher.internal.frontend.v3_0.LoadExternalResourceException
+import sun.net.www.protocol.http.HttpURLConnection
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.control.Breaks._
 
 object CSVResources {
+  val NEO_USER_AGENT_PREFIX = "NeoLoadCSV_"
   val DEFAULT_FIELD_TERMINATOR: Char = ','
   val DEFAULT_BUFFER_SIZE: Int =  2 * 1024 * 1024
   val DEFAULT_QUOTE_CHAR: Char = '"'
@@ -49,16 +51,16 @@ object CSVResources {
   }
 }
 
-class CSVResources(cleaner: TaskCloser) extends ExternalResource {
+class CSVResources(cleaner: TaskCloser) extends ExternalCSVResource {
 
   def getCsvIterator(url: URL, fieldTerminator: Option[String] = None): Iterator[Array[String]] = {
     val inputStream = openStream(url)
 
     val reader = if (url.getProtocol == "file") {
-      Readables.files(Charset.forName("UTF-8"), Paths.get(url.toURI).toFile)
+      Readables.files(StandardCharsets.UTF_8, Paths.get(url.toURI).toFile)
+    } else {
+      Readables.wrap(inputStream, url.toString, StandardCharsets.UTF_8)
     }
-    else
-      Readables.wrap(inputStream, url.toString, Charset.forName("UTF-8"))
     val delimiter: Char = fieldTerminator.map(_.charAt(0)).getOrElse(CSVResources.DEFAULT_FIELD_TERMINATOR)
     val seeker = CharSeekers.charSeeker(reader, CSVResources.defaultConfig, true)
     val extractor = new Extractors(delimiter).string()
@@ -76,7 +78,7 @@ class CSVResources(cleaner: TaskCloser) extends ExternalResource {
           while (seeker.seek(mark, intDelimiter)) {
             val success = seeker.tryExtract(mark, extractor)
             buffer += (if (success) extractor.value() else null)
-            if (mark.isEndOfLine) break
+            if (mark.isEndOfLine) break()
         }}
 
         if (buffer.isEmpty) {
@@ -104,6 +106,7 @@ class CSVResources(cleaner: TaskCloser) extends ExternalResource {
       if (url.getProtocol.startsWith("http"))
         TheCookieManager.ensureEnabled()
       val con = url.openConnection()
+      con.setRequestProperty("User-Agent", s"${CSVResources.NEO_USER_AGENT_PREFIX}${HttpURLConnection.userAgent}")
       con.setConnectTimeout(connectionTimeout)
       con.setReadTimeout(readTimeout)
       val stream = con.getInputStream

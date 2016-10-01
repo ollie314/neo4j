@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -17,19 +17,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 package org.neo4j.kernel.api.constraints;
 
-import org.neo4j.graphdb.DynamicLabel;
-import org.neo4j.graphdb.schema.ConstraintDefinition;
-import org.neo4j.graphdb.schema.ConstraintType;
-import org.neo4j.kernel.api.ReadOperations;
-import org.neo4j.kernel.api.StatementTokenNameLookup;
 import org.neo4j.kernel.api.TokenNameLookup;
 import org.neo4j.kernel.api.exceptions.schema.CreateConstraintFailureException;
-import org.neo4j.kernel.impl.coreapi.schema.InternalSchemaActions;
-import org.neo4j.kernel.impl.coreapi.schema.NodePropertyExistenceConstraintDefinition;
 
+/**
+ * Description of constraint enforcing nodes to contain a certain property.
+ */
 public class NodePropertyExistenceConstraint extends NodePropertyConstraint
 {
     public NodePropertyExistenceConstraint( int labelId, int propertyKeyId )
@@ -50,24 +45,9 @@ public class NodePropertyExistenceConstraint extends NodePropertyConstraint
     }
 
     @Override
-    public ConstraintDefinition asConstraintDefinition( InternalSchemaActions schemaActions, ReadOperations readOps )
-    {
-        StatementTokenNameLookup lookup = new StatementTokenNameLookup( readOps );
-        return new NodePropertyExistenceConstraintDefinition( schemaActions,
-                DynamicLabel.label( lookup.labelGetName( labelId ) ),
-                lookup.propertyKeyGetName( propertyKeyId ) );
-    }
-
-    @Override
-    public ConstraintType type()
-    {
-        return ConstraintType.NODE_PROPERTY_EXISTENCE;
-    }
-
-    @Override
     public String userDescription( TokenNameLookup tokenNameLookup )
     {
-        String labelName = tokenNameLookup.labelGetName( labelId );
+        String labelName = labelName( tokenNameLookup );
         String boundIdentifier = labelName.toLowerCase();
         return String.format( "CONSTRAINT ON ( %s:%s ) ASSERT exists(%s.%s)",
                 boundIdentifier, labelName, boundIdentifier, tokenNameLookup.propertyKeyGetName( propertyKeyId ) );

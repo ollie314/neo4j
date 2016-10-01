@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,7 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.executionplan.builders
 
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Identifier, Literal, Property, RangeFunction}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Variable, Literal, Property, RangeFunction}
 import org.neo4j.cypher.internal.compiler.v3_0.commands.values.TokenType.PropertyKey
 import org.neo4j.cypher.internal.compiler.v3_0.commands.{ReturnItem, Slice, SortItem}
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{ExecutionPlanInProgress, PartiallySolvedQuery}
@@ -58,7 +58,7 @@ class EmptyResultBuilderTest extends BuilderTest {
   test("should reject when sorting should be done") {
     // Given
     val query = PartiallySolvedQuery().copy(
-      sort = Seq(Unsolved(SortItem(Property(Identifier("x"), PropertyKey("y")), ascending = true))),
+      sort = Seq(Unsolved(SortItem(Property(Variable("x"), PropertyKey("y")), ascending = true))),
       extracted = true
     )
 

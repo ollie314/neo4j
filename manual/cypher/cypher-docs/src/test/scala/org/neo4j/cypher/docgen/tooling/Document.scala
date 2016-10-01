@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,7 +22,7 @@ package org.neo4j.cypher.docgen.tooling
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionResult
 import org.neo4j.cypher.internal.compiler.v3_0.prettifier.Prettifier
 import org.neo4j.cypher.internal.frontend.v3_0.InternalException
-import org.neo4j.graphdb.GraphDatabaseService
+import org.neo4j.kernel.GraphDatabaseQueryService
 
 case class ContentWithInit(init: Seq[String], queryResultPlaceHolder: QueryResultPlaceHolder) {
 
@@ -86,6 +86,20 @@ case class Heading(s: String) extends Content with NoQueries {
 
 case class Paragraph(s: String) extends Content with NoQueries {
   override def asciiDoc(level: Int) = s + NewLine + NewLine
+}
+
+case class Function(syntax: String, arguments: Seq[(String, String)]) extends Content with NoQueries {
+  override def asciiDoc(level: Int) = {
+    val formatted = arguments.map(x => "* _" + x._1 + ":_ " + x._2).mkString("", NewLine, NewLine + NewLine)
+    String.format( """*Syntax:* %s
+                    |
+                    |*Arguments:*
+                    |
+                    |%s""".stripMargin,
+                   syntax,
+                   formatted)
+  }
+
 }
 
 object Admonitions {
@@ -164,33 +178,40 @@ case class QueryResultTable(columns: Seq[String], rows: Seq[ResultRow], footer: 
     val cols = if (columns.isEmpty) 1 else columns.size
     val rowsOutput: String = if (rows.isEmpty) s"$cols+|(empty result)"
     else {
-      val columnHeader = columns.map(_.replace("|", "\\|")).mkString("|", "|", "")
+      val columnHeader = columns.map(escape).mkString("|", "|", "")
       val tableRows =
         rows.
-        map(row => row.values.map(_.toString.replace("|", "\\|")).
-        mkString("||", "|", "")).
-        mkString("\n")
+          map(row => row.values.map(escape).mkString("||", "|", "")).
+          mkString("\n")
 
       s"$columnHeader\n$tableRows"
     }
 
-   s""".Result
-      |[role="queryresult",options="${header}footer",cols="$cols*<m"]
-      ||===
-      |$rowsOutput
-      |$cols+|$footer
-      ||===
-      |
-      |""".stripMargin
+    // Remove trailing white space, then add <space>+ at the end of all rows (except the last one)
+    val footerRows = footer.replaceAll("\\s+$", "").replaceAllLiterally("\n", " +\n")
+
+    s""".Result
+       |[role="queryresult",options="${header}footer",cols="$cols*<m"]
+       ||===
+       |$rowsOutput
+       |$cols+d|$footerRows
+       ||===
+       |
+       |""".stripMargin
   }
+
+  private def escape(in: String): String =
+    in.replace("|", "\\|").
+       replace("{", "\\{").
+       replace("}", "\\}")
 }
 
 case class Query(queryText: String, assertions: QueryAssertions, myInitQueries: Seq[String], content: Content) extends Content {
 
   override def asciiDoc(level: Int) = {
     val inner = Prettifier(queryText)
-    s"""[source,cypher]
-       |.Query
+    s""".Query
+       |[source,cypher]
        |----
        |$inner
        |----
@@ -202,15 +223,48 @@ case class Query(queryText: String, assertions: QueryAssertions, myInitQueries: 
     content.runnableContent(initQueries ++ myInitQueries :+ queryText)
 }
 
+case class ConsoleData(globalInitQueries: Seq[String], localInitQueries: Seq[String], query: String) extends Content with NoQueries {
+  override def asciiDoc(level: Int): String = {
+    val globalInitQueryRows = globalInitQueries.mkString(NewLine)
+    val localInitQueryRows = localInitQueries.mkString(NewLine)
+    val initQueries =
+      if (globalInitQueryRows.isEmpty && localInitQueryRows.isEmpty)
+          "none"
+        else
+          globalInitQueryRows + "\n" + localInitQueryRows
+    s"""ifndef::nonhtmloutput[]
+       |[subs="none"]
+       |++++
+       |<formalpara role="cypherconsole">
+       |<title>Try this query live</title>
+       |<para><database><![CDATA[
+       |$initQueries
+       |]]></database><command><![CDATA[
+       |$query
+       |]]></command></para></formalpara>
+       |++++
+       |endif::nonhtmloutput[]
+       |
+       |""".stripMargin
+  }
+}
+
 case class GraphViz(s: String) extends Content with NoQueries {
   override def asciiDoc(level: Int) = s + NewLine + NewLine
 }
 
-case class Section(heading: String, initQueries: Seq[String], content: Content) extends Content {
+case class ExecutionPlan(planString: String) extends Content with NoQueries {
+  override def asciiDoc(level: Int) = {
+    s".Query plan\n[source]\n----\n$planString\n----\n\n"
+  }
+}
+
+case class Section(heading: String, id: Option[String], initQueries: Seq[String], content: Content) extends Content {
 
   override def asciiDoc(level: Int) = {
+    val idRef = id.map("[[" + _ + "]]\n").getOrElse("")
     val levelIndent = (0 to (level + 1)).map(_ => "=").mkString
-    levelIndent + " " + heading + NewLine + NewLine + content.asciiDoc(level + 1)
+    idRef + levelIndent + " " + heading + NewLine + NewLine + content.asciiDoc(level + 1)
   }
 
   override def runnableContent(initQueries: Seq[String]): Seq[ContentWithInit] = content.runnableContent(initQueries ++ this.initQueries)
@@ -220,7 +274,7 @@ sealed trait QueryAssertions
 
 case class ResultAssertions(f: InternalExecutionResult => Unit) extends QueryAssertions
 
-case class ResultAndDbAssertions(f: (InternalExecutionResult, GraphDatabaseService) => Unit) extends QueryAssertions
+case class ResultAndDbAssertions(f: (InternalExecutionResult, GraphDatabaseQueryService) => Unit) extends QueryAssertions
 
 case object NoAssertions extends QueryAssertions
 
@@ -233,6 +287,9 @@ trait QueryResultPlaceHolder {
   override def runnableContent(initQueries: Seq[String]) = Seq(ContentWithInit(initQueries, this))
 }
 
+// NOTE: These must _not_ be case classes, otherwise they will not be compared by identity
 class TablePlaceHolder(val assertions: QueryAssertions) extends Content with QueryResultPlaceHolder
-class GraphVizPlaceHolder() extends Content with QueryResultPlaceHolder
+class GraphVizPlaceHolder(val options: String) extends Content with QueryResultPlaceHolder
 class ErrorPlaceHolder() extends Content with QueryResultPlaceHolder
+class ExecutionPlanPlaceHolder extends Content with QueryResultPlaceHolder
+class ProfileExecutionPlanPlaceHolder(val assertions: QueryAssertions) extends Content with QueryResultPlaceHolder

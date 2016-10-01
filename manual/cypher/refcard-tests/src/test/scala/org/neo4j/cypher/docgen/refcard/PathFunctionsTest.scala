@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,14 +19,14 @@
  */
 package org.neo4j.cypher.docgen.refcard
 
-import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionResult
-import org.neo4j.cypher.{ ExecutionResult, QueryStatisticsTestSupport }
+import org.neo4j.cypher.QueryStatisticsTestSupport
 import org.neo4j.cypher.docgen.RefcardTest
+import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionResult
 
 class PathFunctionsTest extends RefcardTest with QueryStatisticsTestSupport {
   val graphDescription = List("ROOT KNOWS A", "A:Person KNOWS B:Person", "B KNOWS C:Person", "C KNOWS ROOT")
   val title = "Path Functions"
-  val css = "general c3-3 c4-3 c5-4 c6-6"
+  val css = "general c3-3 c4-2 c5-5 c6-5"
   override val linkId = "query-functions-collection"
 
   override def assert(name: String, result: InternalExecutionResult) {
@@ -41,7 +41,7 @@ class PathFunctionsTest extends RefcardTest with QueryStatisticsTestSupport {
         assertStats(result, nodesCreated = 0)
         assert(result.toList.size === 0)
       case "friends" =>
-        assertStats(result, nodesCreated = 0, propertiesSet = 1)
+        assertStats(result, nodesCreated = 0, propertiesWritten = 1)
         assert(result.toList.size === 0)
     }
   }
@@ -63,7 +63,7 @@ class PathFunctionsTest extends RefcardTest with QueryStatisticsTestSupport {
 
   def text = """
 ###assertion=returns-one
-MATCH path=(n)-->(m)
+MATCH path = (n)-->(m)
 WHERE id(n) = %A% AND id(m) = %B%
 RETURN
 
@@ -73,40 +73,33 @@ length(path)
 The number of relationships in the path.
 
 ###assertion=returns-one
-MATCH path=(n)-->(m)
+MATCH path = (n)-->(m)
 WHERE id(n) = %A% AND id(m) = %B%
 RETURN
 
 nodes(path)
 ###
 
-The nodes in the path as a collection.
+The nodes in the path as a list.
 
 ###assertion=returns-one
-MATCH path=(n)-->(m)
+MATCH path = (n)-->(m)
 WHERE id(n) = %A% AND id(m) = %B%
 RETURN
 
 relationships(path)
 ###
 
-The relationships in the path as a collection.
+The relationships in the path as a list.
 
 ###assertion=returns-one
-MATCH path=(n)-->(m)
+MATCH path = (n)-->(m)
 WHERE id(n) = %A% AND id(m) = %B%
-RETURN extract(x IN nodes(path) | x.prop)
+RETURN
+
+extract(x IN nodes(path) | x.prop)
 ###
 
-Assign a path and process its nodes.
-
-###assertion=friends
-MATCH path = (begin) -[*]-> (end)
-WHERE id(begin) = %A% AND id(end) = %B%
-FOREACH
-  (n IN rels(path) | SET n.marked = TRUE)
-###
-
-Execute a mutating operation for each relationship of a path.
+Extract properties from the nodes in a path.
 """
 }

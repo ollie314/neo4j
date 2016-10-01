@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,24 +19,25 @@
  */
 package org.neo4j.internal.cypher.acceptance
 
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.PathImpl
 import org.neo4j.cypher._
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.PathImpl
 import org.neo4j.graphdb._
+import org.neo4j.helpers.collection.Iterators.single
 
 import scala.collection.JavaConverters._
 
 class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTestSupport with NewPlannerTestSupport {
 
   test("make sure non-existing nodes are not returned") {
-    executeWithAllPlanners("match (n) where id(n) = 10 return n") should be(empty)
-    executeWithAllPlanners("match ()-[r]->() where id(r) = 10 return r") should be(empty)
+    executeWithAllPlannersAndCompatibilityMode("match (n) where id(n) = 10 return n") should be(empty)
+    executeWithAllPlannersAndCompatibilityMode("match ()-[r]->() where id(r) = 10 return r") should be(empty)
   }
 
   test("should fail if columnAs refers to unknown column") {
     val n1 = createNode()
     val n2 = createNode()
     val r = relate(n1, n2)
-    val result = executeWithAllPlanners("MATCH (n)-[r]->() RETURN n, r")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (n)-[r]->() RETURN n, r")
     a[NotFoundException] should be thrownBy result.columnAs("m")
   }
 
@@ -48,7 +49,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     relate(root, child2)
 
     val query = "MATCH (:Root {name:'x'})-->(i:TextNode) WHERE i.id =~ 'te.*' RETURN i"
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     result.toList should equal(List(Map("i" -> child1)))
   }
@@ -60,8 +61,8 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     relate(root, child1)
     relate(root, child2)
 
-    val query = "MATCH (:Root {name:'x'})-->(i) WHERE has(i.id) OR i.id =~ 'te.*' RETURN i"
-    val result = executeWithAllPlanners(query)
+    val query = "MATCH (:Root {name:'x'})-->(i) WHERE exists(i.id) OR i.id =~ 'te.*' RETURN i"
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     result.columnAs("i").toSet[Node] should equal(Set(child1, child2))
   }
@@ -73,7 +74,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
 
     val query = "MATCH (:Root {name:'x'})-->(i:Child) WHERE i.id > 'te' RETURN i"
 
-    a [IncomparableValuesException] should be thrownBy executeWithAllPlanners(query)
+    an [IncomparableValuesException] should be thrownBy executeWithAllPlannersAndCompatibilityMode(query)
   }
 
   test("exceptions should be thrown if rows are kept through OR'd predicates") {
@@ -81,9 +82,9 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     val child = createLabeledNode(Map("id" -> 0), "Child")
     relate(root, child)
 
-    val query = "MATCH (:Root {name:'x'})-->(i) WHERE NOT has(i.id) OR i.id > 'te' RETURN i"
+    val query = "MATCH (:Root {name:'x'})-->(i) WHERE NOT exists(i.id) OR i.id > 'te' RETURN i"
 
-    a [IncomparableValuesException] should be thrownBy executeWithAllPlanners(query)
+    an [IncomparableValuesException] should be thrownBy executeWithAllPlannersAndCompatibilityMode(query)
   }
 
   test("combines aggregation and named path") {
@@ -106,101 +107,6 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     ))
   }
 
-  test("a merge following a delete of multiple rows should not match on a deleted entity") {
-    // GIVEN
-    val a = createLabeledNode("A")
-    val branches = 2
-    val b = (0 until branches).map(n => createLabeledNode(Map("value" -> n), "B"))
-    val c = (0 until branches).map(_ => createLabeledNode("C"))
-    (0 until branches).foreach(n => {
-      relate(a, b(n))
-      relate(b(n), c(n))
-    })
-
-    val query =
-      """
-        |MATCH (a:A) -[ab]-> (b:B) -[bc]-> (c:C)
-        |DELETE ab, bc, b, c
-        |MERGE (newB:B { value: 1 })
-        |MERGE (a) -[:REL]->  (newB)
-        |MERGE (newC:C)
-        |MERGE (newB) -[:REL]-> (newC)
-      """.stripMargin
-
-    // WHEN
-    executeWithRulePlanner(query)
-
-    // THEN
-    assert(true)
-  }
-
-  test("identifiers of deleted nodes should not be able to cause errors in later merge actions that do not refer to them") {
-    // GIVEN
-    val a = createLabeledNode("A")
-    val b = createLabeledNode("B")
-    val c = createLabeledNode("C")
-    relate(a, b)
-    relate(b, c)
-
-    val query =
-      """
-        |MATCH (a:A) -[ab]-> (b:B) -[bc]-> (c:C)
-        |DELETE ab, bc, b, c
-        |MERGE (newB:B)
-        |MERGE (a) -[:REL]->  (newB)
-        |MERGE (newC:C)
-        |MERGE (newB) -[:REL]-> (newC)
-      """.stripMargin
-
-    // WHEN
-    executeWithRulePlanner(query)
-
-    // THEN query should not crash
-    assert(true)
-  }
-
-  test("merges should not be able to match on deleted nodes") {
-    // GIVEN
-    val node1 = createLabeledNode(Map("value" -> 1), "A")
-    val node2 = createLabeledNode(Map("value" -> 2), "A")
-
-    val query = """
-                  |MATCH (a:A)
-                  |DELETE a
-                  |MERGE (a2:A)
-                  |RETURN a2
-                """.stripMargin
-
-    // WHEN
-    val result = executeWithRulePlanner(query)
-
-    // THEN
-    result.toList should not contain Map("a2" -> node1)
-    result.toList should not contain Map("a2" -> node2)
-  }
-
-  test("merges should not be able to match on deleted relationships") {
-    // GIVEN
-    val a = createNode()
-    val b = createNode()
-    val rel1 = relate(a, b, "T")
-    val rel2 = relate(a, b, "T")
-
-    val query = """
-                  |MATCH (a)-[t:T]->(b)
-                  |DELETE t
-                  |MERGE (a)-[t2:T]->(b)
-                  |RETURN t2
-                """.stripMargin
-
-    // WHEN
-    val result = executeWithRulePlanner(query)
-
-    // THEN
-    result.toList should not contain Map("t2" -> rel1)
-    result.toList should not contain Map("t2" -> rel2)
-  }
-
   test("comparing numbers should work nicely") {
     val n1 = createNode(Map("x" -> 50))
     val n2 = createNode(Map("x" -> 50l))
@@ -208,7 +114,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     val n4 = createNode(Map("x" -> 50d))
     val n5 = createNode(Map("x" -> 50.toByte))
 
-    val result = executeWithAllPlanners(
+    val result = executeWithAllPlannersAndCompatibilityMode(
       s"match (n) where n.x < 100 return n"
     )
 
@@ -221,7 +127,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     createNode(Map("x" -> "Zzing"))
     createNode(Map("x" -> 'Ä'))
 
-    val result = executeWithAllPlanners(
+    val result = executeWithAllPlannersAndCompatibilityMode(
       s"match (n) where n.x < 'Z' AND n.x < 'z' return n"
     )
 
@@ -233,7 +139,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     relate("A" -> "CONTAINS" -> "B")
     relate("B" -> "FRIEND" -> "C")
 
-    val result = executeWithAllPlanners("match (a {name:'A'})-[:CONTAINS*0..1]->(b)-[:FRIEND*0..1]->(c) return a,b,c")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a {name:'A'})-[:CONTAINS*0..1]->(b)-[:FRIEND*0..1]->(c) return a,b,c")
 
     result.toSet should equal(
       Set(
@@ -250,7 +156,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     relate("C" -> "CONTAINS" -> "D")
 
 
-    val result = executeWithAllPlanners("match (a {name:'A'})-[*]->(x) return x")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a {name:'A'})-[*]->(x) return x")
 
     result.toSet should equal(
       Set(
@@ -265,7 +171,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     val r1 = relate("A" -> "KNOWS" -> "B")
     val r2 = relate("B" -> "KNOWS" -> "C")
 
-    val result = executeWithAllPlanners("match p=(n {name:'A'})-[:KNOWS*..2]->(x) return p")
+    val result = executeWithAllPlannersAndCompatibilityMode("match p=(n {name:'A'})-[:KNOWS*..2]->(x) return p")
 
     result.columnAs[Path]("p").toList should equal(List(
       PathImpl(node("A"), r1, node("B")),
@@ -278,7 +184,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     val r1 = relate("A" -> "KNOWS" -> "B")
     val r2 = relate("B" -> "KNOWS" -> "C")
 
-    val result = executeWithAllPlanners("match p=(n {name:'A'})-[:KNOWS*..]->(x) return p")
+    val result = executeWithAllPlannersAndCompatibilityMode("match p=(n {name:'A'})-[:KNOWS*..]->(x) return p")
 
     result.columnAs[Path]("p").toList should equal(List(
       PathImpl(node("A"), r1, node("B")),
@@ -291,7 +197,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     createNodes("A", "B", "C")
     relate("A" -> "KNOWS" -> "B")
 
-    val result = executeWithAllPlannersAndRuntimes("MATCH (a {name:'A'}),(c {name:'C'}) match (a)-->(b) return a,b,c").toSet
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a {name:'A'}),(c {name:'C'}) match (a)-->(b) return a,b,c").toSet
 
     result should equal (Set(Map("a" -> node("A"), "b" -> node("B"), "c" -> node("C"))))
   }
@@ -300,7 +206,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     createNodes("A", "B")
     val r1 = relate("A" -> "KNOWS" -> "B")
 
-    val result = executeWithAllPlanners("match p = shortestPath((a {name:'A'})-[*..15]-(b {name:'B'})) return p").
+    val result = executeWithAllPlannersAndCompatibilityMode("match p = shortestPath((a {name:'A'})-[*..15]-(b {name:'B'})) return p").
       toList.head("p").asInstanceOf[Path]
 
     graph.inTx {
@@ -317,7 +223,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     relate("A" -> "KNOWS" -> "B")
 
     //Checking that we don't get an exception
-    executeWithAllPlanners("match p = shortestPath((a {name:'A'})-[*]-(b {name:'B'})) return p").toList
+    executeWithAllPlannersAndCompatibilityMode("match p = shortestPath((a {name:'A'})-[*]-(b {name:'B'})) return p").toList
   }
 
   test("should not traverse same relationship twice in shortest path") {
@@ -326,7 +232,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     relate("A" -> "KNOWS" -> "B")
 
     // when
-    val result = executeWithAllPlanners("MATCH (a{name:'A'}), (b{name:'B'}) MATCH p=allShortestPaths((a)-[:KNOWS|KNOWS*]->(b)) RETURN p").
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a{name:'A'}), (b{name:'B'}) MATCH p=allShortestPaths((a)-[:KNOWS|KNOWS*]->(b)) RETURN p").
       toList
 
     // then
@@ -345,7 +251,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     relate(nodeA, nodeB)
     relate(nodeB, nodeC)
 
-    val result = executeWithAllPlanners("match p = shortestpath((a:A)-[r*..1]->(n)) return nodes(p) as nodes").columnAs[List[Node]]("nodes").toSet
+    val result = executeWithAllPlannersAndCompatibilityMode("match p = shortestpath((a:A)-[r*..1]->(n)) return nodes(p) as nodes").columnAs[List[Node]]("nodes").toSet
     result should equal(Set(List(nodeA, nodeB)))
   }
 
@@ -359,7 +265,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     relate(nodeA, nodeB)
     relate(nodeB, nodeC)
 
-    val result = executeWithAllPlanners("match p = shortestpath((a:A)-[r*0..1]->(n)) return nodes(p) as nodes").columnAs[List[Node]]("nodes").toSet
+    val result = executeWithAllPlannersAndCompatibilityMode("match p = shortestpath((a:A)-[r*0..1]->(n)) return nodes(p) as nodes").columnAs[List[Node]]("nodes").toSet
     result should equal(Set(List(nodeA), List(nodeA, nodeB)))
   }
 
@@ -373,7 +279,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     relate(nodeA, nodeB)
     relate(nodeB, nodeC)
 
-    val result = executeWithAllPlanners("match p = shortestpath((a:A)-[r*0..]->(n)) return nodes(p) as nodes").columnAs[List[Node]]("nodes").toSet
+    val result = executeWithAllPlannersAndCompatibilityMode("match p = shortestpath((a:A)-[r*0..]->(n)) return nodes(p) as nodes").columnAs[List[Node]]("nodes").toSet
     result should equal(Set(List(nodeA), List(nodeA, nodeB), List(nodeA, nodeB, nodeC)))
   }
 
@@ -387,7 +293,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     relate(nodeA, nodeB)
     relate(nodeB, nodeC)
 
-    val result = executeWithAllPlanners("match p = shortestpath((a:A)-[r*1..1]->(n)) return nodes(p) as nodes").columnAs[List[Node]]("nodes").toSet
+    val result = executeWithAllPlannersAndCompatibilityMode("match p = shortestpath((a:A)-[r*1..1]->(n)) return nodes(p) as nodes").columnAs[List[Node]]("nodes").toSet
     result should equal(Set(List(nodeA, nodeB)))
   }
 
@@ -401,7 +307,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     relate(nodeA, nodeB)
     relate(nodeB, nodeC)
 
-    val result = executeWithAllPlanners("match p = shortestpath((a:A)-[r]->(n)) return nodes(p) as nodes").columnAs[List[Node]]("nodes").toSet
+    val result = executeWithAllPlannersAndCompatibilityMode("match p = shortestpath((a:A)-[r]->(n)) return nodes(p) as nodes").columnAs[List[Node]]("nodes").toSet
     result should equal(Set(List(nodeA, nodeB)))
   }
 
@@ -417,7 +323,7 @@ class MatchAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTe
     relate(b, x1, "REL", "BX1")
     relate(b, x2, "REL", "BX2")
 
-    val result = executeWithAllPlannersAndRuntimes( """
+    val result = executeWithAllPlannersAndCompatibilityMode( """
 MATCH (a {name:'A'}), (b {name:'B'})
 MATCH (a)-[rA]->(x)<-[rB]->(b)
 return x""")
@@ -441,7 +347,7 @@ return x""")
     relate(c, x1, "REL", "CX1")
     relate(c, x2, "REL", "CX2")
 
-    val result = executeWithAllPlannersAndRuntimes( """
+    val result = executeWithAllPlannersAndCompatibilityMode( """
 MATCH (a {name:'A'}), (b {name:'B'}), (c {name:'C'})
 match (a)-[rA]->(x), (b)-[rB]->(x), (c)-[rC]->(x)
 return x""")
@@ -480,7 +386,7 @@ return x""")
     relate(c, g)
     relate(c, j)
 
-    val result = executeWithAllPlannersAndRuntimes( """
+    val result = executeWithAllPlannersAndCompatibilityMode( """
 MATCH (a {name:'a'}), (b {name:'b'}), (c {name:'c'})
 match (a)-->(x), (b)-->(x), (c)-->(x)
 return x""")
@@ -496,7 +402,7 @@ return x""")
     relate(a, b, "knows", "rAB")
     relate(b, c, "knows", "rBC")
 
-    val result = executeWithAllPlanners( """
+    val result = executeWithAllPlannersAndCompatibilityMode( """
 match (a {name:'A'})
 optional match (a)-[r1:knows]->(friend)-[r2:knows]->(foaf)
 return foaf""")
@@ -510,7 +416,7 @@ return foaf""")
     val c = createNode("C")
     val r = relate(a, b, "X")
 
-    val result = executeWithAllPlanners( """
+    val result = executeWithAllPlannersAndCompatibilityMode( """
 match (a {name:'A'}), (x) where x.name in ['B', 'C']
 optional match p = (a)-->(x)
 return x, p""")
@@ -529,7 +435,7 @@ return x, p""")
     val c = createNode("C")
     val r = relate(a, b, "X")
 
-    val result = executeWithAllPlanners( """
+    val result = executeWithAllPlannersAndCompatibilityMode( """
 match (a {name:'A'}), (x) where x.name in ['B', 'C']
 optional match p = shortestPath((a)-[*]->(x))
 return x, p""").toSet
@@ -545,7 +451,7 @@ return x, p""").toSet
     val b = createNode("B")
     relate(a, b, "X")
 
-    val result = executeWithAllPlanners( """
+    val result = executeWithAllPlannersAndCompatibilityMode( """
 match (a {name:'A'})
 optional match p = (a)-->(b)-[*]->(c)
 return p""")
@@ -560,7 +466,7 @@ return p""")
     val b = createNode("B")
     relate(a, b, "X")
 
-    val result = executeWithAllPlanners( """
+    val result = executeWithAllPlannersAndCompatibilityMode( """
 match (a {name:'A'})
 optional match p = (a)-->(b)-[*]->(c)
 return p""")
@@ -576,7 +482,7 @@ return p""")
     val c = createNode("C")
     val r = relate(a, b, "X")
 
-    val result = executeWithAllPlanners( """
+    val result = executeWithAllPlannersAndCompatibilityMode( """
 match (a {name:'A'}), (x) where x.name in ['B', 'C']
 optional match p = (a)-[r*]->(x)
 return r, x, p""")
@@ -594,7 +500,7 @@ return r, x, p""")
     val r1 = relate(a, b)
     val r2 = relate(b, c)
 
-    val result = executeWithAllPlanners( """
+    val result = executeWithAllPlannersAndCompatibilityMode( """
 match (a) where id(a) = 0
 match (a)-[r*2]->(c)
 return r""")
@@ -605,7 +511,7 @@ return r""")
   test("should handle all shortest paths") {
     createDiamond()
 
-    val result = executeWithAllPlanners( """
+    val result = executeWithAllPlannersAndCompatibilityMode( """
 match (a), (d) where id(a) = 0 and id(d) = 3
 match p = allShortestPaths( (a)-[*]->(d) )
 return p""")
@@ -622,7 +528,7 @@ return p""")
     val rac = relate(a, c)
     val rcd = relate(c, d)
 
-    val result = executeWithAllPlanners( """
+    val result = executeWithAllPlannersAndCompatibilityMode( """
 match p = (root)-[*]->(leaf)
 where id(root) = 0 and not((leaf)-->())
 return p, leaf""")
@@ -639,7 +545,7 @@ return p, leaf""")
     val c = createNode("B")
     relate(a, b)
 
-    val result = executeWithAllPlanners("""
+    val result = executeWithAllPlannersAndCompatibilityMode("""
 MATCH (a {name:'A'}), (other {name:'B'})
 WHERE NOT (a)-->(other)
 RETURN other""")
@@ -651,7 +557,7 @@ RETURN other""")
     val a = createNode()
     val b = createNode("Mark")
     relate(a, b)
-    val result = executeWithAllPlannersAndRuntimes( """
+    val result = executeWithAllPlannersAndCompatibilityMode( """
 MATCH (n)-->(x0)
 OPTIONAL MATCH (x0)-->(x1)
 WHERE x1.foo = 'bar'
@@ -665,7 +571,7 @@ RETURN x0.name""")
     val c = createNode("C")
     relate(a, b)
     relate(a, c)
-    val result = executeWithAllPlanners( s"""
+    val result = executeWithAllPlannersAndCompatibilityMode( s"""
 MATCH (a)-->(b)
 WHERE id(b) = ${b.getId}
 OPTIONAL MATCH (a)-->(c)
@@ -678,7 +584,7 @@ RETURN a.name""")
     val n = createNode()
     val a = createNode()
     relate(a, n, "Admin")
-    val result = executeWithAllPlanners( "match (n) -[:Admin]- (b) where id(n) = 0 return id(n), id(b)")
+    val result = executeWithAllPlannersAndCompatibilityMode( "match (n) -[:Admin]- (b) where id(n) = 0 return id(n), id(b)")
     result.toSet should equal (Set(Map("id(n)" -> 0, "id(b)" -> 1)))
   }
 
@@ -686,7 +592,7 @@ RETURN a.name""")
     val a = createNode()
     val b = createNode()
 
-    val result = executeWithAllPlannersAndRuntimes("match (n) return n")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (n) return n")
     result.columnAs[Node]("n").toSet should equal (Set(a, b))
   }
 
@@ -694,7 +600,7 @@ RETURN a.name""")
     val a = createNode()
     val b = createNode()
 
-    val result = executeWithAllPlannersAndRuntimes("MATCH (a), (b) where a <> b return a,b")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a), (b) where a <> b return a,b")
     result.toSet should equal (Set(Map("a" -> b, "b" -> a), Map("b" -> b, "a" -> a)))
   }
 
@@ -706,7 +612,7 @@ RETURN a.name""")
     relate(a, b)
     relate(b, c)
 
-    val result = executeWithAllPlannersAndRuntimes("match (a)-->(b), (b)-->(b) return b")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a)-->(b), (b)-->(b) return b")
 
     result shouldBe 'isEmpty
   }
@@ -719,7 +625,7 @@ RETURN a.name""")
     relate(a, b)
 
 
-    val result = executeWithAllPlannersAndRuntimes("match (a)-[r]->(a) return r")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a)-[r]->(a) return r")
     result.toList should equal (List(Map("r" -> r)))
   }
 
@@ -731,7 +637,7 @@ RETURN a.name""")
     relate(a, x, "A")
     relate(b, x, "B")
 
-    val result = executeWithAllPlanners("match (a) where (a)-[:A|:B]->() return a").toSet
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a) where (a)-[:A|:B]->() return a").toSet
 
     result should equal (Set(Map("a" -> a), Map("a" -> b)))
   }
@@ -742,7 +648,7 @@ RETURN a.name""")
 
     relate(a, x, "A")
 
-    val result = executeWithAllPlanners("match (a) where (a)-[:A]->() return a").toList
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a) where (a)-[:A]->() return a").toList
 
     result should equal (List(Map("a" -> a)))
   }
@@ -751,7 +657,7 @@ RETURN a.name""")
     createNode()
     val b = createNode()
 
-    val result = executeWithAllPlanners("""
+    val result = executeWithAllPlannersAndCompatibilityMode("""
 match (a), (b) where id(a) = 0 and id(b) = 1
 optional match (a)-[r*]-(b) where r is null and a <> b
 return b
@@ -765,7 +671,7 @@ return b
     val b = createNode()
     relate(a, b, "REL")
 
-    val result = executeWithAllPlannersAndRuntimes("match (a)-[:REL|:REL]->(b) return b").toList
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a)-[:REL|:REL]->(b) return b").toList
 
     result should equal (List(Map("b" -> b)))
   }
@@ -782,8 +688,8 @@ return b
 
     val q = "match (a)-->(n)-->(m) where id(a) = 0 return n.x, count(*) order by n.x"
 
-    val resultWithoutLimit = executeWithAllPlanners(q)
-    val resultWithLimit = executeWithAllPlanners(q + " limit 1000")
+    val resultWithoutLimit = executeWithAllPlannersAndCompatibilityMode(q)
+    val resultWithLimit = executeWithAllPlannersAndCompatibilityMode(q + " limit 1000")
 
     resultWithoutLimit.toList should equal (resultWithLimit.toList)
   }
@@ -793,7 +699,7 @@ return b
     val n = createNode("foo" -> "bar")
 
     // when
-    val result = executeWithAllPlannersAndRuntimes("match (n) where n.foo = 'bar' return n")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (n) where n.foo = 'bar' return n")
 
     // then
     result.toList should equal (List(Map("n" -> n)))
@@ -804,7 +710,7 @@ return b
 
     val q = "match (n) where id(n) = 0 optional match (n)-->(x) where (x)-->() return x"
 
-    executeWithAllPlanners(q).toList should equal (List(Map("x" -> null)))
+    executeWithAllPlannersAndCompatibilityMode(q).toList should equal (List(Map("x" -> null)))
   }
 
   test("issue 479 has relationship to specific node") {
@@ -812,20 +718,20 @@ return b
 
     val q = "match (n) where id(n) = 0 optional match (n)-[:FRIEND]->(x) where not (n)-[:BLOCK]->(x) return x"
 
-    executeWithAllPlanners(q).toList should equal (List(Map("x" -> null)))
+    executeWithAllPlannersAndCompatibilityMode(q).toList should equal (List(Map("x" -> null)))
   }
 
   test("length on filter") {
     val q = "match (n) optional match (n)-[r]->(m) return length(filter(x in collect(r) WHERE x <> null)) as cn"
 
-    executeWithAllPlanners(q).toList should equal (List(Map("cn" -> 0)))
+    executeWithAllPlannersAndCompatibilityMode(q).toList should equal (List(Map("cn" -> 0)))
   }
 
   test("path Direction Respected") {
     val a = createNode()
     val b = createNode()
     relate(a, b)
-    val result = executeWithAllPlanners("match p=(b)<--(a) return p").toList.head("p").asInstanceOf[Path]
+    val result = executeWithAllPlannersAndCompatibilityMode("match p=(b)<--(a) return p").toList.head("p").asInstanceOf[Path]
 
     result.startNode() should equal (b)
     result.endNode() should equal (a)
@@ -835,33 +741,33 @@ return b
     val a = createNode()
     val b = createNode()
     relate(a, b)
-    val result = executeWithAllPlanners("match (a), (b) where id(a) = 0 and id(b) = 1 match p=shortestPath((b)<-[*]-(a)) return p").toList.head("p").asInstanceOf[Path]
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a), (b) where id(a) = 0 and id(b) = 1 match p=shortestPath((b)<-[*]-(a)) return p").toList.head("p").asInstanceOf[Path]
 
     result.startNode() should equal (b)
     result.endNode() should equal (a)
   }
 
   test("no match in optional match should produce null values") {
-    val result = executeWithAllPlanners("OPTIONAL MATCH (n) RETURN n")
+    val result = executeWithAllPlannersAndCompatibilityMode("OPTIONAL MATCH (n) RETURN n")
 
     result.toList should equal (List(Map("n" ->  null)))
   }
 
   test("should preserve the original matched values if optional match matches nothing") {
     val n = createNode()
-    val result = executeWithAllPlannersAndRuntimes("MATCH (n) OPTIONAL MATCH (n)-[:NOT_EXIST]->(x) RETURN n, x")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (n) OPTIONAL MATCH (n)-[:NOT_EXIST]->(x) RETURN n, x")
 
     result.toList should equal (List(Map("n" -> n, "x" -> null)))
   }
 
   test("empty collect should not contain null") {
     val n = createNode()
-    val result = executeWithAllPlanners("MATCH (n) OPTIONAL MATCH (n)-[:NOT_EXIST]->(x) RETURN n, collect(x)")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (n) OPTIONAL MATCH (n)-[:NOT_EXIST]->(x) RETURN n, collect(x)")
 
     result.toList should equal (List(Map("n" -> n, "collect(x)" -> List())))
   }
 
-  test("can rewrite has property") {
+  test("can rewrite exists property") {
     val a = createNode()
     val r1 = createNode("foo" -> "bar")
     val r2 = createNode()
@@ -872,14 +778,14 @@ return b
     relate(r1, b)
     relate(r2, b)
 
-    val result = executeWithAllPlanners("MATCH (a)-->(r)-->(b) WHERE id(a) = 0 AND has(r.foo) RETURN r")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a)-->(r)-->(b) WHERE id(a) = 0 AND exists(r.foo) RETURN r")
 
     result.toList should equal (List(Map("r" -> r1)))
   }
 
   test("can handle paths with multiple unnamed nodes") {
     createNode()
-    val result = executeWithAllPlanners("MATCH (a)<--()<--(b)-->()-->(c) WHERE id(a) = 0 RETURN c")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a)<--()<--(b)-->()-->(c) WHERE id(a) = 0 RETURN c")
 
     result shouldBe 'isEmpty
   }
@@ -887,7 +793,7 @@ return b
   test("path expressions should work with on the fly predicates") {
     val refNode = createNode()
     relate(refNode, createNode("name" -> "Neo"))
-    val result = executeWithAllPlanners("MATCH (a)-->(b) WHERE (b)-->() AND id(a) = {self} RETURN b", "self" -> refNode.getId)
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a)-->(b) WHERE (b)-->() AND id(a) = {self} RETURN b", "self" -> refNode.getId)
 
     result shouldBe 'isEmpty
   }
@@ -902,7 +808,7 @@ return b
     relate(a, b2)
 
     // when
-    val result = executeWithAllPlannersAndRuntimes(s"MATCH (a)-->(b:foo) RETURN b")
+    val result = executeWithAllPlannersAndCompatibilityMode(s"MATCH (a)-->(b:foo) RETURN b")
 
     // THEN
     result.toList should equal (List(Map("b" -> b1)))
@@ -916,7 +822,7 @@ return b
     relate(createLabeledNode("A"), createLabeledNode("A"))
 
     // when
-    val result = executeWithAllPlannersAndRuntimes(s"MATCH (a:A)-[r]->(b:B) RETURN r")
+    val result = executeWithAllPlannersAndCompatibilityMode(s"MATCH (a:A)-[r]->(b:B) RETURN r")
 
     // THEN
     result.toSet should equal (Set(Map("r" -> r)))
@@ -933,7 +839,7 @@ return b
     createLabeledNode("C")
 
     // when
-    val result = executeWithAllPlannersAndRuntimes(s"MATCH (a:A:B:C) RETURN a")
+    val result = executeWithAllPlannersAndCompatibilityMode(s"MATCH (a:A:B:C) RETURN a")
 
     // THEN
     result.toList should equal (List(Map("a" -> n)))
@@ -945,7 +851,7 @@ return b
     createLabeledNode("Foo")
 
     // when
-    val result = executeWithAllPlannersAndRuntimes(s"MATCH (n) RETURN (n:Foo)")
+    val result = executeWithAllPlannersAndCompatibilityMode(s"MATCH (n) RETURN (n:Foo)")
 
     // THEN
     result.toSet should equal (Set(Map("(n:Foo)" -> true), Map("(n:Foo)" -> false)))
@@ -970,7 +876,7 @@ return b
     val thing = m("thing").asInstanceOf[Node]
 
     // when
-    val result = executeWithAllPlanners(
+    val result = executeWithAllPlannersAndCompatibilityMode(
       """MATCH (advertiser) -[:adv_has_product] ->(out) -[:ap_has_value] -> (red) <-[:aa_has_value]- (a)
        WHERE id(advertiser) = {1} AND id(a) = {2}
        AND red.name = 'red' and out.name = 'product1'
@@ -990,7 +896,7 @@ return b
     graph.createIndex("Person", "name")
 
     // when
-    val result = executeWithAllPlannersAndRuntimes("MATCH (n:Person)-->() USING INDEX n:Person(name) WHERE n.name = 'Jacob' RETURN n")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (n:Person)-->() USING INDEX n:Person(name) WHERE n.name = 'Jacob' RETURN n")
 
     // then
     result.toList should equal (List(Map("n" -> jake)))
@@ -1007,7 +913,7 @@ return b
     graph.createIndex("Person", "name")
 
     // when
-    val result = executeWithAllPlanners("MATCH (n:Person)-->() USING INDEX n:Person(name) WHERE n.name STARTS WITH 'Jac' RETURN n")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (n:Person)-->() USING INDEX n:Person(name) WHERE n.name STARTS WITH 'Jac' RETURN n")
 
     // then
     result.toList should equal (List(Map("n" -> jake)))
@@ -1024,7 +930,7 @@ return b
     graph.createIndex("Person", "name")
 
     // when
-    val result = executeWithAllPlanners("MATCH (n:Person)-->() USING INDEX n:Person(name) WHERE n.name > 'Jac' RETURN n")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (n:Person)-->() USING INDEX n:Person(name) WHERE n.name > 'Jac' RETURN n")
 
     // then
     result.toList should equal (List(Map("n" -> jake)))
@@ -1039,7 +945,7 @@ return b
     relate(jake, createNode())
 
     // when
-    val result = executeWithAllPlannersAndRuntimes("MATCH (n:Person)-->() WHERE n.name = 'Jacob' RETURN n")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (n:Person)-->() WHERE n.name = 'Jacob' RETURN n")
 
     // then
     result.toList should equal (List(Map("n" -> jake)))
@@ -1047,7 +953,7 @@ return b
 
   test("id in where leads to empty result") {
     // when
-    val result = executeWithAllPlanners("MATCH (n) WHERE id(n)=1337 RETURN n")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (n) WHERE id(n)=1337 RETURN n")
 
     // then DOESN'T THROW EXCEPTION
     result shouldBe 'isEmpty
@@ -1062,7 +968,7 @@ return b
     relate(a, c)
 
     // when asked for a cartesian product of the same match twice
-    val result = executeWithAllPlannersAndRuntimes("match (a)-->(b) match (c)-->(d) return a,b,c,d")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a)-->(b) match (c)-->(d) return a,b,c,d")
 
     // then we should find 2 x 2 = 4 result matches
 
@@ -1078,8 +984,8 @@ return b
     val node = createLabeledNode("FOO")
 
     graph.inTx {
-      executeWithRulePlanner("MATCH (n:FOO) SET n = { first: 'value' }")
-      executeWithRulePlanner("MATCH (n:FOO) SET n = { second: 'value' }")
+      executeWithCostPlannerOnly("MATCH (n:FOO) SET n = { first: 'value' }")
+      executeWithCostPlannerOnly("MATCH (n:FOO) SET n = { second: 'value' }")
     }
 
     graph.inTx {
@@ -1089,7 +995,7 @@ return b
   }
 
   test("should not fail if asking for a non existent node id with WHERE") {
-    executeWithAllPlanners("match (n) where id(n) in [0,1] return n").toList
+    executeWithAllPlannersAndCompatibilityMode("match (n) where id(n) in [0,1] return n").toList
     // should not throw an exception
   }
 
@@ -1113,7 +1019,6 @@ return b
     assert(!result.columnAs[Node]("o").contains(null), "Result should not contain nulls")
   }
 
-
   test("should handle queries that cant be index solved because expressions lack dependencies") {
     // given
     val a = createLabeledNode(Map("property" -> 42), "Label")
@@ -1126,7 +1031,7 @@ return b
     graph.createIndex("Label", "property")
 
     // when
-    val result = executeWithAllPlannersAndRuntimes("match (a:Label)-->(b:Label) where a.property = b.property return a, b")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a:Label)-->(b:Label) where a.property = b.property return a, b")
 
     // then does not throw exceptions
     result.toList should equal (List(Map("a" -> a, "b" -> b)))
@@ -1140,7 +1045,7 @@ return b
     graph.createIndex("Label", "property")
 
     // when
-    val result = executeWithAllPlannersAndRuntimes("match (a:Label), (b:Label) where a.property = b.property return *")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a:Label), (b:Label) where a.property = b.property return *")
 
     // then does not throw exceptions
     assert(result.toSet === Set(
@@ -1150,21 +1055,6 @@ return b
       Map("a" -> b, "b" -> a),
       Map("a" -> e, "b" -> e)
     ))
-  }
-
-  test("should use the index for property existence queries (with has) for cost when asked for it") {
-    // given
-    val n = createLabeledNode(Map("email" -> "me@mine"), "User")
-    val m = createLabeledNode(Map("email" -> "you@yours"), "User")
-    val p = createLabeledNode(Map("emailx" -> "youtoo@yours"), "User")
-    graph.createIndex("User", "email")
-
-    // when
-    val result = executeWithCostPlannerOnly("MATCH (n:User) USING INDEX n:User(email) WHERE has(n.email) RETURN n")
-
-    // then
-    result.toList should equal(List(Map("n" -> n), Map("n" -> m)))
-    result.executionPlanDescription().toString should include("NodeIndexScan")
   }
 
   test("should use the index for property existence queries (with exists) for cost when asked for it") {
@@ -1214,7 +1104,7 @@ return b
     val nodes = setupIndexScanTest()
 
     // when
-    val result = executeWithCostPlannerOnly("MATCH (n:User) WHERE has(n.email) RETURN n")
+    val result = executeWithCostPlannerOnly("MATCH (n:User) WHERE exists(n.email) RETURN n")
 
     // then
     result.toList should equal(List(Map("n" -> nodes(0)), Map("n" -> nodes(1))))
@@ -1226,7 +1116,7 @@ return b
     val nodes = setupIndexScanTest()
 
     // when
-    val result = executeWithCostPlannerOnly("MATCH (n:User) WHERE has(n.name) RETURN n")
+    val result = executeWithCostPlannerOnly("MATCH (n:User) WHERE exists(n.name) RETURN n")
 
     // then
     result.toList.length should equal(100)
@@ -1238,12 +1128,12 @@ return b
     val nodes = setupIndexScanTest()
 
     // when
-    val result = executeWithCostPlannerOnly("MATCH (n:User) WHERE has(n.email) AND n.email = 'me@mine' RETURN n")
+    val result = executeWithCostPlannerOnly("MATCH (n:User) WHERE exists(n.email) AND n.email = 'me@mine' RETURN n")
 
     // then
     result.toList should equal(List(Map("n" -> nodes(0))))
     result.executionPlanDescription().toString should include("NodeIndexSeek")
-    result.executionPlanDescription().toString should not include("NodeIndexScan")
+    result.executionPlanDescription().toString should not include "NodeIndexScan"
   }
 
   test("should use the index for property existence queries for rule when asked for it") {
@@ -1254,7 +1144,7 @@ return b
     graph.createIndex("User", "email")
 
     // when
-    val result = eengine.execute("CYPHER planner=rule MATCH (n:User) USING INDEX n:User(email) WHERE has(n.email) RETURN n")
+    val result = eengine.execute("CYPHER planner=rule MATCH (n:User) USING INDEX n:User(email) WHERE exists(n.email) RETURN n", Map.empty[String, Any], graph.session())
 
     // then
     result.toList should equal(List(Map("n" -> n), Map("n" -> m)))
@@ -1269,11 +1159,11 @@ return b
     graph.createIndex("User", "email")
 
     // when
-    val result = eengine.execute("CYPHER planner=rule MATCH (n:User) WHERE has(n.email) RETURN n")
+    val result = eengine.execute("CYPHER planner=rule MATCH (n:User) WHERE exists(n.email) RETURN n", Map.empty[String, Any], graph.session())
 
     // then
     result.toList should equal(List(Map("n" -> n), Map("n" -> m)))
-    result.executionPlanDescription().toString should not include("SchemaIndex")
+    result.executionPlanDescription().toString should not include "SchemaIndex"
   }
 
   test("should handle cyclic patterns") {
@@ -1286,7 +1176,7 @@ return b
     relate(b, c, "B")
 
     // when
-    val result = executeWithAllPlannersAndRuntimes("match (a)-[r1:A]->(x)-[r2:B]->(a) return a.name")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a)-[r1:A]->(x)-[r2:B]->(a) return a.name")
 
     // then does not throw exceptions
     assert(result.toList === List(
@@ -1304,7 +1194,7 @@ return b
     relate(b, c, "B")
 
     // when
-    val result = executeWithAllPlannersAndRuntimes("match (a)-[:A]->(b), (b)-[:B]->(a) return a.name")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a)-[:A]->(b), (b)-[:B]->(a) return a.name")
 
     // then does not throw exceptions
     assert(result.toList === List(
@@ -1317,7 +1207,7 @@ return b
     val b = createNode()
     val r = relate(a, b)
 
-    val result = executeWithAllPlanners("match (a)-[r*1..1]->(b) return r")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a)-[r*1..1]->(b) return r")
     result.toList should equal (List(Map("r" -> List(r))))
   }
 
@@ -1341,7 +1231,7 @@ return b
     // given empty db
 
     // when
-    val result = executeWithAllPlanners("optional match (a) with a match (a)-->(b) return b")
+    val result = executeWithAllPlannersAndCompatibilityMode("optional match (a) with a match (a)-->(b) return b")
 
     // then
     result.toList should be(empty)
@@ -1354,7 +1244,7 @@ return b
     relate(a, b)
 
     // when
-    val result = executeWithAllPlanners("optional match (a:Person) with a match (a)-->(b) return b").columnAs[Node]("b")
+    val result = executeWithAllPlannersAndCompatibilityMode("optional match (a:Person) with a match (a)-->(b) return b").columnAs[Node]("b")
 
     // then
     result.toList should be(empty)
@@ -1364,7 +1254,7 @@ return b
     // given empty db
 
     // when
-    val result = executeWithAllPlanners("optional match (a) with a optional match (a)-->(b) return b")
+    val result = executeWithAllPlannersAndCompatibilityMode("optional match (a) with a optional match (a)-->(b) return b")
 
     // then
     result.toList should equal (List(Map("b"->null)))
@@ -1374,7 +1264,7 @@ return b
     // given empty db
 
     // when
-    val result = executeWithAllPlanners("optional match (a) return a")
+    val result = executeWithAllPlannersAndCompatibilityMode("optional match (a) return a")
 
     // then
     result.toList should equal (List(Map("a" -> null)))
@@ -1385,7 +1275,7 @@ return b
     val node = createNode()
 
     // when
-    val result = executeWithAllPlanners("match p = (a) return p")
+    val result = executeWithAllPlannersAndCompatibilityMode("match p = (a) return p")
 
     // should give us a number in the middle, not all or nothing
     result.toList should equal (List(Map("p"->new PathImpl(node))))
@@ -1396,7 +1286,7 @@ return b
     val node = createNode()
 
     // when
-    val result = executeWithAllPlanners("match p = (a)-[r*0..]->(b) return p")
+    val result = executeWithAllPlannersAndCompatibilityMode("match p = (a)-[r*0..]->(b) return p")
 
     // should give us a single, empty path starting at one end
     result.toList should equal (List(Map("p"-> new PathImpl(node))))
@@ -1407,7 +1297,7 @@ return b
     createNode("prop" -> "42")
 
     // when
-    val result = executeWithAllPlanners("MATCH (n) RETURN n.prop AS n, count(n) AS count")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (n) RETURN n.prop AS n, count(n) AS count")
 
     // should give us a single, empty path starting at one end
     result.toList should equal (List(Map("n" -> "42", "count" -> 1)))
@@ -1419,7 +1309,7 @@ return b
     val rel2 = relate(createNode(), createNode())
 
     // when
-    val result = executeWithAllPlanners("MATCH (u)-[r1]->(v) WITH r1 AS r2 MATCH (a)-[r2]->(b) RETURN r2 AS rel")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (u)-[r1]->(v) WITH r1 AS r2 MATCH (a)-[r2]->(b) RETURN r2 AS rel")
 
     // should give us all rels
     val actual = relsById(result.columnAs[Relationship]("rel").toList)
@@ -1435,7 +1325,7 @@ return b
     val rel2 = relate(createNode(), createNode())
 
     // when
-    val result = executeWithAllPlanners("MATCH (u)-[r1]->(v) WITH r1 AS r2, count(*) AS c ORDER BY c MATCH (a)-[r2]->(b) RETURN r2 AS rel")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (u)-[r1]->(v) WITH r1 AS r2, count(*) AS c ORDER BY c MATCH (a)-[r2]->(b) RETURN r2 AS rel")
 
     // should give us all rels
     val actual = relsById(result.columnAs[Relationship]("rel").toList)
@@ -1445,13 +1335,13 @@ return b
     actual should equal(expected)
   }
 
-  test("MATCH (a)-[r]->(b) WITH a, r, b, count(*) AS c ORDER BY c MATCH (a)-[r]->(b) RETURN r AS rel") {
+  test("MATCH (a)-[r]->(b) WITH a, r, b, count(*) AS c ORDER BY c MATCH (a)-[r]->(b) RETURN r AS rel ORDER BY id(rel)") {
     // given two disconnected rels
     val rel1 = relate(createNode(), createNode())
     val rel2 = relate(createNode(), createNode())
 
     // when
-    val result = executeWithAllPlanners("MATCH (a)-[r]->(b) WITH a, r, b, count(*) AS c ORDER BY c MATCH (a)-[r]->(b) RETURN r AS rel")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a)-[r]->(b) WITH a, r, b, count(*) AS c ORDER BY c MATCH (a)-[r]->(b) RETURN r AS rel ORDER BY id(rel)")
 
     // should give us all rels
     val actual = relsById(result.columnAs[Relationship]("rel").toList)
@@ -1467,7 +1357,7 @@ return b
     val relationship = relate(node1, node2)
 
     // when
-    val result = executeWithAllPlanners("MATCH (a1)-[r]->(b1) WITH r LIMIT 1 OPTIONAL MATCH (a2)-[r]->(b2) RETURN a2, r, b2")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a1)-[r]->(b1) WITH r LIMIT 1 OPTIONAL MATCH (a2)-[r]->(b2) RETURN a2, r, b2")
 
     // should give us all rels
     val actual = result.toList
@@ -1481,7 +1371,7 @@ return b
     val relationship = relate(node1, node2)
 
     // when
-    val result = executeWithAllPlanners("MATCH (a1)-[r]->(b1) WITH r, a1 LIMIT 1 OPTIONAL MATCH (a1)-[r]->(b2) RETURN a1, r, b2")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a1)-[r]->(b1) WITH r, a1 LIMIT 1 OPTIONAL MATCH (a1)-[r]->(b2) RETURN a1, r, b2")
 
     // should give us all rels
     val actual = result.toList
@@ -1495,7 +1385,7 @@ return b
     relate(node1, node2)
 
     // when
-    val result = executeWithAllPlanners("MATCH (a1)-[r]->() WITH r, a1 LIMIT 1 MATCH (a1:X)-[r]->(b2) RETURN a1, r, b2")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a1)-[r]->() WITH r, a1 LIMIT 1 MATCH (a1:X)-[r]->(b2) RETURN a1, r, b2")
 
     // should give us all rels
     val actual = result.toList
@@ -1506,15 +1396,15 @@ return b
   test("MATCH (a1:X:Y)-[r]->() WITH r, a1 LIMIT 1 MATCH (a1:Y)-[r]->(b2) RETURN a1, r, b2") {
     val node1 = graph.inTx({
       val node = createNode()
-      node.addLabel(DynamicLabel.label("X"))
-      node.addLabel(DynamicLabel.label("Y"))
+      node.addLabel(Label.label("X"))
+      node.addLabel(Label.label("Y"))
       node
     })
     val node2 = createNode()
     relate(node1, node2)
 
     // when
-    val result = executeWithAllPlanners("MATCH (a1:X:Y)-[r]->() WITH r, a1 LIMIT 1 MATCH (a1:Y)-[r]->(b2) RETURN a1, r, b2")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a1:X:Y)-[r]->() WITH r, a1 LIMIT 1 MATCH (a1:Y)-[r]->(b2) RETURN a1, r, b2")
 
     // should give us all rels
     val actual = result.toList
@@ -1528,7 +1418,7 @@ return b
     relate(node1, node2, "X")
 
     // when
-    val result = executeWithAllPlanners("MATCH (a1)-[r:X]->() WITH r, a1 LIMIT 1 MATCH (a1)-[r:Y]->(b2) RETURN a1, r, b2")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a1)-[r:X]->() WITH r, a1 LIMIT 1 MATCH (a1)-[r:Y]->(b2) RETURN a1, r, b2")
 
     // should give us all rels
     val actual = result.toList
@@ -1542,7 +1432,7 @@ return b
     relate(node1, node2, "Y")
 
     // when
-    val result = executeWithAllPlanners("MATCH (a1)-[r:Y]->() WITH r, a1 LIMIT 1 MATCH (a1)-[r:Y]->(b2) RETURN a1, r, b2")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a1)-[r:Y]->() WITH r, a1 LIMIT 1 MATCH (a1)-[r:Y]->(b2) RETURN a1, r, b2")
 
     // should give us all rels
     val actual = result.toList
@@ -1576,7 +1466,7 @@ return b
     relate(node2, node3, "Y")
 
     // when
-    val result = executeWithAllPlanners("MATCH (a)-[r1]->()-[r2]->(b) WITH [r1, r2] AS rs, a AS first, b AS second LIMIT 1 MATCH (first)-[rs*]->(second) RETURN first, second")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a)-[r1]->()-[r2]->(b) WITH [r1, r2] AS rs, a AS first, b AS second LIMIT 1 MATCH (first)-[rs*]->(second) RETURN first, second")
 
     val actual = result.toList
 
@@ -1593,7 +1483,7 @@ return b
     relate(node2, node3, "Y")
 
     // when
-    val result = executeWithAllPlanners("MATCH (a)-[r1]->()-[r2]->(b) WITH [r1, r2] AS rs, a AS second, b AS first LIMIT 1 MATCH (first)-[rs*]->(second) RETURN first, second")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a)-[r1]->()-[r2]->(b) WITH [r1, r2] AS rs, a AS second, b AS first LIMIT 1 MATCH (first)-[rs*]->(second) RETURN first, second")
 
     val actual = result.toList
 
@@ -1606,7 +1496,7 @@ return b
     val relationship = relate(node1, node2)
 
     // when
-    val result = executeWithAllPlanners("MATCH (a1)-[r]->(b1) WITH r, a1 LIMIT 1 OPTIONAL MATCH (a1)<-[r]-(b2) RETURN a1, r, b2")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a1)-[r]->(b1) WITH r, a1 LIMIT 1 OPTIONAL MATCH (a1)<-[r]-(b2) RETURN a1, r, b2")
 
     // should give us all rels
     val actual = result.toList
@@ -1620,7 +1510,7 @@ return b
     val relationship = relate(node1, node2)
 
     // when
-    val result = executeWithAllPlanners("MATCH (a1)-[r]->(b1) WITH r, a1 LIMIT 1 OPTIONAL MATCH (a2)<-[r]-(b2) WHERE a1 = a2 RETURN a1, r, b2, a2")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a1)-[r]->(b1) WITH r, a1 LIMIT 1 OPTIONAL MATCH (a2)<-[r]-(b2) WHERE a1 = a2 RETURN a1, r, b2, a2")
 
     // should give us all rels
     val actual = result.toList
@@ -1633,7 +1523,7 @@ return b
     createNode("prop" -> "42")
 
     // then
-    intercept[CypherTypeException](executeWithAllPlanners("MATCH (n) WITH n.prop AS n2 RETURN n2.prop"))
+    intercept[CypherTypeException](executeWithAllPlannersAndCompatibilityMode("MATCH (n) WITH n.prop AS n2 RETURN n2.prop"))
   }
 
   test("MATCH foo RETURN foo.bar AS x ORDER BY x DESC LIMIT 4") {
@@ -1642,7 +1532,7 @@ return b
     createNode("bar" -> 2)
 
     // when
-    val result = executeWithAllPlanners("MATCH (foo) RETURN foo.bar AS x ORDER BY x DESC LIMIT 4")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (foo) RETURN foo.bar AS x ORDER BY x DESC LIMIT 4")
     result.toList should equal(List(
       Map("x" -> 3),
       Map("x" -> 2),
@@ -1651,7 +1541,7 @@ return b
   }
 
   test("MATCH (a) RETURN count(a) > 0") {
-    val result = executeWithAllPlanners("MATCH (a) RETURN count(a) > 0")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a) RETURN count(a) > 0")
     result.toList should equal(List(
       Map("count(a) > 0" -> false)
     ))
@@ -1665,7 +1555,7 @@ return b
     relate(a, b, "WORKED_WITH", Map("year" -> 1987))
     relate(b, c, "WORKED_WITH", Map("year" -> 1988))
 
-    val result = executeWithAllPlanners("MATCH (a:Artist)-[:WORKED_WITH* { year: 1988 }]->(b:Artist) RETURN *")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a:Artist)-[:WORKED_WITH* { year: 1988 }]->(b:Artist) RETURN *")
     result.toList should equal(List(
       Map("a" -> b, "b" -> c)
     ))
@@ -1679,7 +1569,7 @@ return b
     val b = createLabeledNode("B")
     val r1 = relate(a, b)
 
-    val result = executeWithAllPlanners("match (a:A) match p = shortestPath( (a)-[*]->(b:B) ) return p").toList.head("p").asInstanceOf[Path]
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a:A) match p = shortestPath( (a)-[*]->(b:B) ) return p").toList.head("p").asInstanceOf[Path]
 
     graph.inTx {
       result.startNode() should equal(a)
@@ -1697,7 +1587,7 @@ return b
         |    ORDER BY liker.time
       """.stripMargin
 
-    executeWithAllPlanners(query).toList
+    executeWithAllPlannersAndCompatibilityMode(query).toList
   }
 
   test("issue #2907, varlength pattern should check label on endnode") {
@@ -1717,7 +1607,7 @@ return b
 
 
     //WHEN
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     //THEN
     result.toList should equal (List(Map("b" -> b)))
@@ -1735,7 +1625,7 @@ return b
     val query = s"""MATCH (a), (b) WHERE (id(a) = ${a.getId} OR (a)-[:r]->(b:MISSING_LABEL)) AND ((a)-[:r]->(b:LABEL) OR (a)-[:r]->(b:MISSING_LABEL)) RETURN b""".stripMargin
 
     //WHEN
-    val result = executeWithAllPlanners(query)
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     //THEN
     result.toList should equal (List(Map("b" -> b)))
@@ -1766,8 +1656,8 @@ return b
     //GIVEN
     createLabeledNode("User")
 
-    val query = """MATCH (:User)
-                  |MERGE (project:Project)
+    val query = """MATCH (user:User)
+                  |MERGE (project:Project {p: 'Test'})
                   |MERGE (user)-[:HAS_PROJECT]->(project)
                   |WITH project
                   |    // delete the current relations to be able to replace them with new ones
@@ -1779,12 +1669,13 @@ return b
                   |FOREACH (el in[{name:"Dir1"}, {name:"Dir2"}] |
                   |  MERGE (folder:Folder{ name: el.name })
                   |  MERGE (project)–[:HAS_FOLDER]->(folder))
-                  |RETURN DISTINCT project""".stripMargin
+                  |WITH DISTINCT project
+                  |RETURN project.p""".stripMargin
 
     //WHEN
-    val first = eengine.execute(query).toList
-    val second = eengine.execute(query).toList
-    val check = executeWithAllPlannersAndRuntimes("MATCH (f:Folder) RETURN f.name").toSet
+    val first = updateWithBothPlannersAndCompatibilityMode(query).length
+    val second = updateWithBothPlannersAndCompatibilityMode(query).length
+    val check = executeWithAllPlannersAndCompatibilityMode("MATCH (f:Folder) RETURN f.name").toSet
 
     //THEN
     first should equal(second)
@@ -1796,8 +1687,8 @@ return b
     createLabeledNode("User")
 
 
-    val query = """MATCH (:User)
-                  |MERGE (project:Project)
+    val query = """MATCH (user:User)
+                  |MERGE (project:Project {p: 'Test'})
                   |MERGE (user)-[:HAS_PROJECT]->(project)
                   |WITH project
                   |    // delete the current relations to be able to replace them with new ones
@@ -1810,12 +1701,14 @@ return b
                   |FOREACH (el in[{name:"Dir1"}, {name:"Dir2"}] |
                   |  MERGE (folder:Folder{ name: el.name })
                   |  MERGE (project)–[:HAS_FOLDER]->(folder))
-                  |RETURN DISTINCT project""".stripMargin
+                  |WITH DISTINCT project
+                  |RETURN project.p""".stripMargin
 
     //WHEN
-    val first = eengine.execute(query).toList
-    val second = eengine.execute(query).toList
-    val check = executeWithAllPlannersAndRuntimes("MATCH (f:Folder) RETURN f.name").toSet
+
+    val first = updateWithBothPlannersAndCompatibilityMode(query).length
+    val second = updateWithBothPlannersAndCompatibilityMode(query).length
+    val check = executeWithAllPlannersAndCompatibilityMode("MATCH (f:Folder) RETURN f.name").toSet
 
     //THEN
     first should equal(second)
@@ -1856,7 +1749,7 @@ return b
       """profile match p = (n:Movie)--(m) return p limit 1""".stripMargin
 
     graph.inTx {
-      val res = executeWithAllPlanners(query).toList
+      val res = executeWithAllPlannersAndCompatibilityMode(query).toList
       val path = res.head("p").asInstanceOf[Path]
       path.startNode should equal(node1)
       path.endNode should equal(node2)
@@ -1870,7 +1763,7 @@ return b
                   |RETURN p
                   | """.stripMargin
 
-    val result = executeWithAllPlanners(query).toList
+    val result = executeWithAllPlannersAndCompatibilityMode(query).toList
     result should equal(List(Map("p" -> PathImpl(a))))
   }
 
@@ -1885,7 +1778,7 @@ return b
       """match p = (n)-->(m)--(o) return p""".stripMargin
 
     //WHEN
-    val res = executeWithAllPlanners(query).toList
+    val res = executeWithAllPlannersAndCompatibilityMode(query).toList
 
     //THEN
     graph.inTx {
@@ -1911,7 +1804,7 @@ return b
       """match path = (n)-->(m)--(o)--(p) return path""".stripMargin
 
     //WHEN
-    val res = executeWithAllPlanners(query).toList
+    val res = executeWithAllPlannersAndCompatibilityMode(query).toList
 
     //THEN
     graph.inTx {
@@ -1935,7 +1828,7 @@ return b
                   |MATCH paths = allShortestPaths((n)-[*..1]-(m))
                   |RETURN paths""".stripMargin
 
-    val result = executeWithAllPlanners(query, "0" -> node1.getId, "1" -> node2.getId)
+    val result = executeWithAllPlannersAndCompatibilityMode(query, "0" -> node1.getId, "1" -> node2.getId)
     graph.inTx(
       result.toSet should equal(Set(Map("paths" -> new PathImpl(node1, r, node2)), Map("paths" -> new PathImpl(node2, r, node1))))
     )
@@ -1956,16 +1849,16 @@ return b
     // when
     val query = "MATCH topRoute = (db1:Start)<-[:CONNECTED_TO]-()-[:CONNECTED_TO*3..3]-(db2:End) RETURN topRoute"
 
-    executeWithAllPlanners(query).toList should have size 4
+    executeWithAllPlannersAndCompatibilityMode(query).toList should have size 4
   }
 
   test("should return empty result when there are no relationship with the given id") {
-    executeWithAllPlanners("MATCH ()-[r]->() WHERE id(r) = 42 RETURN r") shouldBe empty
-    executeWithAllPlanners("MATCH ()<-[r]-() WHERE id(r) = 42 RETURN r") shouldBe empty
-    executeWithAllPlanners("MATCH ()-[r]-() WHERE id(r) = 42 RETURN r") shouldBe empty
+    executeWithAllPlannersAndCompatibilityMode("MATCH ()-[r]->() WHERE id(r) = 42 RETURN r") shouldBe empty
+    executeWithAllPlannersAndCompatibilityMode("MATCH ()<-[r]-() WHERE id(r) = 42 RETURN r") shouldBe empty
+    executeWithAllPlannersAndCompatibilityMode("MATCH ()-[r]-() WHERE id(r) = 42 RETURN r") shouldBe empty
   }
 
-  test("should use NodeByIdSeek for id array in identifier") {
+  test("should use NodeByIdSeek for id array in variables") {
     // given
     val a = createNode().getId
     val b = createNode().getId
@@ -1985,7 +1878,7 @@ return b
 
     val query = "MATCH (a) RETURN a.bar"
 
-    val result = executeWithAllPlannersAndRuntimes(query).toList
+    val result = executeWithAllPlannersAndCompatibilityMode(query).toList
     result should equal(List(Map("a.bar" -> null)))
   }
 
@@ -1995,7 +1888,7 @@ return b
 
     val query = "MATCH (a) RETURN a.prop"
 
-    val result = executeWithAllPlannersAndRuntimes(query).toComparableResult
+    val result = executeWithAllPlannersAndCompatibilityMode(query).toComparableResult
     result should equal(List(asResult(props, "a")))
   }
 
@@ -2004,7 +1897,7 @@ return b
 
     val query = "MATCH (a)-[r]->(b) RETURN r.prop"
 
-    val result = executeWithAllPlannersAndRuntimes(query).toComparableResult
+    val result = executeWithAllPlannersAndCompatibilityMode(query).toComparableResult
     result should equal(List(asResult(Map("prop" -> 1), "r")))
   }
 
@@ -2014,7 +1907,7 @@ return b
 
     val query = "MATCH (a)-[r]->(b) RETURN a.nodeProp, r.relProp"
 
-    val result = executeWithAllPlannersAndRuntimes(query).toComparableResult
+    val result = executeWithAllPlannersAndCompatibilityMode(query).toComparableResult
     result should equal(List(asResult(Map("nodeProp" -> 1), "a") ++ asResult(Map("relProp" -> 2), "r")))
   }
 
@@ -2024,7 +1917,7 @@ return b
 
     val query = "MATCH (a)-[r]->(b) RETURN a AS FOO, r AS BAR"
 
-    val result = executeWithAllPlannersAndRuntimes(query).toComparableResult
+    val result = executeWithAllPlannersAndCompatibilityMode(query).toComparableResult
     result should equal(List(Map("FOO" -> a, "BAR" -> r)))
   }
 
@@ -2033,7 +1926,7 @@ return b
 
     val query = "MATCH (a)-[r]->(b) RETURN r.foo"
 
-    val result = executeWithAllPlannersAndRuntimes(query).toComparableResult
+    val result = executeWithAllPlannersAndCompatibilityMode(query).toComparableResult
     result should equal(List(Map("r.foo" -> null)))
   }
 
@@ -2047,14 +1940,14 @@ return b
 
     val query = "MATCH (a) RETURN a.name, a.age, a.seasons"
 
-    val result = executeWithAllPlannersAndRuntimes(query).toComparableResult
+    val result = executeWithAllPlannersAndCompatibilityMode(query).toComparableResult
     result should equal(List(asResult(props, "a")))
   }
 
   test("adding a property and a literal is supported in new runtime") {
     val props = Map("prop" -> 1)
     createNode(props)
-    val result = executeWithAllPlannersAndRuntimes("MATCH (a) RETURN a.prop + 1 AS FOO").toComparableResult
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a) RETURN a.prop + 1 AS FOO").toComparableResult
 
     result should equal(List(Map("FOO" -> 2)))
   }
@@ -2062,16 +1955,16 @@ return b
   test("adding arrays is supported in new runtime") {
     val props = Map("prop1" -> Array(1,2,3), "prop2" -> Array(4, 5))
     createNode(props)
-    val result = executeWithAllPlannersAndRuntimes("MATCH (a) RETURN a.prop1 + a.prop2 AS FOO").toComparableResult
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (a) RETURN a.prop1 + a.prop2 AS FOO").toComparableResult
 
     result should equal(List(Map("FOO" -> List(1, 2, 3, 4, 5))))
   }
 
-  test("should type var length identifiers correctly as collection of relationships") {
+  test("should type var length variables correctly as collection of relationships") {
     createNode()
     val r = relate(createNode(), createNode())
 
-    val result = executeWithAllPlanners("match ()-[r*0..1]-() return last(r) as l").toList
+    val result = executeWithAllPlannersAndCompatibilityMode("match ()-[r*0..1]-() return last(r) as l").toList
 
     result should equal(List(Map("l" -> null), Map("l" -> null), Map("l" -> r), Map("l" -> null), Map("l" -> r)))
   }
@@ -2086,7 +1979,7 @@ return b
         |optional match (b)<-[r2:BAR*]-(c:B)
         |return a, b, c""".stripMargin
 
-    val result = executeWithAllPlanners(query).toList
+    val result = executeWithAllPlannersAndCompatibilityMode(query).toList
 
     result should equal(List(Map("a" -> node, "b" -> null, "c" -> null)))
   }
@@ -2101,7 +1994,7 @@ return b
       """match (a)-[*0..0]->(b)
         |return a, b""".stripMargin
 
-    val result = executeWithAllPlanners(query).toSet
+    val result = executeWithAllPlannersAndCompatibilityMode(query).toSet
 
     result should equal(Set(
       Map("a" -> a, "b" -> a),
@@ -2114,7 +2007,7 @@ return b
     val node1 = createNode()
     val node2 = createNode()
     val rel = relate(node1, node2)
-    val result = executeWithAllPlannersAndRuntimes("match (n)-[r]->(m) return [n, r, m] as r").toComparableResult
+    val result = executeWithAllPlannersAndCompatibilityMode("match (n)-[r]->(m) return [n, r, m] as r").toComparableResult
 
     result should equal(Seq(Map("r" -> Seq(node1, rel, node2))))
   }
@@ -2123,7 +2016,7 @@ return b
     val node1 = createNode()
     val node2 = createNode()
     val rel = relate(node1, node2)
-    val result = executeWithAllPlannersAndRuntimes("match (n)-[r]->(m) return {node1: n, rel: r, node2: m} as m").toComparableResult
+    val result = executeWithAllPlannersAndCompatibilityMode("match (n)-[r]->(m) return {node1: n, rel: r, node2: m} as m").toComparableResult
 
     result should equal(Seq(Map("m" -> Map("node1" -> node1, "rel" -> rel, "node2" -> node2))))
   }
@@ -2133,7 +2026,7 @@ return b
     val b = createNode("prop" -> "b")
     val rel = relate(a, b)
 
-    val result = executeWithAllPlanners("MATCH p=({prop: 'a'})-->({prop: 'b'}) RETURN p").toList
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH p=({prop: 'a'})-->({prop: 'b'}) RETURN p").toList
 
     result shouldBe List(Map("p" -> PathImpl(a, rel, b)))
   }
@@ -2143,7 +2036,7 @@ return b
     val b = createNode("prop" -> "b")
     relate(a, b)
 
-    val result = executeWithAllPlanners("MATCH p=({prop: 'a'})<--({prop: 'b'}) RETURN p").toList
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH p=({prop: 'a'})<--({prop: 'b'}) RETURN p").toList
 
     result shouldBe empty
   }
@@ -2154,7 +2047,7 @@ return b
     relate(a, b)
     relate(b, a)
 
-    val result = executeWithAllPlanners("MATCH p=(n)-->(k)<--(n) RETURN p").toList
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH p=(n)-->(k)<--(n) RETURN p").toList
 
     result shouldBe empty
   }
@@ -2165,7 +2058,7 @@ return b
     val r1 = relate(a, b)
     val r2 = relate(b, a)
 
-    val results = executeWithAllPlanners("MATCH p=(n)<-->(k)<--(n) RETURN p").toList
+    val results = executeWithAllPlannersAndCompatibilityMode("MATCH p=(n)<-->(k)<--(n) RETURN p").toList
 
     results should contain theSameElementsAs List(
       Map("p" -> PathImpl(a, r2, b, r1, a)),
@@ -2178,7 +2071,7 @@ return b
     val r1 = relate(a, b)
     val r2 = relate(b, a)
 
-    val results = executeWithAllPlanners("MATCH p=(n)<-->(k)<-->(n) RETURN p").toList
+    val results = executeWithAllPlannersAndCompatibilityMode("MATCH p=(n)<-->(k)<-->(n) RETURN p").toList
 
     results should contain theSameElementsAs List(
       Map("p" -> PathImpl(a, r2, b, r1, a)),
@@ -2188,7 +2081,7 @@ return b
   }
 
   test("columns should be in the provided order") {
-    val result = executeWithAllPlannersAndRuntimes("MATCH (p),(o),(n),(t),(u),(s) RETURN p,o,n,t,u,s")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (p),(o),(n),(t),(u),(s) RETURN p,o,n,t,u,s")
 
     result.columns should equal(List("p", "o", "n", "t", "u", "s"))
   }
@@ -2200,7 +2093,7 @@ return b
     relate(start, end, "REL")
 
     //when
-    val result = executeWithAllPlanners("match (n:A:B:C:D:E:F:G:H:I:J:K:L:M)-[:REL]->(m:Z:Y:X:W:V:U) return n,m")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (n:A:B:C:D:E:F:G:H:I:J:K:L:M)-[:REL]->(m:Z:Y:X:W:V:U) return n,m")
 
     //then
     result.toList should equal(List(Map("n" -> start, "m" -> end)))
@@ -2216,13 +2109,52 @@ return b
       case Seq(node1, node2) => relate(node1, node2, "R")
     }
 
-    val result = executeWithAllPlanners("MATCH (n {prop: 'start'})-[:R*]->(m {prop: 'end'}) RETURN m")
+    val result = executeWithAllPlannersAndCompatibilityMode("MATCH (n {prop: 'start'})-[:R*]->(m {prop: 'end'}) RETURN m")
 
     result.toList should equal(List(Map("m" -> end)))
   }
 
+  test("should produce the same amount of rows on all planners") {
+    val a = createNode()
+    val b = createNode()
+    relate(a, b)
+    relate(b, a)
+
+    val query = "MATCH (a) MERGE (b) WITH * OPTIONAL MATCH (a)--(b) RETURN count(*)"
+
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
+    result.columnAs[Long]("count(*)").next shouldBe 6
+  }
+
+  test("aliasing node names should not change estimations but it should simply introduce a projection") {
+    val b = createLabeledNode("B")
+    (0 to 10).foreach { i =>
+      val a = createLabeledNode("A")
+      relate(a, b)
+    }
+
+    val resultNoAlias = graph.execute("MATCH (a:A) with a SKIP 0 MATCH (a)-[]->(b:B) return a, b")
+    resultNoAlias.asScala.toList.size should equal(11)
+    val resultWithAlias = graph.execute("MATCH (a:A) with a as n SKIP 0 MATCH (n)-[]->(b:B) return n, b")
+    resultWithAlias.asScala.toList.size should equal(11)
+
+    var descriptionNoAlias = resultNoAlias.getExecutionPlanDescription
+    var descriptionWithAlias = resultWithAlias.getExecutionPlanDescription
+    descriptionWithAlias.getArguments.get("EstimatedRows") should equal(descriptionNoAlias.getArguments.get("EstimatedRows"))
+    while (descriptionWithAlias.getChildren.isEmpty) {
+      descriptionWithAlias = single(descriptionWithAlias.getChildren.iterator())
+      if ( descriptionWithAlias.getName != "Projection" ) {
+        descriptionNoAlias = single(descriptionNoAlias.getChildren.iterator())
+        descriptionWithAlias.getArguments.get("EstimatedRows") should equal(descriptionNoAlias.getArguments.get("EstimatedRows"))
+      }
+    }
+
+    resultNoAlias.close()
+    resultWithAlias.close()
+  }
+
   /**
-   * Append identifier to keys and transform value arrays to lists
+   * Append variable to keys and transform value arrays to lists
    */
   private def asResult(data: Map[String, Any], id: String) =
     data.map {

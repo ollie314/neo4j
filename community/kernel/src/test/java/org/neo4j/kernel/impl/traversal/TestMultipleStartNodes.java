@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,9 +25,8 @@ import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.traversal.TraversalDescription;
 
-import static org.neo4j.graphdb.DynamicRelationshipType.withName;
+import static org.neo4j.graphdb.RelationshipType.withName;
 import static org.neo4j.graphdb.traversal.Evaluators.atDepth;
-import static org.neo4j.kernel.Traversal.traversal;
 
 public class TestMultipleStartNodes extends TraversalTestBase
 {
@@ -55,12 +54,12 @@ public class TestMultipleStartNodes extends TraversalTestBase
             Node me = getNodeWithName( "me" );
 
             String[] levelOneFriends = new String[]{"f1", "f2", "f3", "f4", "f7"};
-            TraversalDescription levelOneTraversal = traversal().relationships( KNOW ).evaluator( atDepth( 1 ) );
+            TraversalDescription levelOneTraversal = getGraphDb().traversalDescription().relationships( KNOW ).evaluator( atDepth( 1 ) );
             expectNodes( levelOneTraversal.depthFirst().traverse( you, me ), levelOneFriends );
             expectNodes( levelOneTraversal.breadthFirst().traverse( you, me ), levelOneFriends );
 
             String[] levelTwoFriends = new String[]{"f5", "f6", "f8"};
-            TraversalDescription levelTwoTraversal = traversal().relationships( KNOW ).evaluator( atDepth( 2 ) );
+            TraversalDescription levelTwoTraversal = getGraphDb().traversalDescription().relationships( KNOW ).evaluator( atDepth( 2 ) );
             expectNodes( levelTwoTraversal.depthFirst().traverse( you, me ), levelTwoFriends );
             expectNodes( levelTwoTraversal.breadthFirst().traverse( you, me ), levelTwoFriends );
         }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,18 +20,18 @@
 package org.neo4j.cypher.internal.compiler.v3_0.pipes
 
 import org.neo4j.cypher.internal.compiler.v3_0._
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.Identifier
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.Variable
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.Effects._
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.CollectionSupport
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.ListSupport
 import org.neo4j.cypher.internal.compiler.v3_0.mutation._
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
-import org.neo4j.cypher.internal.frontend.v3_0.{CypherTypeException, InternalException, ParameterWrongTypeException, SyntaxException}
+import org.neo4j.cypher.internal.frontend.v3_0.{CypherTypeException, InternalException, SyntaxException}
 import org.neo4j.graphdb.NotInTransactionException
 
 import scala.collection.mutable
 
 case class ExecuteUpdateCommandsPipe(source: Pipe, commands: Seq[UpdateAction])(implicit pipeMonitor: PipeMonitor)
-  extends PipeWithSource(source, pipeMonitor) with CollectionSupport with NoLushEntityCreation {
+  extends PipeWithSource(source, pipeMonitor) with ListSupport with NoLushEntityCreation {
 
   protected def internalCreateResults(input: Iterator[ExecutionContext],state: QueryState) = input.flatMap {
     case ctx => executeMutationCommands(ctx, state)
@@ -60,9 +60,9 @@ case class ExecuteUpdateCommandsPipe(source: Pipe, commands: Seq[UpdateAction])(
     }
   }
 
-  def planDescription = source.planDescription.andThen(this.id, "UpdateGraph", identifiers, commands.flatMap(_.arguments):_*)
+  def planDescription = source.planDescription.andThen(this.id, "UpdateGraph", variables, commands.flatMap(_.arguments):_*)
 
-  def symbols = source.symbols.add(commands.flatMap(_.identifiers).toMap)
+  def symbols = source.symbols.add(commands.flatMap(_.variables).toMap)
 
   def sourceSymbols: SymbolTable = source.symbols
 
@@ -103,7 +103,7 @@ trait NoLushEntityCreation {
 
   private def extractIfEntity(from: RelationshipEndpoint): Option[NamedExpectation] =
     from match {
-      case RelationshipEndpoint(Identifier(key), props, labels) => Some(NamedExpectation(key, props, labels))
+      case RelationshipEndpoint(Variable(key), props, labels) => Some(NamedExpectation(key, props, labels))
       case _                                                    => None
     }
 
@@ -119,18 +119,18 @@ trait NoLushEntityCreation {
         namedExpectations.filter(expectation => !expectation.bare).foreach {
           lushExpectation =>
             lushNodes.get(lushExpectation.name) match {
-              case None if symbols.hasIdentifierNamed(lushExpectation.name) => failOn(lushExpectation.name)
+              case None if symbols.hasVariableNamed(lushExpectation.name) => failOn(lushExpectation.name)
               case None                                                     => lushNodes += lushExpectation.name -> lushExpectation
               case Some(x) if x != lushExpectation                          => failOn(lushExpectation.name)
               case Some(x)                                                  => // same thing we've already seen. move along
             }
         }
 
-        symbols = symbols.add(cmd.identifiers.toMap)
+        symbols = symbols.add(cmd.variables.toMap)
     }
   }
 
   private def failOn(name:String)=
-    throw new SyntaxException("Can't create `%s` with properties or labels here. It already exists in this context".format(name))
+    throw new SyntaxException("Can't create `%s` with properties or labels here. The variable is already declared in this context".format(name))
 }
 

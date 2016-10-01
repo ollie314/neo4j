@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,24 +21,18 @@ package org.neo4j.test;
 
 import org.junit.rules.ExternalResource;
 
-import java.util.Arrays;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
 
-import org.neo4j.function.Consumer;
-import org.neo4j.function.Consumers;
-import org.neo4j.function.Predicate;
 import org.neo4j.function.Predicates;
 import org.neo4j.function.ThrowingFunction;
-import org.neo4j.helpers.Cancelable;
-import org.neo4j.helpers.CancellationRequest;
 import org.neo4j.helpers.ConcurrentTransfer;
-
-import static java.util.Objects.requireNonNull;
 
 public class ThreadingRule extends ExternalResource
 {
@@ -70,13 +64,7 @@ public class ThreadingRule extends ExternalResource
 
     public <FROM, TO, EX extends Exception> Future<TO> execute( ThrowingFunction<FROM,TO,EX> function, FROM parameter )
     {
-        return executor.submit( task( Barrier.NONE, function, parameter, Consumers.<Thread>noop() ) );
-    }
-
-    public <FROM, TO, EX extends Exception> Future<TO> executeAfter(
-            Barrier barrier, ThrowingFunction<FROM,TO,EX> function, FROM parameter )
-    {
-        return executor.submit( task( barrier, function, parameter, Consumers.<Thread>noop() ) );
+        return executor.submit( task( Barrier.NONE, function, parameter, (t) -> {} ) );
     }
 
     public <FROM, TO, EX extends Exception> Future<TO> executeAndAwait(
@@ -89,59 +77,23 @@ public class ThreadingRule extends ExternalResource
         return future;
     }
 
-    public Cancelable threadBlockMonitor( Thread thread, Runnable action )
-    {
-        CancellationHandle cancellation = new CancellationHandle();
-        executor.submit( new ThreadBlockMonitor( cancellation,
-                requireNonNull( thread, "thread" ),
-                requireNonNull( action, "action" ) ) );
-        return cancellation;
-    }
-
     private static <FROM, TO, EX extends Exception> Callable<TO> task(
             final Barrier barrier, final ThrowingFunction<FROM,TO,EX> function, final FROM parameter,
             final Consumer<Thread> threadConsumer )
     {
-        return new Callable<TO>()
-        {
-            @Override
-            public TO call() throws Exception
+        return () -> {
+            Thread thread = Thread.currentThread();
+            String name = thread.getName();
+            thread.setName( function.toString() );
+            threadConsumer.accept( thread );
+            barrier.reached();
+            try
             {
-                Thread thread = Thread.currentThread();
-                String name = thread.getName();
-                thread.setName( function.toString() );
-                threadConsumer.accept( thread );
-                barrier.reached();
-                try
-                {
-                    return function.apply( parameter );
-                }
-                finally
-                {
-                    thread.setName( name );
-                }
+                return function.apply( parameter );
             }
-        };
-    }
-
-    public static Predicate<Thread> stackTracePredicate( final int depth, final Class<?> owner, final String method )
-    {
-        return new Predicate<Thread>()
-        {
-            @Override
-            public boolean test( Thread thread )
+            finally
             {
-                StackTraceElement[] stackTrace = thread.getStackTrace();
-                return stackTrace.length > depth &&
-                       stackTrace[depth].getClassName().equals( owner.getName() ) &&
-                       stackTrace[depth].getMethodName().equals( method );
-            }
-
-            @Override
-            public String toString()
-            {
-                return String.format( "Predicate[thread.getStackTrace()[%s] == %s.%s()]",
-                        depth, owner.getName(), method );
+                thread.setName( name );
             }
         };
     }
@@ -176,78 +128,5 @@ public class ThreadingRule extends ExternalResource
                         owner.getName(), method );
             }
         };
-    }
-
-    private static class CancellationHandle implements Cancelable, CancellationRequest
-    {
-        private volatile boolean cancelled = false;
-
-        @Override
-        public boolean cancellationRequested()
-        {
-            return cancelled;
-        }
-
-        public void cancel()
-        {
-            cancelled = true;
-        }
-    }
-
-    private static class ThreadBlockMonitor implements Runnable
-    {
-        private final CancellationRequest cancellation;
-        private final Thread thread;
-        private final Runnable action;
-
-        public ThreadBlockMonitor( CancellationRequest cancellation, Thread thread, Runnable action )
-        {
-            this.cancellation = cancellation;
-            this.thread = thread;
-            this.action = action;
-        }
-
-        @Override
-        public void run()
-        {
-            StackTraceElement[] lastTrace = null;
-            Thread.State lastState = null;
-            do
-            {
-                Thread.State state = thread.getState();
-                switch ( state )
-                {
-                case BLOCKED:
-                case WAITING:
-                case TIMED_WAITING:
-                    StackTraceElement[] trace = thread.getStackTrace();
-                    if ( trace[0].isNativeMethod() &&
-                         Thread.class.getName().equals( trace[0].getClassName() ) &&
-                         "sleep".equals( trace[0].getMethodName() ) )
-                    {
-                        break; // don't regard Thread.sleep() as being blocked
-                    }
-                    if ( lastState == state && Arrays.equals( trace, lastTrace ) )
-                    {
-                        action.run();
-                        return;
-                    }
-                    lastTrace = trace;
-                    break;
-                default:
-                    lastTrace = null;
-                }
-                lastState = state;
-                try
-                {
-                    Thread.sleep( 500 );
-                }
-                catch ( InterruptedException e )
-                {
-                    return;
-                }
-            }
-            while ( !cancellation.cancellationRequested() );
-        }
     }
 }

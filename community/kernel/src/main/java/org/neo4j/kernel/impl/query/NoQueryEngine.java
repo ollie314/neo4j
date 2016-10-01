@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,6 +22,7 @@ package org.neo4j.kernel.impl.query;
 import java.util.Map;
 
 import org.neo4j.graphdb.Result;
+import org.neo4j.kernel.GraphDatabaseQueryService;
 
 enum NoQueryEngine implements QueryExecutionEngine
 {
@@ -50,6 +51,14 @@ enum NoQueryEngine implements QueryExecutionEngine
     {
         throw noQueryEngine();
     }
+
+
+    @Override
+    public GraphDatabaseQueryService queryService()
+    {
+        throw noQueryEngine();
+    }
+
 
     private RuntimeException noQueryEngine()
     {

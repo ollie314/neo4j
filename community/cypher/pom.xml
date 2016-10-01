@@ -6,12 +6,12 @@
   <parent>
     <groupId>org.neo4j</groupId>
     <artifactId>parent</artifactId>
-    <version>3.0.0-SNAPSHOT</version>
+    <version>3.0.7-SNAPSHOT</version>
     <relativePath>../..</relativePath>
   </parent>
 
   <artifactId>cypher-parent</artifactId>
-  <version>3.0.0-SNAPSHOT</version>
+  <version>3.0.7-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>Neo4j - Community Cypher Build</name>
   <description>Project that builds the Neo4j Cypher modules as part of the Community distribution.</description>
@@ -29,7 +29,7 @@
   <scm>
     <connection>scm:git:git://github.com/neo4j/neo4j.git</connection>
     <developerConnection>scm:git:git@github.com:neo4j/neo4j.git</developerConnection>
-    <url>https://github.com/neo4j/neo4j/tree/master/community/cypher</url>
+    <url>https://github.com/neo4j/neo4j</url>
   </scm>
 
   <modules>
@@ -74,14 +74,6 @@
             <jvmArg>-Xms64m</jvmArg>
             <jvmArg>-Xmx1024m</jvmArg>
           </jvmArgs>
-        </configuration>
-      </plugin>
-
-      <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>findbugs-maven-plugin</artifactId>
-        <configuration>
-          <skip>true</skip>
         </configuration>
       </plugin>
 
@@ -250,7 +242,7 @@
       <dependency>
         <groupId>org.scalacheck</groupId>
         <artifactId>scalacheck_2.11</artifactId>
-        <version>1.12.4</version>
+        <version>1.12.5</version>
         <scope>test</scope>
       </dependency>
 
@@ -298,12 +290,6 @@
       </dependency>
 
       <!-- other -->
-
-      <dependency>
-        <artifactId>scala-parser-combinators_2.11</artifactId>
-        <groupId>org.scala-lang.modules</groupId>
-        <version>1.0.4</version>
-      </dependency>
 
       <dependency>
         <groupId>org.parboiled</groupId>

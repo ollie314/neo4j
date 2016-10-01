@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,9 +19,10 @@
  */
 package org.neo4j.cypher.internal.frontend.v3_0
 
+import org.neo4j.cypher.internal.frontend.v3_0.ExhaustiveShortestPathForbiddenException.ERROR_MSG
 import org.neo4j.cypher.internal.frontend.v3_0.spi.MapToPublicExceptions
 
-abstract class CypherException(message: String, cause: Throwable) extends RuntimeException(message, cause) {
+abstract class CypherException(protected val message: String, cause: Throwable) extends RuntimeException(message, cause) {
   def this() = this(null, null)
 
   def this(message: String) = this(message, null)
@@ -53,9 +54,7 @@ class ParameterNotFoundException(message: String, cause: Throwable) extends Cyph
   def mapToPublic[T <: Throwable](mapper: MapToPublicExceptions[T]) = mapper.parameterNotFoundException(message, this)
 }
 
-class ParameterWrongTypeException(message: String, cause: Throwable) extends CypherException(cause) {
-  def this(message: String) = this(message, null)
-
+class ParameterWrongTypeException(message: String, cause: Throwable = null) extends CypherException(message, cause) {
   def mapToPublic[T <: Throwable](mapper: MapToPublicExceptions[T]) = mapper.parameterWrongTypeException(message, this)
 }
 
@@ -79,31 +78,19 @@ class ProfilerStatisticsNotReadyException extends CypherException {
   def mapToPublic[T <: Throwable](mapper: MapToPublicExceptions[T]) = mapper.profilerStatisticsNotReadyException(this)
 }
 
-class UnknownLabelException(labelName: String) extends CypherException {
-  def mapToPublic[T <: Throwable](mapper: MapToPublicExceptions[T]) = mapper.unknownLabelException(labelName, this)
+class IndexHintException(variable: String, label: String, property: String, message: String) extends CypherException {
+  def mapToPublic[T <: Throwable](mapper: MapToPublicExceptions[T]) = mapper.indexHintException(variable, label, property, message, this)
 }
 
-class HintException(message: String) extends CypherException {
-  def mapToPublic[T <: Throwable](mapper: MapToPublicExceptions[T]) = mapper.hintException(message, this)
-}
-
-class IndexHintException(identifier: String, label: String, property: String, message: String) extends CypherException {
-  def mapToPublic[T <: Throwable](mapper: MapToPublicExceptions[T]) = mapper.indexHintException(identifier, label, property, message, this)
-}
-
-class JoinHintException(identifier: String, message: String) extends CypherException {
-  def mapToPublic[T <: Throwable](mapper: MapToPublicExceptions[T]) = mapper.joinHintException(identifier, message, this)
-}
-
-class LabelScanHintException(identifier: String, label: String, message: String) extends CypherException {
-  def mapToPublic[T <: Throwable](mapper: MapToPublicExceptions[T]) = mapper.labelScanHintException(identifier, label, message, this)
+class JoinHintException(variable: String, message: String) extends CypherException {
+  def mapToPublic[T <: Throwable](mapper: MapToPublicExceptions[T]) = mapper.joinHintException(variable, message, this)
 }
 
 class InvalidSemanticsException(message: String) extends CypherException {
   def mapToPublic[T <: Throwable](mapper: MapToPublicExceptions[T]) = mapper.invalidSemanticException(message, this)
 }
 
-class MergeConstraintConflictException(message: String) extends CypherException {
+class MergeConstraintConflictException(message: String, cause: Throwable = null) extends CypherException(message, cause) {
   def mapToPublic[T <: Throwable](mapper: MapToPublicExceptions[T]) = mapper.mergeConstraintConflictException(message, this)
 }
 
@@ -140,3 +127,22 @@ class SyntaxException(message: String, val query: String, val offset: Option[Int
 class CypherExecutionException(message: String, cause: Throwable) extends CypherException(message, cause) {
   override def mapToPublic[T <: Throwable](mapper: MapToPublicExceptions[T]): T = mapper.cypherExecutionException(message, this)
 }
+
+class ExhaustiveShortestPathForbiddenException extends CypherExecutionException(ERROR_MSG, null) {
+  override def mapToPublic[T <: Throwable](mapper: MapToPublicExceptions[T]): T =
+    mapper.shortestPathFallbackDisableRuntimeException(message, this)
+}
+
+object ExhaustiveShortestPathForbiddenException {
+  val ERROR_MSG: String =
+    s"""Shortest path fallback has been explicitly disabled. That means that no full path enumeration is performed in
+       |case shortest path algorithms cannot be used. This might happen in case of existential predicates on the path,
+       |e.g., when searching for the shortest path containing a node with property 'name=Emil'. The problem is that
+       |graph algorithms work only on universal predicates, e.g., when searching for the shortest where all nodes have
+       |label 'Person'. In case this is an unexpected error please either disable the runtime error in the Neo4j
+       |configuration or please improve your query by consulting the Neo4j manual.  In order to avoid planning the
+       |shortest path fallback a WITH clause can be introduced to separate the MATCH describing the shortest paths and
+       |the existential predicates on the path; note though that in this case all shortest paths are computed before
+       |start filtering.""".stripMargin
+}
+

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,30 +20,28 @@
 package org.neo4j.cypher.internal.compiler.v3_0.ast.rewriters
 
 import org.neo4j.cypher.internal.frontend.v3_0.ast._
-import org.neo4j.cypher.internal.frontend.v3_0.{Rewriter, bottomUp, replace}
+import org.neo4j.cypher.internal.frontend.v3_0.{Rewriter, bottomUp}
 
 /**
  * This rewriter ensures that WITH clauses containing a ORDER BY or WHERE are split, such that the ORDER BY or WHERE does not
- * refer to any newly introduced identifier.
+ * refer to any newly introduced variable.
  *
  * This is required due to constraints in the planner. Note that this structure is invalid for semantic checking, which requires
- * that ORDER BY and WHERE _only refer to identifiers introduced in the associated WITH_.
+ * that ORDER BY and WHERE _only refer to variables introduced in the associated WITH_.
  *
  * Additionally, it splits RETURN clauses containing ORDER BY. This would typically be done earlier during normalizeReturnClauses, however
- * "RETURN * ORDER BY" is not handled at that stage, due to lacking identifier information. If expandStar has already been run, then this
+ * "RETURN * ORDER BY" is not handled at that stage, due to lacking variable information. If expandStar has already been run, then this
  * will now work as expected.
  */
 case object projectFreshSortExpressions extends Rewriter {
 
-  def apply(that: AnyRef): AnyRef = {
-    bottomUp(instance).apply(that)
-  }
+  override def apply(that: AnyRef): AnyRef = instance(that)
 
   private val clauseRewriter: (Clause => Seq[Clause]) = {
-    case clause @ With(_, _, None, _, _, None) =>
+    case clause@With(_, _, None, _, _, None) =>
       Seq(clause)
 
-    case clause @ With(_, ri, orderBy, skip, limit, where) =>
+    case clause@With(_, ri, orderBy, skip, limit, where) =>
       val allAliases = ri.aliases
       val passedThroughAliases = ri.passedThrough
       val evaluatedAliases = allAliases -- passedThroughAliases
@@ -51,11 +49,10 @@ case object projectFreshSortExpressions extends Rewriter {
       if (evaluatedAliases.isEmpty) {
         Seq(clause)
       } else {
-        val nonItemDependencies =
-          orderBy.extract(_.dependencies) ++
-            skip.extract(_.dependencies) ++
-            limit.extract(_.dependencies) ++
-            where.extract(_.dependencies)
+        val nonItemDependencies = orderBy.map(_.dependencies).getOrElse(Set.empty) ++
+            skip.map(_.dependencies).getOrElse(Set.empty) ++
+            limit.map(_.dependencies).getOrElse(Set.empty) ++
+            where.map(_.dependencies).getOrElse(Set.empty)
         val dependenciesFromPreviousScope = nonItemDependencies -- allAliases
 
         val passedItems = dependenciesFromPreviousScope.map(_.asAlias)
@@ -72,21 +69,11 @@ case object projectFreshSortExpressions extends Rewriter {
       Seq(clause)
   }
 
-  private val instance: Rewriter = replace(replacer => {
-
-    case expr: Expression =>
-      replacer.stop(expr)
-
-    case query @ SingleQuery(clauses) =>
+  private val rewriter = Rewriter.lift {
+    case query@SingleQuery(clauses) =>
       query.copy(clauses = clauses.flatMap(clauseRewriter))(query.position)
-
-    case astNode =>
-      replacer.expand(astNode)
-  })
-
-  private implicit class ItemSetContainer[T](input: Option[T]) {
-    def extract[K](f: T => Set[K]): Set[K] =
-      input.map(f).getOrElse(Set.empty)
   }
+
+  private val instance: Rewriter = bottomUp(rewriter, _.isInstanceOf[Expression])
 }
 

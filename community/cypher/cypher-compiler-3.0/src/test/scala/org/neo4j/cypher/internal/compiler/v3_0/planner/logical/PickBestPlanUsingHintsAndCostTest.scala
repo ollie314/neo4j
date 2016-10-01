@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -33,9 +33,9 @@ class PickBestPlanUsingHintsAndCostTest extends CypherFunSuite with LogicalPlann
     }
   }
 
-  val hint1: UsingIndexHint = UsingIndexHint(ident("n"), LabelName("Person")_, PropertyKeyName("name")_)_
-  val hint2: UsingIndexHint = UsingIndexHint(ident("n"), LabelName("Person")_, PropertyKeyName("age")_)_
-  val hint3: UsingIndexHint = UsingIndexHint(ident("n"), LabelName("Person")_, PropertyKeyName("income")_)_
+  val hint1: UsingIndexHint = UsingIndexHint(varFor("n"), LabelName("Person")_, PropertyKeyName("name")_)_
+  val hint2: UsingIndexHint = UsingIndexHint(varFor("n"), LabelName("Person")_, PropertyKeyName("age")_)_
+  val hint3: UsingIndexHint = UsingIndexHint(varFor("n"), LabelName("Person")_, PropertyKeyName("income")_)_
 
   test("picks the right plan by cost, no matter the cardinality") {
     val a = fakeLogicalPlanFor("a")

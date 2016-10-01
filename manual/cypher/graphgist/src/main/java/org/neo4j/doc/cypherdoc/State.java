@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,13 +26,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.neo4j.cypher.javacompat.internal.DocsExecutionEngine;
-import org.neo4j.graphdb.GraphDatabaseService;
+import org.neo4j.cypher.internal.compiler.v3_0.prettifier.Prettifier;
+import org.neo4j.cypher.javacompat.internal.GraphDatabaseCypherService;
 
 class State
 {
-    final DocsExecutionEngine engine;
-    final GraphDatabaseService database;
+    final GraphDatabaseCypherService database;
     final Connection sqlDatabase;
     final File parentDirectory;
     final String url;
@@ -44,14 +43,16 @@ class State
     Result latestSqlResult;
     Result testedSqlResult;
 
-    State( DocsExecutionEngine engine, GraphDatabaseService database, Connection sqlConnection,
-            File parentDirectory,
-            String url )
+    State( GraphDatabaseCypherService database, Connection sqlConnection, File parentDirectory, String url )
     {
-        this.engine = engine;
         this.database = database;
         this.sqlDatabase = sqlConnection;
         this.parentDirectory = parentDirectory;
         this.url = url.endsWith( "/" ) ? url : url + "/";
+    }
+
+    public String prettify( String query )
+    {
+        return Prettifier.apply( query );
     }
 }

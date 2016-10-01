@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,7 +25,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Used to add description of settings in {@link GraphDatabaseSettings}. These can then be accessed through the {@link GraphDatabaseSettingsResourceBundle}.
+ * Used to add description of settings in {@link GraphDatabaseSettings}.
  *
  * This is deprecated, it will be moved out of the public API in 1.11.
  */

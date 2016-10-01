@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -18,6 +18,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 package org.neo4j.bolt.v1.runtime.internal;
+
+import org.neo4j.kernel.GraphDatabaseQueryService;
+import org.neo4j.kernel.impl.coreapi.PropertyContainerLocker;
+import org.neo4j.kernel.impl.query.QuerySession;
 
 /**
  * Exposes the ability to manipulate the state of a running session in various ways. This is the interface Tank
@@ -46,4 +50,5 @@ public interface SessionState
     /** Rollback the current explicit transaction associated with this session. */
     void rollbackTransaction();
 
+    QuerySession createSession( GraphDatabaseQueryService service, PropertyContainerLocker locker );
 }

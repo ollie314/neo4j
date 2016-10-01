@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -29,18 +29,19 @@ import org.neo4j.cypher.internal.compiler.v3_0.planDescription.InternalPlanDescr
 import org.neo4j.cypher.internal.compiler.v3_0.spi.QueryContext
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import org.neo4j.cypher.internal.frontend.v3_0.LoadExternalResourceException
-import org.neo4j.cypher.internal.frontend.v3_0.symbols.{AnyType, CollectionType, MapType}
+import org.neo4j.cypher.internal.frontend.v3_0.symbols.{AnyType, ListType, MapType}
 
 sealed trait CSVFormat
 case object HasHeaders extends CSVFormat
 case object NoHeaders extends CSVFormat
 
 case class LoadCSVPipe(source: Pipe,
-                  format: CSVFormat,
-                  urlExpression: Expression,
-                  identifier: String,
-                  fieldTerminator: Option[String])(implicit pipeMonitor: PipeMonitor)
-  extends PipeWithSource(source, pipeMonitor) {
+                       format: CSVFormat,
+                       urlExpression: Expression,
+                       variable: String,
+                       fieldTerminator: Option[String])
+                      (val estimatedCardinality: Option[Double] = None)(implicit pipeMonitor: PipeMonitor)
+  extends PipeWithSource(source, pipeMonitor) with RonjaPipe {
 
   protected def getImportURL(urlString: String, context: QueryContext): URL = {
     val url: URL = try {
@@ -61,10 +62,10 @@ case class LoadCSVPipe(source: Pipe,
   //Uses an ArrayBackedMap to store header-to-values mapping
   private class IteratorWithHeaders(headers: Seq[String], context: ExecutionContext, inner: Iterator[Array[String]]) extends Iterator[ExecutionContext] {
     private val internalMap = new ArrayBackedMap[String, String](headers.zipWithIndex.toMap)
-    private var nextContext: ExecutionContext = null
+    private var nextContext: ExecutionContext = _
     private var needsUpdate = true
 
-    def hasNext: Boolean = {
+    override def hasNext: Boolean = {
       if (needsUpdate) {
         nextContext = computeNextRow()
         needsUpdate = false
@@ -72,7 +73,7 @@ case class LoadCSVPipe(source: Pipe,
       nextContext != null
     }
 
-    def next(): ExecutionContext = {
+    override def next(): ExecutionContext = {
       if (!hasNext) Iterator.empty.next()
       needsUpdate = true
       nextContext
@@ -84,7 +85,7 @@ case class LoadCSVPipe(source: Pipe,
         internalMap.putValues(row)
         //we need to make a copy here since someone may hold on this
         //reference, e.g. EagerPipe
-        context.newWith(identifier -> internalMap.copy)
+        context.newWith(variable -> internalMap.copy)
       } else null
     }
   }
@@ -92,16 +93,17 @@ case class LoadCSVPipe(source: Pipe,
   private class IteratorWithoutHeaders(context: ExecutionContext, inner: Iterator[Array[String]]) extends Iterator[ExecutionContext] {
     override def hasNext: Boolean = inner.hasNext
 
-    override def next(): ExecutionContext = context.newWith(identifier -> inner.next().toSeq)
+    override def next(): ExecutionContext = context.newWith(variable -> inner.next().toSeq)
   }
 
-  protected def internalCreateResults(input: Iterator[ExecutionContext], state: QueryState): Iterator[ExecutionContext] = {
+  override protected def internalCreateResults(input: Iterator[ExecutionContext], state: QueryState): Iterator[ExecutionContext] = {
     //register as parent so that stats are associated with this pipe
     state.decorator.registerParentPipe(this)
 
     input.flatMap(context => {
       implicit val s = state
-      val url = getImportURL(urlExpression(context).asInstanceOf[String], state.query)
+      val urlString: String = urlExpression(context).asInstanceOf[String]
+      val url = getImportURL(urlString, state.query)
 
       val iterator: Iterator[Array[String]] = state.resources.getCsvIterator(url, fieldTerminator)
       format match {
@@ -114,18 +116,20 @@ case class LoadCSVPipe(source: Pipe,
     })
   }
 
-  def planDescription: InternalPlanDescription =
-    source.planDescription.andThen(this.id, "LoadCSV", identifiers)
-
-  def symbols: SymbolTable = format match {
-    case HasHeaders => source.symbols.add(identifier, MapType.instance)
-    case NoHeaders => source.symbols.add(identifier, CollectionType(AnyType.instance))
+  override def symbols: SymbolTable = format match {
+    case HasHeaders => source.symbols.add(variable, MapType.instance)
+    case NoHeaders => source.symbols.add(variable, ListType(AnyType.instance))
   }
 
   override def localEffects = Effects()
 
-  def dup(sources: List[Pipe]): Pipe = {
+  override def dup(sources: List[Pipe]): Pipe = {
     val (head :: Nil) = sources
-    copy(source = head)
+    copy(source = head)(estimatedCardinality)
   }
+
+  override def planDescriptionWithoutCardinality: InternalPlanDescription =
+    source.planDescription.andThen(this.id, "LoadCSV", variables)
+
+  override def withEstimatedCardinality(estimated: Double): Pipe with RonjaPipe = copy()(Some(estimated))
 }

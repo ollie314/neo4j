@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -56,7 +56,7 @@ case class IndexOperationPipe(indexOp: IndexOperation)(implicit val monitor: Pip
 
   def symbols = new SymbolTable()
 
-  def planDescription = PlanDescriptionImpl(this.id, indexOp.toString, NoChildren, Seq.empty, identifiers)
+  def planDescription = PlanDescriptionImpl(this.id, indexOp.toString, NoChildren, Seq.empty, variables)
 
   def exists(pred: Pipe => Boolean) = pred(this)
 

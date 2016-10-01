@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,16 +22,16 @@ package org.neo4j.server.rest.repr;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
-import org.neo4j.function.Function;
+import org.neo4j.graphdb.ExecutionPlanDescription;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Path;
-import org.neo4j.graphdb.ExecutionPlanDescription;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Result;
 import org.neo4j.helpers.collection.IterableWrapper;
 
-import static org.neo4j.helpers.collection.IteratorUtil.loop;
+import static org.neo4j.helpers.collection.Iterators.loop;
 
 public class CypherResultRepresentation extends MappingRepresentation
 {
@@ -134,13 +134,7 @@ public class CypherResultRepresentation extends MappingRepresentation
 
     private Function<Object, ExecutionPlanDescription> planProvider( final Result result )
     {
-        return new Function<Object,ExecutionPlanDescription>(){
-            @Override
-            public ExecutionPlanDescription apply( Object from )
-            {
-                return result.getExecutionPlanDescription();
-            }
-        };
+        return from -> result.getExecutionPlanDescription();
     }
 
 }

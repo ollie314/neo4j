@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,8 +19,6 @@
  */
 package org.neo4j.cypher.docgen
 
-import java.util.concurrent.TimeUnit
-
 import org.hamcrest.CoreMatchers._
 import org.junit.Assert._
 import org.junit.Test
@@ -28,11 +26,8 @@ import org.neo4j.cypher.QueryStatisticsTestSupport
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionResult
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.IndexSeekByRange
 import org.neo4j.cypher.internal.compiler.v3_0.planDescription.InternalPlanDescription.Arguments.Planner
-import org.neo4j.cypher.internal.compiler.v3_0.{DPPlannerName, IDPPlannerName, GreedyPlannerName, RulePlannerName}
+import org.neo4j.cypher.internal.compiler.v3_0.{DPPlannerName, IDPPlannerName, RulePlannerName}
 import org.neo4j.cypher.internal.helpers.GraphIcing
-import org.neo4j.kernel.GraphDatabaseAPI
-import org.neo4j.kernel.impl.api.index.IndexingService
-import org.neo4j.kernel.impl.api.index.sampling.{IndexSamplingMode, IndexSamplingController}
 
 class SchemaIndexTest extends DocumentingTestBase with QueryStatisticsTestSupport with GraphIcing {
 
@@ -127,6 +122,16 @@ class SchemaIndexTest extends DocumentingTestBase with QueryStatisticsTestSuppor
   }
 
   @Test def use_index_with_in() {
+
+    executePreparationQueries(
+      List(
+        "FOREACH(x in range(0,100) | CREATE (:Person) )",
+        "FOREACH(x in range(0,400) | CREATE (:Person {name: x}) )"
+      )
+    )
+
+    sampleAllIndicesAndWait()
+
     profileQuery(
       title = "Use index with IN",
       text =
@@ -164,7 +169,7 @@ class SchemaIndexTest extends DocumentingTestBase with QueryStatisticsTestSuppor
     )
   }
 
-  @Test def use_index_with_has_property() {
+  @Test def use_index_with_exists_property() {
     // Need to make index preferable in terms of cost
     executePreparationQueries((0 to 250).map { i =>
       "CREATE (:Person)"
@@ -173,7 +178,7 @@ class SchemaIndexTest extends DocumentingTestBase with QueryStatisticsTestSuppor
       title = "Use index when checking for the existence of a property",
       text =
         "The `has(p.name)` predicate in the following query will use the `Person(name)` index, if it exists.",
-      queryText = "MATCH (p:Person) WHERE has(p.name) RETURN p",
+      queryText = "MATCH (p:Person) WHERE exists(p.name) RETURN p",
       assertions = {
         (p) =>
           assertEquals(2, p.size)
@@ -193,8 +198,6 @@ class SchemaIndexTest extends DocumentingTestBase with QueryStatisticsTestSuppor
     plannerArgument match {
       case Some(Planner(RulePlannerName.name)) =>
         assertThat(planDescription.toString, containsString(ruleString))
-      case Some(Planner(GreedyPlannerName.name)) =>
-        assertThat(planDescription.toString, containsString(costString))
       case Some(Planner(IDPPlannerName.name)) =>
         assertThat(planDescription.toString, containsString(costString))
       case Some(Planner(DPPlannerName.name)) =>

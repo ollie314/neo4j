@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -59,7 +59,7 @@ class StubbedLogicalPlanningConfiguration(parent: LogicalPlanningConfiguration)
           semanticTable.resolvedLabelIds(name) -> cardinality
       }
       val labelScanCardinality: PartialFunction[PlannerQuery, Cardinality] = {
-        case PlannerQuery(queryGraph, _, _, _) if queryGraph.patternNodes.size == 1 &&
+        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes.size == 1 &&
           computeOptionCardinality(queryGraph, semanticTable, labelIdCardinality).isDefined =>
           computeOptionCardinality(queryGraph, semanticTable, labelIdCardinality).get
       }

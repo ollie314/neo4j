@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -36,7 +36,7 @@ import java.util.concurrent.locks.ReentrantLock;
  *     under synchronisation.
  * </p>
  * <p>
- *     Obviously this only makes sense for that a) can be combined, and b)
+ *     Obviously this only makes sense for work that a) can be combined, and b)
  *     where the performance improvements from batching effects is large enough
  *     to overcome the overhead of collecting and batching up the work units.
  * </p>

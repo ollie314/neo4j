@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,7 +24,7 @@ import java.util.Arrays;
 import java.util.Collection;
 
 import org.neo4j.csv.reader.SourceTraceability;
-import org.neo4j.helpers.Pair;
+import org.neo4j.helpers.collection.Pair;
 
 import static java.lang.String.format;
 
@@ -37,10 +37,10 @@ public abstract class InputEntity implements SourceTraceability
     public static final String[] NO_LABELS = new String[0];
 
     private Object[] properties;
-    private final Long firstPropertyId;
+    private Long firstPropertyId;
     private final String sourceDescription;
-    private final long lineNumber;
-    private final long position;
+    private long lineNumber;
+    private long position;
 
     public InputEntity( String sourceDescription, long sourceLineNumber, long sourcePosition,
             Object[] properties, Long firstPropertyId )
@@ -55,6 +55,10 @@ public abstract class InputEntity implements SourceTraceability
         this.firstPropertyId = firstPropertyId;
     }
 
+    /**
+     * @return properties on this entity. Properties sits in one array with alternating keys (even indexes)
+     * and values (odd indexes).
+     */
     public Object[] properties()
     {
         return properties;
@@ -132,6 +136,7 @@ public abstract class InputEntity implements SourceTraceability
     public void setProperties( Object... keyValuePairs )
     {
         properties = keyValuePairs;
+        firstPropertyId = null;
     }
 
     public boolean hasFirstPropertyId()
@@ -160,6 +165,12 @@ public abstract class InputEntity implements SourceTraceability
     public long position()
     {
         return position;
+    }
+
+    public void rebase( long baseLineNumber, long basePosition )
+    {
+        lineNumber += baseLineNumber;
+        position += basePosition;
     }
 
     @Override

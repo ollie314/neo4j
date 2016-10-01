@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,30 +19,27 @@
  */
 package org.neo4j.test.mocking;
 
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
-
-import org.neo4j.graphdb.DynamicLabel;
-import org.neo4j.graphdb.DynamicRelationshipType;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Path;
 import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.RelationshipType;
+import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.test.Property;
 
 import static java.util.Arrays.asList;
-
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-
-import static org.neo4j.helpers.collection.Iterables.asResourceIterable;
 import static org.neo4j.helpers.collection.Iterables.reverse;
 import static org.neo4j.test.mocking.Properties.properties;
 
@@ -53,7 +50,7 @@ public class GraphMock
         Label[] labels = new Label[names.length];
         for ( int i = 0; i < labels.length; i++ )
         {
-            labels[i] = DynamicLabel.label( names[i] );
+            labels[i] = Label.label( names[i] );
         }
         return labels;
     }
@@ -130,7 +127,7 @@ public class GraphMock
     {
         Node node = mockPropertyContainer( Node.class, properties );
         when( node.getId() ).thenReturn( id );
-        when( node.getLabels() ).thenReturn( asResourceIterable( asList( labels ) ) );
+        when( node.getLabels() ).thenReturn( Iterables.asResourceIterable( asList( labels ) ) );
         return node;
     }
 
@@ -140,7 +137,7 @@ public class GraphMock
         when( relationship.getId() ).thenReturn( id );
         when( relationship.getStartNode() ).thenReturn( start );
         when( relationship.getEndNode() ).thenReturn( end );
-        when( relationship.getType() ).thenReturn( DynamicRelationshipType.withName( type ) );
+        when( relationship.getType() ).thenReturn( RelationshipType.withName( type ) );
         return relationship;
     }
 

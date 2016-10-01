@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,6 +23,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -55,7 +56,7 @@ public class InternalJettyServletResponse extends Response
             try
             {
                 baos.flush();
-                return baos.toString("UTF-8");
+                return baos.toString( StandardCharsets.UTF_8.name() );
             }
             catch ( Exception e )
             {
@@ -258,7 +259,7 @@ public class InternalJettyServletResponse extends Response
     @Override
     public PrintWriter getWriter() throws IOException
     {
-        return new PrintWriter( new OutputStreamWriter( output, "UTF-8") );
+        return new PrintWriter( new OutputStreamWriter( output, StandardCharsets.UTF_8 ) );
     }
 
     @Override

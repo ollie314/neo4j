@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,13 +20,13 @@
 package org.neo4j.cypher.internal.frontend.v3_0.ast.functions
 
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
-import org.neo4j.cypher.internal.frontend.v3_0.ast.{SimpleTypedFunction, Function}
+import org.neo4j.cypher.internal.frontend.v3_0.ast.{ExpressionSignature, Function, SimpleTypedFunction}
 
 case object Id extends Function with SimpleTypedFunction {
   def name = "id"
 
-  val signatures = Vector(
-    Signature(argumentTypes = Vector(CTNode), outputType = CTInteger),
-    Signature(argumentTypes = Vector(CTRelationship), outputType = CTInteger)
+  override val signatures = Vector(
+    ExpressionSignature(argumentTypes = Vector(CTNode), outputType = CTInteger),
+    ExpressionSignature(argumentTypes = Vector(CTRelationship), outputType = CTInteger)
   )
 }

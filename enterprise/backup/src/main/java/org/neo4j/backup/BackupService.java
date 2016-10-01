@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,6 +22,7 @@ package org.neo4j.backup;
 import java.io.File;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.net.ConnectException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -30,7 +31,6 @@ import java.util.Map;
 import org.neo4j.com.RequestContext;
 import org.neo4j.com.Response;
 import org.neo4j.com.monitor.RequestMonitor;
-import org.neo4j.com.storecopy.DefaultUnpackerDependencies;
 import org.neo4j.com.storecopy.ExternallyManagedPageCache;
 import org.neo4j.com.storecopy.ResponseUnpacker;
 import org.neo4j.com.storecopy.ResponseUnpacker.TxHandler;
@@ -41,16 +41,16 @@ import org.neo4j.graphdb.DependencyResolver;
 import org.neo4j.graphdb.factory.GraphDatabaseFactory;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.helpers.CancellationRequest;
+import org.neo4j.helpers.Exceptions;
 import org.neo4j.helpers.Service;
-import org.neo4j.helpers.Settings;
 import org.neo4j.helpers.progress.ProgressListener;
 import org.neo4j.helpers.progress.ProgressMonitorFactory;
+import org.neo4j.io.fs.DefaultFileSystemAbstraction;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.fs.FileUtils;
 import org.neo4j.io.pagecache.PageCache;
-import org.neo4j.kernel.DefaultFileSystemAbstraction;
-import org.neo4j.kernel.GraphDatabaseAPI;
 import org.neo4j.kernel.configuration.Config;
+import org.neo4j.kernel.configuration.Settings;
 import org.neo4j.kernel.extension.KernelExtensionFactory;
 import org.neo4j.kernel.impl.logging.LogService;
 import org.neo4j.kernel.impl.logging.StoreLogService;
@@ -58,9 +58,10 @@ import org.neo4j.kernel.impl.store.MetaDataStore;
 import org.neo4j.kernel.impl.store.MismatchingStoreIdException;
 import org.neo4j.kernel.impl.store.StoreId;
 import org.neo4j.kernel.impl.store.id.IdGeneratorImpl;
-import org.neo4j.kernel.impl.transaction.CommittedTransactionRepresentation;
 import org.neo4j.kernel.impl.transaction.log.MissingLogDataException;
 import org.neo4j.kernel.impl.transaction.log.TransactionIdStore;
+import org.neo4j.kernel.impl.transaction.log.entry.VersionAwareLogEntryReader;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import org.neo4j.kernel.monitoring.ByteCounterMonitor;
 import org.neo4j.kernel.monitoring.Monitors;
 import org.neo4j.logging.FormattedLogProvider;
@@ -69,6 +70,7 @@ import org.neo4j.logging.LogProvider;
 import org.neo4j.logging.NullLogProvider;
 
 import static org.neo4j.com.RequestContext.anonymous;
+import static org.neo4j.com.storecopy.TransactionCommittingResponseUnpacker.DEFAULT_BATCH_SIZE;
 import static org.neo4j.kernel.impl.pagecache.StandalonePageCacheFactory.createPageCache;
 
 /**
@@ -109,6 +111,7 @@ class BackupService
     private final LogProvider logProvider;
     private final Log log;
     private final Monitors monitors;
+    private final VersionAwareLogEntryReader entryReader;
 
     BackupService()
     {
@@ -121,14 +124,16 @@ class BackupService
         this.logProvider = logProvider;
         this.log = logProvider.getLog( getClass() );
         this.monitors = monitors;
+        this.entryReader = new VersionAwareLogEntryReader<>();
     }
 
     BackupOutcome doFullBackup( final String sourceHostNameOrIp, final int sourcePort, File targetDirectory,
             ConsistencyCheck consistencyCheck, Config tuningConfiguration, final long timeout, final boolean forensics )
     {
-        if ( directoryContainsDb( targetDirectory ) )
+        if ( !directoryIsEmpty( targetDirectory ) )
         {
-            throw new RuntimeException( targetDirectory + " already contains a database" );
+            throw new RuntimeException( "Can only perform a full backup into an empty directory but " +
+                    targetDirectory + " is not empty" );
         }
         long timestamp = System.currentTimeMillis();
         long lastCommittedTx = -1;
@@ -144,9 +149,9 @@ class BackupService
                 @Override
                 public Response<?> copyStore( StoreWriter writer )
                 {
-                    client = new BackupClient( sourceHostNameOrIp, sourcePort, NullLogProvider.getInstance(),
+                    client = new BackupClient( sourceHostNameOrIp, sourcePort, null, NullLogProvider.getInstance(),
                             StoreId.DEFAULT, timeout, ResponseUnpacker.NO_OP_RESPONSE_UNPACKER, monitors.newMonitor(
-                            ByteCounterMonitor.class ), monitors.newMonitor( RequestMonitor.class ) );
+                            ByteCounterMonitor.class ), monitors.newMonitor( RequestMonitor.class ), entryReader );
                     client.start();
                     return client.fullBackup( writer, forensics );
                 }
@@ -158,7 +163,7 @@ class BackupService
                 }
             }, CancellationRequest.NEVER_CANCELLED );
 
-            bumpMessagesDotLogFile( targetDirectory, timestamp );
+            bumpDebugDotLogFileVersion( targetDirectory, timestamp );
             boolean consistent = false;
             try
             {
@@ -172,9 +177,9 @@ class BackupService
             clearIdFiles( targetDirectory );
             return new BackupOutcome( lastCommittedTx, consistent );
         }
-        catch ( IOException e )
+        catch ( Exception e )
         {
-            throw new RuntimeException( e );
+            throw Exceptions.launderedException( e );
         }
     }
 
@@ -201,7 +206,7 @@ class BackupService
             {
                 targetDb.shutdown();
             }
-            bumpMessagesDotLogFile( targetDirectory, backupStartTime );
+            bumpDebugDotLogFileVersion( targetDirectory, backupStartTime );
             clearIdFiles( targetDirectory );
             return outcome;
         }
@@ -223,13 +228,15 @@ class BackupService
     BackupOutcome doIncrementalBackupOrFallbackToFull( String sourceHostNameOrIp, int sourcePort, File targetDirectory,
             ConsistencyCheck consistencyCheck, Config config, long timeout, boolean forensics )
     {
-        if ( !directoryContainsDb( targetDirectory ) )
+        if ( directoryIsEmpty( targetDirectory ) )
         {
+            log.info( "Previous backup not found, a new full backup will be performed." );
             return doFullBackup( sourceHostNameOrIp, sourcePort, targetDirectory, consistencyCheck, config, timeout,
                     forensics );
         }
         try
         {
+            log.info( "Previous backup found, trying incremental backup." );
             return doIncrementalBackup( sourceHostNameOrIp, sourcePort, targetDirectory, timeout, config );
         }
         catch ( IncrementalBackupNotPossibleException e )
@@ -268,6 +275,11 @@ class BackupService
         return fileSystem.fileExists( new File( targetDirectory, MetaDataStore.DEFAULT_NAME ) );
     }
 
+    boolean directoryIsEmpty( File targetDirectory )
+    {
+        return !fileSystem.isDirectory( targetDirectory ) || 0 == fileSystem.listFiles( targetDirectory ).length;
+    }
+
     static GraphDatabaseAPI startTemporaryDb( File targetDirectory, PageCache pageCache, Map<String,String> config )
     {
         GraphDatabaseFactory factory = ExternallyManagedPageCache.graphDatabaseFactoryWithPageCache( pageCache );
@@ -292,13 +304,13 @@ class BackupService
 
         ProgressTxHandler handler = new ProgressTxHandler();
         TransactionCommittingResponseUnpacker unpacker = new TransactionCommittingResponseUnpacker(
-                new DefaultUnpackerDependencies( resolver ) );
+                resolver, DEFAULT_BATCH_SIZE, 0 );
 
         Monitors monitors = resolver.resolveDependency( Monitors.class );
         LogProvider logProvider = resolver.resolveDependency( LogService.class ).getInternalLogProvider();
-        BackupClient client = new BackupClient( sourceHostNameOrIp, sourcePort, logProvider, targetDb.storeId(),
+        BackupClient client = new BackupClient( sourceHostNameOrIp, sourcePort, null, logProvider, targetDb.storeId(),
                 timeout, unpacker, monitors.newMonitor( ByteCounterMonitor.class, BackupClient.class ),
-                monitors.newMonitor( RequestMonitor.class, BackupClient.class ) );
+                monitors.newMonitor( RequestMonitor.class, BackupClient.class ), entryReader );
 
         boolean consistent = false;
         try
@@ -323,6 +335,10 @@ class BackupService
             {
                 throw new IncrementalBackupNotPossibleException( TOO_OLD_BACKUP, e.getCause() );
             }
+            if ( e.getCause() != null && e.getCause() instanceof ConnectException )
+            {
+                throw new RuntimeException( e.getMessage(), e.getCause() );
+            }
             throw new RuntimeException( "Failed to perform incremental backup.", e );
         }
         catch ( Throwable throwable )
@@ -344,7 +360,7 @@ class BackupService
         return new BackupOutcome( handler.getLastSeenTransactionId(), consistent );
     }
 
-    private static boolean bumpMessagesDotLogFile( File dbDirectory, long toTimestamp )
+    private static boolean bumpDebugDotLogFileVersion( File dbDirectory, long toTimestamp )
     {
         File[] candidates = dbDirectory.listFiles( new FilenameFilter()
         {
@@ -399,10 +415,10 @@ class BackupService
         private long lastSeenTransactionId;
 
         @Override
-        public void accept( CommittedTransactionRepresentation tx )
+        public void accept( long transactionId )
         {
             progress.add( 1 );
-            lastSeenTransactionId = tx.getCommitEntry().getTxId();
+            lastSeenTransactionId = transactionId;
         }
 
         @Override

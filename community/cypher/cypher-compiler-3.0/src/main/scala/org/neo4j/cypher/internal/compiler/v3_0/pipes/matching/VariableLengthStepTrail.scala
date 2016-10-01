@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -120,12 +120,12 @@ final case class VariableLengthStepTrail(next: Trail,
   val end = next.end
 
   def symbols(table: SymbolTable) = {
-    val symbolTable = next.symbols(table).add(start, CTNode).add(path, CTCollection(CTRelationship))
+    val symbolTable = next.symbols(table).add(start, CTNode).add(path, CTList(CTRelationship))
 
     //If we have a rel-iterator, let's include it
     relIterator match {
       case None    => symbolTable
-      case Some(r) => symbolTable.add(r, CTCollection(CTRelationship))
+      case Some(r) => symbolTable.add(r, CTList(CTRelationship))
     }
   }
 

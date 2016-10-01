@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,9 +27,9 @@ import org.neo4j.cypher.internal.frontend.v3_0.{Bound, ExclusiveBound, Inclusive
 
 class InequalityRangeSeekableTest extends CypherFunSuite with AstConstructionTestSupport {
 
-  val identifier = ident("n")
+  val variable = varFor("n")
   val propertyKeyName: PropertyKeyName = PropertyKeyName("prop")_
-  val property: Property = Property(identifier, propertyKeyName)_
+  val property: Property = Property(variable, propertyKeyName)_
 
   test("Constructs RangeLessThan") {
     valueRangeSeekable(lessThan(1)).range should equal(RangeLessThan(NonEmptyList(exclusive(1))))
@@ -72,9 +72,9 @@ class InequalityRangeSeekableTest extends CypherFunSuite with AstConstructionTes
   private def valueRangeSeekable(first: InequalityExpression, others: InequalityExpression*) = {
     val inequalities = NonEmptyList(first, others: _*)
     InequalityRangeSeekable(
-      identifier,
+      variable,
       propertyKeyName,
-      AndedPropertyInequalities(identifier, property, inequalities)
+      AndedPropertyInequalities(variable, property, inequalities)
     )
   }
 }

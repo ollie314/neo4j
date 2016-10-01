@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,16 +19,17 @@
  */
 package org.neo4j.kernel.impl.transaction;
 
+import java.io.IOException;
+
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.IOException;
-
+import org.neo4j.kernel.impl.store.record.NodeRecord;
 import org.neo4j.kernel.impl.transaction.command.Command;
 import org.neo4j.kernel.impl.transaction.log.LogPosition;
 import org.neo4j.kernel.impl.transaction.log.PhysicalTransactionCursor;
 import org.neo4j.kernel.impl.transaction.log.PhysicalTransactionRepresentation;
-import org.neo4j.kernel.impl.transaction.log.ReadableVersionableLogChannel;
+import org.neo4j.kernel.impl.transaction.log.ReadableLogChannel;
 import org.neo4j.kernel.impl.transaction.log.entry.CheckPoint;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntry;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntryCommand;
@@ -38,6 +39,7 @@ import org.neo4j.kernel.impl.transaction.log.entry.LogEntryStart;
 import org.neo4j.kernel.impl.transaction.log.entry.OnePhaseCommit;
 
 import static java.util.Collections.singletonList;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -49,15 +51,16 @@ import static org.mockito.Mockito.when;
 
 public class PhysicalTransactionCursorTest
 {
-    private final ReadableVersionableLogChannel channel = mock( ReadableVersionableLogChannel.class, RETURNS_MOCKS );
-    private final LogEntryReader<ReadableVersionableLogChannel> entryReader = mock( LogEntryReader.class );
+    private final ReadableLogChannel channel = mock( ReadableLogChannel.class, RETURNS_MOCKS );
+    private final LogEntryReader<ReadableLogChannel> entryReader = mock( LogEntryReader.class );
 
     private static final LogEntry NULL_ENTRY = null;
     private static final CheckPoint A_CHECK_POINT_ENTRY = new CheckPoint( LogPosition.UNSPECIFIED );
     private static final LogEntryStart A_START_ENTRY = new LogEntryStart( 0, 0, 0l, 0l, null, LogPosition.UNSPECIFIED );
     private static final LogEntryCommit A_COMMIT_ENTRY = new OnePhaseCommit( 42, 0 );
-    private static final LogEntryCommand A_COMMAND_ENTRY = new LogEntryCommand( new Command.NodeCommand() );
-    private PhysicalTransactionCursor<ReadableVersionableLogChannel> cursor;
+    private static final LogEntryCommand A_COMMAND_ENTRY = new LogEntryCommand(
+            new Command.NodeCommand( new NodeRecord( 42 ), new NodeRecord( 42 ) ) );
+    private PhysicalTransactionCursor<ReadableLogChannel> cursor;
 
     @Before
     public void setup() throws IOException

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -40,15 +40,9 @@ trait MapToPublicExceptions[T <: Throwable] {
 
   def invalidSemanticException(message: String, cause: Throwable): T
 
-  def indexHintException(identifier: String, label: String, property: String, message: String, cause: Throwable): T
+  def indexHintException(variable: String, label: String, property: String, message: String, cause: Throwable): T
 
-  def joinHintException(identifier: String, message: String, cause: Throwable): T
-
-  def hintException(s: String, cause: Throwable): T
-
-  def labelScanHintException(identifier: String, label: String, message: String, cause: Throwable): T
-
-  def unknownLabelException(s: String, cause: Throwable): T
+  def joinHintException(variable: String, message: String, cause: Throwable): T
 
   def profilerStatisticsNotReadyException(cause: Throwable): T
 
@@ -71,4 +65,6 @@ trait MapToPublicExceptions[T <: Throwable] {
   def cypherTypeException(message: String, cause: Throwable): T
 
   def cypherExecutionException(message: String, cause: Throwable): T
+
+  def shortestPathFallbackDisableRuntimeException(message: String, cause: Throwable): T
 }

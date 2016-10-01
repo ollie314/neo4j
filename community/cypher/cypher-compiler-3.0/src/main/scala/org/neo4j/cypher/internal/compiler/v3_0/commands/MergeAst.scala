@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -42,21 +42,21 @@ case class MergeAst(patterns: Seq[AbstractPattern],
   private def getSingleNodeAction(entity:ParsedEntity) = {
     val ParsedEntity(name, _, props, labelTokens) = entity
 
-    val labelPredicates = labelTokens.map(labelName => HasLabel(Identifier(name), labelName))
+    val labelPredicates = labelTokens.map(labelName => HasLabel(Variable(name), labelName))
 
     val propertyPredicates = props.map {
-      case (propertyKey, expression) => Equals(Property(Identifier(name), PropertyKey(propertyKey)), expression)
+      case (propertyKey, expression) => Equals(Property(Variable(name), PropertyKey(propertyKey)), expression)
     }
 
     val propertyMap: Map[KeyToken, Expression] = props.collect {
       case (propertyKey, expression) => PropertyKey(propertyKey) -> expression
     }.toMap
 
-    val labelActions = labelTokens.map(labelName => LabelAction(Identifier(name), LabelSetOp, Seq(labelName)))
+    val labelActions = labelTokens.map(labelName => LabelAction(Variable(name), LabelSetOp, Seq(labelName)))
     val propertyActions = props.map {
       case (propertyKey, expression) => {
         if (propertyKey == "*") throw new PatternException("MERGE does not support map parameters")
-        PropertySetAction(Property(Identifier(name), PropertyKey(propertyKey)), expression)
+        PropertySetAction(Property(Variable(name), PropertyKey(propertyKey)), expression)
       }
     }
 

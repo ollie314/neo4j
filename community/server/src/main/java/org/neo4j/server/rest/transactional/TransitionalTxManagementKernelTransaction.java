@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,32 +19,43 @@
  */
 package org.neo4j.server.rest.transactional;
 
-import org.neo4j.kernel.TopLevelTransaction;
 import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.api.exceptions.TransactionFailureException;
+import org.neo4j.kernel.api.security.AccessMode;
 import org.neo4j.kernel.impl.core.ThreadToStatementContextBridge;
+import org.neo4j.kernel.impl.coreapi.InternalTransaction;
+import org.neo4j.kernel.impl.factory.GraphDatabaseFacade;
 
 class TransitionalTxManagementKernelTransaction
 {
-    private final TransactionTerminator txTerminator;
+    private final GraphDatabaseFacade db;
+    private final KernelTransaction.Type type;
+    private final AccessMode mode;
+    private long customTransactionTimeout;
     private final ThreadToStatementContextBridge bridge;
 
-    private TopLevelTransaction suspendedTransaction;
+    private InternalTransaction tx;
+    private KernelTransaction suspendedTransaction;
 
-    TransitionalTxManagementKernelTransaction( TransactionTerminator txTerminator, ThreadToStatementContextBridge bridge )
+    TransitionalTxManagementKernelTransaction( GraphDatabaseFacade db, KernelTransaction.Type type,
+            AccessMode mode, long customTransactionTimeout, ThreadToStatementContextBridge bridge )
     {
-        this.txTerminator = txTerminator;
+        this.db = db;
+        this.type = type;
+        this.mode = mode;
+        this.customTransactionTimeout = customTransactionTimeout;
         this.bridge = bridge;
+        this.tx = startTransaction();
     }
 
-    public void suspendSinceTransactionsAreStillThreadBound()
+    void suspendSinceTransactionsAreStillThreadBound()
     {
         assert suspendedTransaction == null : "Can't suspend the transaction if it already is suspended.";
         suspendedTransaction = bridge.getTopLevelTransactionBoundToThisThread( true );
         bridge.unbindTransactionFromCurrentThread();
     }
 
-    public void resumeSinceTransactionsAreStillThreadBound()
+    void resumeSinceTransactionsAreStillThreadBound()
     {
         assert suspendedTransaction != null : "Can't resume the transaction if it has not first been suspended.";
         bridge.bindTransactionToCurrentThread( suspendedTransaction );
@@ -53,7 +64,7 @@ class TransitionalTxManagementKernelTransaction
 
     public void terminate()
     {
-        txTerminator.terminate();
+        tx.terminate();
     }
 
     public void rollback()
@@ -90,5 +101,21 @@ class TransitionalTxManagementKernelTransaction
         {
             bridge.unbindTransactionFromCurrentThread();
         }
+    }
+
+    void closeTransactionForPeriodicCommit()
+    {
+        tx.close();
+    }
+
+    void reopenAfterPeriodicCommit()
+    {
+        tx = startTransaction();
+    }
+
+    private InternalTransaction startTransaction()
+    {
+        return customTransactionTimeout > 0 ? db.beginTransaction( type, mode, customTransactionTimeout ) :
+                                            db.beginTransaction( type, mode );
     }
 }

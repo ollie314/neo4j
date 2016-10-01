@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,9 +19,8 @@
  */
 package org.neo4j.cypher.internal.frontend.v3_0.ast
 
-import org.neo4j.cypher.internal.frontend.v3_0.{SemanticError, _}
 import org.neo4j.cypher.internal.frontend.v3_0.ast.Expression.SemanticContext
-import org.neo4j.cypher.internal.frontend.v3_0.InputPosition
+import org.neo4j.cypher.internal.frontend.v3_0.{InputPosition, SemanticError, _}
 
 object FunctionInvocation {
   def apply(name: FunctionName, argument: Expression)(position: InputPosition): FunctionInvocation =
@@ -35,7 +34,7 @@ object FunctionInvocation {
 case class FunctionInvocation(functionName: FunctionName, distinct: Boolean, args: IndexedSeq[Expression])
                              (val position: InputPosition) extends Expression {
   val name = functionName.name
-  val function = Function.lookup.get(name.toLowerCase)
+  val function: Option[Function] = Function.lookup.get(name.toLowerCase)
 
   def semanticCheck(ctx: SemanticContext) = function match {
     case None    => SemanticError(s"Unknown function '$name'", position)

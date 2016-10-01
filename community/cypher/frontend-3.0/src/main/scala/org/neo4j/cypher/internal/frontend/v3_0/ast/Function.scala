@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,7 +20,7 @@
 package org.neo4j.cypher.internal.frontend.v3_0.ast
 
 import org.neo4j.cypher.internal.frontend.v3_0._
-import org.neo4j.cypher.internal.frontend.v3_0.symbols.{TypeSpec, CypherType}
+import org.neo4j.cypher.internal.frontend.v3_0.symbols.{CypherType, TypeSpec}
 
 object Function {
   private val knownFunctions: Seq[Function] = Vector(
@@ -38,6 +38,7 @@ object Function {
     functions.Cot,
     functions.Count,
     functions.Degrees,
+    functions.Distance,
     functions.E,
     functions.EndNode,
     functions.Exists,
@@ -61,6 +62,7 @@ object Function {
     functions.Pi,
     functions.PercentileCont,
     functions.PercentileDisc,
+    functions.Point,
     functions.Keys,
     functions.Radians,
     functions.Rand,
@@ -81,7 +83,6 @@ object Function {
     functions.StartNode,
     functions.StdDev,
     functions.StdDevP,
-    functions.Str,
     functions.Substring,
     functions.Sum,
     functions.Tail,
@@ -92,6 +93,7 @@ object Function {
     functions.ToLower,
     functions.ToString,
     functions.ToUpper,
+    functions.Properties,
     functions.Trim,
     functions.Type,
     functions.Upper
@@ -134,52 +136,43 @@ abstract class Function extends SemanticChecking {
     FunctionInvocation(asFunctionName, distinct = false, IndexedSeq(lhs, rhs))(position)
 }
 
+trait SimpleTypedFunction extends ExpressionCallTypeChecking {
+  self: Function =>
 
-trait SimpleTypedFunction { self: Function =>
-  case class Signature(argumentTypes: IndexedSeq[CypherType], outputType: CypherType)
-
-  val signatures: Seq[Signature]
-
-  private lazy val signatureLengths = signatures.map(_.argumentTypes.length)
-
-  def semanticCheck(ctx: ast.Expression.SemanticContext, invocation: ast.FunctionInvocation): SemanticCheck =
-    checkMinArgs(invocation, signatureLengths.min) chain checkMaxArgs(invocation, signatureLengths.max) chain
-    checkTypes(invocation)
-
-  private def checkTypes(invocation: ast.FunctionInvocation): SemanticCheck = s => {
-    val initSignatures = signatures.filter(_.argumentTypes.length == invocation.arguments.length)
-
-    val (remainingSignatures: Seq[Signature], result) = invocation.arguments.foldLeft((initSignatures, SemanticCheckResult.success(s))) {
-      case (accumulator@(Seq(), _), _) =>
-        accumulator
-      case ((possibilities, r1), arg)  =>
-        val argTypes = possibilities.foldLeft(TypeSpec.none) { _ | _.argumentTypes.head.covariant }
-        val r2 = arg.expectType(argTypes)(r1.state)
-
-        val actualTypes = arg.types(r2.state)
-        val remainingPossibilities = possibilities.filter {
-          sig => actualTypes containsAny sig.argumentTypes.head.covariant
-        } map {
-          sig => sig.copy(argumentTypes = sig.argumentTypes.tail)
-        }
-        (remainingPossibilities, SemanticCheckResult(r2.state, r1.errors ++ r2.errors))
-    }
-
-    val outputType = remainingSignatures match {
-      case Seq() => TypeSpec.all
-      case _     => remainingSignatures.foldLeft(TypeSpec.none) { _ | _.outputType.invariant }
-    }
-    invocation.specifyType(outputType)(result.state) match {
-      case Left(err)    => SemanticCheckResult(result.state, result.errors :+ err)
-      case Right(state) => SemanticCheckResult(state, result.errors)
-    }
-  }
+  override def semanticCheck(ctx: ast.Expression.SemanticContext, invocation: ast.FunctionInvocation): SemanticCheck =
+    checkMinArgs(invocation, signatureLengths.min) chain
+    checkMaxArgs(invocation, signatureLengths.max) chain
+    typeChecker.checkTypes(invocation)
 }
-
 
 abstract class AggregatingFunction extends Function {
   override def semanticCheckHook(ctx: ast.Expression.SemanticContext, invocation: ast.FunctionInvocation): SemanticCheck =
     when(ctx == ast.Expression.SemanticContext.Simple) {
       SemanticError(s"Invalid use of aggregating function $name(...) in this context", invocation.position)
     } chain invocation.arguments.semanticCheck(ctx) chain semanticCheck(ctx, invocation)
+
+
+  /*
+   * Checks so that the expression is in the range [min, max]
+   */
+  protected def checkPercentileRange(expression: Expression): SemanticCheck = {
+    expression match {
+      case d: DoubleLiteral if d.value >= 0.0 && d.value <= 1.0 =>
+        SemanticCheckResult.success
+      case i: IntegerLiteral if i.value == 0L || i.value == 1L =>
+        SemanticCheckResult.success
+      case d: DoubleLiteral =>
+        SemanticError(s"Invalid input '${d.value}' is not a valid argument, must be a number in the range 0.0 to 1.0",
+          d.position)
+
+      case l: Literal =>
+        SemanticError(s"Invalid input '${
+          l.asCanonicalStringVal
+        }' is not a valid argument, must be a number in the range 0.0 to 1.0", l.position)
+
+      //for other types we'll have to wait until runtime to fail
+      case _ => SemanticCheckResult.success
+
+    }
+  }
 }

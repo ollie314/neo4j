@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -39,11 +39,10 @@ import org.neo4j.kernel.impl.transaction.log.LogVersionedStoreChannel;
 import org.neo4j.kernel.impl.transaction.log.PhysicalLogFile;
 import org.neo4j.kernel.impl.transaction.log.PhysicalLogFiles;
 import org.neo4j.kernel.impl.transaction.log.ReadAheadLogChannel;
-import org.neo4j.kernel.impl.transaction.log.ReadableLogChannel;
+import org.neo4j.kernel.impl.transaction.log.ReadableClosablePositionAwareChannel;
 import org.neo4j.kernel.impl.transaction.log.entry.CheckPoint;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntry;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntryReader;
-import org.neo4j.kernel.impl.transaction.log.entry.LogEntryVersion;
 import org.neo4j.kernel.impl.transaction.log.entry.VersionAwareLogEntryReader;
 import org.neo4j.test.EphemeralFileSystemRule;
 import org.neo4j.test.TestGraphDatabaseFactory;
@@ -52,7 +51,6 @@ import static java.lang.System.getProperty;
 import static org.junit.Assert.assertEquals;
 import static org.neo4j.kernel.impl.transaction.log.LogVersionBridge.NO_MORE_CHANNELS;
 import static org.neo4j.kernel.impl.transaction.log.LogVersionRepository.INITIAL_LOG_VERSION;
-import static org.neo4j.kernel.impl.transaction.log.ReadAheadLogChannel.DEFAULT_READ_AHEAD_SIZE;
 
 public class CheckPointerIntegrationTest
 {
@@ -201,13 +199,13 @@ public class CheckPointerIntegrationTest
     {
         private final PhysicalLogFiles logFiles;
         private final FileSystemAbstraction fileSystem;
-        private final LogEntryReader<ReadableLogChannel> logEntryReader;
+        private final LogEntryReader<ReadableClosablePositionAwareChannel> logEntryReader;
 
         public CheckPointCollector( File directory, FileSystemAbstraction fileSystem )
         {
             this.fileSystem = fileSystem;
             this.logFiles = new PhysicalLogFiles( directory, fileSystem );
-            this.logEntryReader = new VersionAwareLogEntryReader<>( LogEntryVersion.CURRENT.byteCode() );
+            this.logEntryReader = new VersionAwareLogEntryReader<>();
         }
 
         public List<CheckPoint> find( long version ) throws IOException
@@ -215,14 +213,14 @@ public class CheckPointerIntegrationTest
             List<CheckPoint> checkPoints = new ArrayList<>();
             for (; version >= INITIAL_LOG_VERSION; version-- )
             {
-                LogVersionedStoreChannel channel = PhysicalLogFile.tryOpenForVersion( logFiles, fileSystem, version );
+                LogVersionedStoreChannel channel =
+                        PhysicalLogFile.tryOpenForVersion( logFiles, fileSystem, version, false );
                 if ( channel == null )
                 {
                     break;
                 }
 
-                ReadableLogChannel recoveredDataChannel =
-                        new ReadAheadLogChannel( channel, NO_MORE_CHANNELS, DEFAULT_READ_AHEAD_SIZE );
+                ReadableClosablePositionAwareChannel recoveredDataChannel = new ReadAheadLogChannel( channel, NO_MORE_CHANNELS );
 
                 try ( LogEntryCursor cursor = new LogEntryCursor( logEntryReader, recoveredDataChannel ) )
                 {
@@ -238,6 +236,5 @@ public class CheckPointerIntegrationTest
             }
             return checkPoints;
         }
-
     }
 }

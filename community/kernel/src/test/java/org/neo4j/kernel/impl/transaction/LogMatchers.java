@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -29,26 +29,26 @@ import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.List;
 
-import javax.transaction.xa.Xid;
-
 import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.fs.StoreChannel;
 import org.neo4j.kernel.impl.transaction.command.Command;
-import org.neo4j.kernel.impl.transaction.log.LogPosition;
 import org.neo4j.kernel.impl.transaction.log.LogEntryCursor;
+import org.neo4j.kernel.impl.transaction.log.LogPosition;
 import org.neo4j.kernel.impl.transaction.log.PhysicalLogVersionedStoreChannel;
 import org.neo4j.kernel.impl.transaction.log.ReadAheadLogChannel;
-import org.neo4j.kernel.impl.transaction.log.ReadableVersionableLogChannel;
+import org.neo4j.kernel.impl.transaction.log.ReadableLogChannel;
 import org.neo4j.kernel.impl.transaction.log.entry.CheckPoint;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntry;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntryCommand;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntryStart;
 import org.neo4j.kernel.impl.transaction.log.entry.LogHeader;
 import org.neo4j.kernel.impl.transaction.log.entry.OnePhaseCommit;
+import org.neo4j.kernel.impl.transaction.log.entry.VersionAwareLogEntryReader;
+import org.neo4j.kernel.impl.util.IOCursorAsResourceIterable;
 
-import static org.neo4j.helpers.collection.Iterables.iterable;
 import static org.neo4j.kernel.impl.transaction.log.LogVersionBridge.NO_MORE_CHANNELS;
+import static org.neo4j.kernel.impl.transaction.log.entry.LogHeader.LOG_HEADER_SIZE;
 import static org.neo4j.kernel.impl.transaction.log.entry.LogHeaderReader.readLogHeader;
 
 /**
@@ -59,18 +59,18 @@ public class LogMatchers
 {
     public static List<LogEntry> logEntries( FileSystemAbstraction fileSystem, String logPath ) throws IOException
     {
-        StoreChannel fileChannel = fileSystem.open( new File( logPath ), "r" );
-        ByteBuffer buffer = ByteBuffer.allocateDirect( 9 + Xid.MAXGTRIDSIZE + Xid.MAXBQUALSIZE * 10 );
+        File logFile = new File( logPath );
+        StoreChannel fileChannel = fileSystem.open( logFile, "r" );
 
         // Always a header
-        LogHeader header = readLogHeader( buffer, fileChannel, true );
+        LogHeader header = readLogHeader( ByteBuffer.allocateDirect( LOG_HEADER_SIZE ), fileChannel, true, logFile );
 
         // Read all log entries
         PhysicalLogVersionedStoreChannel versionedStoreChannel =
                 new PhysicalLogVersionedStoreChannel( fileChannel, header.logVersion, header.logFormatVersion );
-        ReadableVersionableLogChannel logChannel =
-                new ReadAheadLogChannel( versionedStoreChannel, NO_MORE_CHANNELS, 4096 );
-        return Iterables.toList( iterable( new LogEntryCursor( logChannel ) ) );
+        ReadableLogChannel logChannel = new ReadAheadLogChannel( versionedStoreChannel, NO_MORE_CHANNELS );
+        LogEntryCursor logEntryCursor = new LogEntryCursor( new VersionAwareLogEntryReader<>(), logChannel );
+        return Iterables.asList( new IOCursorAsResourceIterable<>( logEntryCursor ) );
     }
 
     public static List<LogEntry> logEntries( FileSystemAbstraction fileSystem, File file ) throws IOException
@@ -164,6 +164,7 @@ public class LogMatchers
             }
         };
     }
+
     public static Matcher<? extends LogEntry> checkPoint( final LogPosition position )
     {
         return new TypeSafeMatcher<CheckPoint>()
@@ -171,7 +172,7 @@ public class LogMatchers
             @Override
             public boolean matchesSafely( CheckPoint cp )
             {
-                return cp != null &&  position.equals( cp.getLogPosition() );
+                return cp != null && position.equals( cp.getLogPosition() );
             }
 
             @Override
@@ -183,7 +184,7 @@ public class LogMatchers
     }
 
     public static Matcher<? extends LogEntry> commandEntry( final long key,
-            final Class<? extends Command> commandClass )
+                                                            final Class<? extends Command> commandClass )
     {
         return new TypeSafeMatcher<LogEntryCommand>()
         {
@@ -195,9 +196,9 @@ public class LogMatchers
                     return false;
                 }
 
-                Command command = commandEntry.getXaCommand();
+                Command command = (Command) commandEntry.getXaCommand();
                 return command.getKey() == key &&
-                       command.getClass().equals( commandClass );
+                        command.getClass().equals( commandClass );
             }
 
             @Override

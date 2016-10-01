@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,7 +21,7 @@ package org.neo4j.cypher.internal.compiler.v3_0.commands
 
 import org.neo4j.cypher.internal.compiler.v3_0.ExecutionContext
 import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, InequalitySeekRangeExpression, PrefixSeekRangeExpression}
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.IsCollection
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.IsList
 import org.neo4j.cypher.internal.compiler.v3_0.mutation.{GraphElementPropertyFunctions, makeValueNeoSafe}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.frontend.v3_0.CypherTypeException
@@ -42,7 +42,7 @@ object indexQuery extends GraphElementPropertyFunctions {
 
     case ManyQueryExpression(inner) =>
       inner(m)(state) match {
-        case IsCollection(coll) => coll.toSet.toSeq.flatMap {
+        case IsList(coll) => coll.toSet.toSeq.flatMap {
           value: Any => lookupNodes(value, index)
         }.iterator
         case null => Iterator.empty

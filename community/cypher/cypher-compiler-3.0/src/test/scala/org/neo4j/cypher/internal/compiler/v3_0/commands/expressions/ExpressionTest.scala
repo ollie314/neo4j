@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,13 +28,12 @@ import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
-import org.neo4j.helpers.ThisShouldNotHappenError
 
 import scala.collection.Map
 
 class ExpressionTest extends CypherFunSuite {
   test("replacePropWithCache") {
-    val a = Collect(Property(Identifier("r"), PropertyKey("age")))
+    val a = Collect(Property(Variable("r"), PropertyKey("age")))
 
     val b = a.rewrite {
       case Property(n, p) => Literal(n + "." + p.name)
@@ -44,14 +43,14 @@ class ExpressionTest extends CypherFunSuite {
     b should equal(Collect(Literal("r.age")))
   }
 
-  test("merge_two_different_identifiers") {
+  test("merge_two_different_variables") {
     testMerge(
       Map("a" -> CTAny),
       Map("b" -> CTAny),
       Map("a" -> CTAny, "b" -> CTAny))
   }
 
-  test("merge_two_deps_on_the_same_identifier") {
+  test("merge_two_deps_on_the_same_variable") {
     testMerge(
       Map("a" -> CTAny),
       Map("a" -> CTAny),
@@ -67,24 +66,24 @@ class ExpressionTest extends CypherFunSuite {
 
   test("should_find_inner_aggregations") {
     //GIVEN
-    val e = LengthFunction(Collect(Property(Identifier("n"), PropertyKey("bar"))))
+    val e = LengthFunction(Collect(Property(Variable("n"), PropertyKey("bar"))))
 
     //WHEN
     val aggregates = e.filter(e => e.isInstanceOf[AggregationExpression])
 
     //THEN
-    aggregates.toList should equal( List(Collect(Property(Identifier("n"), PropertyKey("bar")))))
+    aggregates.toList should equal( List(Collect(Property(Variable("n"), PropertyKey("bar")))))
   }
 
   test("should_find_inner_aggregations2") {
     //GIVEN
-    val r = ReturnItem(Avg(Property(Identifier("a"), PropertyKey("age"))), "avg(a.age)")
+    val r = ReturnItem(Avg(Property(Variable("a"), PropertyKey("age"))), "avg(a.age)")
 
     //WHEN
     val aggregates = r.expression.filter(e => e.isInstanceOf[AggregationExpression])
 
     //THEN
-    aggregates.toList should equal( List(Avg(Property(Identifier("a"), PropertyKey("age")))))
+    aggregates.toList should equal( List(Avg(Property(Variable("a"), PropertyKey("age")))))
   }
 
   test("should_handle_rewriting_to_non_predicates") {
@@ -129,7 +128,7 @@ class ExpressionTest extends CypherFunSuite {
       case (Some(x), None)    => k -> x
       case (None, Some(x))    => k -> x
       case (Some(x), Some(y)) => k -> x.leastUpperBound(y)
-      case (None, None)       => throw new ThisShouldNotHappenError("Andres", "only here to stop warnings")
+      case (None, None)       => throw new AssertionError("only here to stop warnings")
     }).toMap
 
     if (result != expected) {

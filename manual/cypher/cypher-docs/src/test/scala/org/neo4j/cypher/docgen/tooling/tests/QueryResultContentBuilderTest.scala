@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,13 +19,18 @@
  */
 package org.neo4j.cypher.docgen.tooling.tests
 
-import org.neo4j.cypher.ExecutionEngine
+import org.neo4j.cypher.ExecutionEngineHelper
 import org.neo4j.cypher.docgen.tooling._
-import org.neo4j.cypher.internal.RewindableExecutionResult
+import org.neo4j.cypher.internal.ExecutionEngine
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.helpers.GraphIcing
+import org.neo4j.cypher.javacompat.internal.GraphDatabaseCypherService
 import org.neo4j.test.TestGraphDatabaseFactory
 
-class QueryResultContentBuilderTest extends CypherFunSuite {
+class QueryResultContentBuilderTest extends CypherFunSuite with GraphIcing with ExecutionEngineHelper {
+
+  val graph = new GraphDatabaseCypherService(new TestGraphDatabaseFactory().newImpermanentDatabase())
+  val eengine = new ExecutionEngine(graph)
 
   test("should handle query with result table output and empty results") {
     val result = runQuery("match (n) return n")
@@ -42,12 +47,9 @@ class QueryResultContentBuilderTest extends CypherFunSuite {
   }
 
   def runQuery(query: String, init: String = ""): Content = {
-    val db = new TestGraphDatabaseFactory().newImpermanentDatabase()
-    if (init != "") db.execute(init)
-    val engine = new ExecutionEngine(db)
+    if (init != "") graph.execute(init)
     val builder = new QueryResultContentBuilder(x => x.toString)
-    val queryResult = RewindableExecutionResult(engine.execute(query))
-
+    val queryResult = execute(query)
     builder.apply(queryResult)
   }
 }

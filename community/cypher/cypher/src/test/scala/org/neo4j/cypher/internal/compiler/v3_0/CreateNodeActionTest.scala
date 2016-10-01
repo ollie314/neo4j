@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,21 +19,26 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0
 
-import commands.expressions.Literal
 import org.neo4j.cypher.ExecutionEngineFunSuite
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.Literal
 import org.neo4j.cypher.internal.compiler.v3_0.mutation.CreateNode
+import org.neo4j.graphdb.Node
+import org.neo4j.kernel.api.KernelTransaction
+import org.neo4j.kernel.api.security.AccessMode
 
 class CreateNodeActionTest extends ExecutionEngineFunSuite {
 
   test("demixed types are not ok") {
     val action = CreateNode("id", Map("*" -> Literal(Map("name" -> "Andres", "age" -> 37))), Seq.empty)
 
-    graph.inTx {
-      action.exec(ExecutionContext.empty, QueryStateHelper.queryStateFrom(graph, graph.beginTx())).size
+    val id = graph.inTx {
+      val tx = graph.beginTransaction( KernelTransaction.Type.explicit, AccessMode.Static.WRITE )
+      val vec = action.exec(ExecutionContext.empty, QueryStateHelper.queryStateFrom(graph, tx)).toVector
+      vec.head("id").asInstanceOf[Node].getId
     }
-    val n = graph.createdNodes.dequeue()
 
     graph.inTx {
+      val n = graph.getNodeById(id)
       n.getProperty("name") should equal("Andres")
       n.getProperty("age") should equal(37)
     }

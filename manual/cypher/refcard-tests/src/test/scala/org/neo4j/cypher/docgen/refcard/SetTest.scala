@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,26 +26,26 @@ import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionRe
 class SetTest extends RefcardTest with QueryStatisticsTestSupport {
   val graphDescription = List("ROOT LINK A")
   val title = "SET"
-  val css = "write c2-2 c4-4 c5-5 c6-3"
+  val css = "write c2-1 c4-3 c5-4 c6-1"
   override val linkId = "query-set"
 
   override def assert(name: String, result: InternalExecutionResult) {
     name match {
       case "set" =>
-        assertStats(result, propertiesSet = 2)
+        assertStats(result, propertiesWritten = 2)
         assert(result.dumpToString().contains("a value"))
       case "set-label" =>
         assertStats(result, nodesCreated = 1, labelsAdded = 1)
         assert(result.dumpToString().contains("Person"))
       case "map" =>
-        assertStats(result, nodesCreated = 1, propertiesSet = 1)
+        assertStats(result, nodesCreated = 1, propertiesWritten = 1)
         assert(result.dumpToString().contains("a value"))
     }
   }
 
   override def parameters(name: String): Map[String, Any] =
     name match {
-      case "parameters=set" => Map("value" -> "a value", "value2" -> "another value")
+      case "parameters=set" => Map("value1" -> "a value", "value2" -> "another value")
       case "parameters=map" => Map("map" -> Map("property" -> "a value"))
       case "" => Map()
     }
@@ -57,10 +57,10 @@ class SetTest extends RefcardTest with QueryStatisticsTestSupport {
 ###assertion=set parameters=set
 MATCH (n) WHERE id(n) = %A%
 
-SET n.property = {value},
+SET n.property1 = {value1},
     n.property2 = {value2}
 
-RETURN n.property###
+RETURN n.property1###
 
 Update or create a property.
 

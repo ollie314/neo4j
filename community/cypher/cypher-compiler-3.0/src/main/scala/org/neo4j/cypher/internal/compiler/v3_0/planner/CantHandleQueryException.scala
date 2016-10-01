@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,7 +26,7 @@ import org.neo4j.kernel.api.exceptions.Status
 class CantHandleQueryException(message: String = "Internal error - should have used fall back to execute query, but something went horribly wrong")
   extends CypherException(message, null) {
 
-  def status = Status.Statement.ExecutionFailure
+  def status = Status.Statement.ExecutionFailed
 
   def mapToPublic[T <: Throwable](thrower: MapToPublicExceptions[T]) = throw this
 }

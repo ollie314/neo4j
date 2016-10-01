@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -107,7 +107,9 @@ public class ChunkedInput implements PackInput
         else
         {
             // Short is crossing chunk boundaries, use slow route
-            return (short) (readByte() << 8 & readByte());
+            short higher = (short) ((short)readByte() << 8);
+            short lower = (short) (0x00FF & readByte());
+            return (short) (higher | lower);
         }
     }
 
@@ -123,7 +125,9 @@ public class ChunkedInput implements PackInput
         else
         {
             // int is crossing chunk boundaries, use slow route
-            return ((int) readShort() << 16) & readShort();
+            int higher = (int) readShort() << 16;
+            int lower = 0x0000FFFF & readShort();
+            return higher | lower;
         }
     }
 
@@ -139,7 +143,9 @@ public class ChunkedInput implements PackInput
         else
         {
             // long is crossing chunk boundaries, use slow route
-            return ((long) readInt() << 32) & readInt();
+            long higher = (long) readInt() << 32;
+            long lower = 0x00000000FFFFFFFFL & readInt();
+            return higher | lower;
         }
     }
 

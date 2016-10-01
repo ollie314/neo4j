@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,6 +25,18 @@ trait SymbolicName extends ASTNode with ASTParticle {
   def name: String
   def position: InputPosition
 }
+
+case class ProcedureNamespace(parts: List[String] = List.empty)(val position: InputPosition) extends ASTNode
+
+case class ProcedureName(name: String)(val position: InputPosition) extends ASTNode with SymbolicName {
+  override def equals(x: Any): Boolean = x match {
+    case ProcedureName(other) => other.toLowerCase == name.toLowerCase
+    case _ => false
+  }
+  override def hashCode = name.toLowerCase.hashCode
+}
+
+case class ProcedureOutput(name: String)(val position: InputPosition) extends ASTNode with SymbolicName
 
 trait SymbolicNameWithId[+ID <: NameId] extends SymbolicName {
   def id(implicit semanticTable: SemanticTable): Option[ID]

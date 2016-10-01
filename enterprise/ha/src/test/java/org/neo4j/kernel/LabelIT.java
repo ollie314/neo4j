@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,14 +25,17 @@ import org.junit.Test;
 
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Transaction;
+import org.neo4j.kernel.api.KernelTransaction;
+import org.neo4j.kernel.api.exceptions.TransactionFailureException;
 import org.neo4j.kernel.ha.HighlyAvailableGraphDatabase;
 import org.neo4j.kernel.impl.core.ThreadToStatementContextBridge;
+import org.neo4j.kernel.impl.coreapi.TopLevelTransaction;
 import org.neo4j.kernel.impl.ha.ClusterManager;
 import org.neo4j.test.ha.ClusterRule;
 
 import static org.junit.Assert.assertEquals;
 
-import static org.neo4j.graphdb.DynamicLabel.label;
+import static org.neo4j.graphdb.Label.label;
 
 public class LabelIT
 {
@@ -99,7 +102,7 @@ public class LabelIT
     private static class TransactionContinuation
     {
         private final HighlyAvailableGraphDatabase db;
-        private TopLevelTransaction graphDbTx;
+        private KernelTransaction graphDbTx;
         private final ThreadToStatementContextBridge bridge;
 
         private TransactionContinuation( HighlyAvailableGraphDatabase db )
@@ -110,12 +113,13 @@ public class LabelIT
 
         public void begin()
         {
-            graphDbTx = (TopLevelTransaction) db.beginTx();
+            db.beginTx();
+            graphDbTx = bridge.getKernelTransactionBoundToThisThread( false );
         }
 
         public void suspend()
         {
-            graphDbTx = bridge.getTopLevelTransactionBoundToThisThread( true );
+            graphDbTx = bridge.getKernelTransactionBoundToThisThread( true );
             bridge.unbindTransactionFromCurrentThread();
         }
 
@@ -126,7 +130,14 @@ public class LabelIT
 
         public void commit()
         {
-            graphDbTx.close();
+            try
+            {
+                graphDbTx.close();
+            }
+            catch ( TransactionFailureException e )
+            {
+                throw new org.neo4j.graphdb.TransactionFailureException( e.getMessage(), e );
+            }
         }
     }
 }

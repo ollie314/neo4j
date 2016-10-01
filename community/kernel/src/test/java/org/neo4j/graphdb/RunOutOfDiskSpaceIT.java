@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,7 +30,7 @@ import org.neo4j.test.LimitedFileSystemGraphDatabase;
 import org.neo4j.helpers.Exceptions;
 import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.kernel.impl.store.MetaDataStore;
-import org.neo4j.kernel.impl.store.NeoStores;
+import org.neo4j.kernel.impl.transaction.log.LogVersionRepository;
 import org.neo4j.test.CleanupRule;
 import org.neo4j.test.PageCacheRule;
 import org.neo4j.test.TargetDirectory;
@@ -49,7 +49,7 @@ public class RunOutOfDiskSpaceIT
         // Given
         TransactionFailureException exceptionThrown = null;
 
-        String storeDir = testDirectory.absolutePath();
+        File storeDir = testDirectory.absolutePath();
         LimitedFileSystemGraphDatabase db = new LimitedFileSystemGraphDatabase( storeDir );
 
         try ( Transaction tx = db.beginTx() )
@@ -58,7 +58,7 @@ public class RunOutOfDiskSpaceIT
             tx.success();
         }
 
-        long logVersion = db.getDependencyResolver().resolveDependency( NeoStores.class ).getMetaDataStore()
+        long logVersion = db.getDependencyResolver().resolveDependency( LogVersionRepository.class )
                             .getCurrentLogVersion();
 
         db.runOutOfDiskSpaceNao();
@@ -94,7 +94,7 @@ public class RunOutOfDiskSpaceIT
         // Given
         TransactionFailureException expectedCommitException = null;
         TransactionFailureException expectedStartException = null;
-        String storeDir = testDirectory.absolutePath();
+        File storeDir = testDirectory.absolutePath();
         LimitedFileSystemGraphDatabase db = cleanup.add( new LimitedFileSystemGraphDatabase( storeDir ) );
 
 
@@ -104,8 +104,8 @@ public class RunOutOfDiskSpaceIT
             tx.success();
         }
 
-        long logVersion = db.getDependencyResolver().resolveDependency( NeoStores.class ).getMetaDataStore()
-                            .getCurrentLogVersion();
+        long logVersion = db.getDependencyResolver().resolveDependency( LogVersionRepository.class )
+                .getCurrentLogVersion();
 
         db.runOutOfDiskSpaceNao();
 

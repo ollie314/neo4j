@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -59,7 +59,8 @@ class ToFloatFunctionTest extends CypherFunSuite {
   }
 
   test("should throw an exception if the argument is an object which cannot be converted to a float") {
-    evaluating { toFloat(new Object) } should produce[ParameterWrongTypeException]
+    val caughtException = evaluating { toFloat(new Object) } should produce[ParameterWrongTypeException]
+    caughtException.getMessage should startWith("Expected a String or Number, got: ")
   }
 
   test("given a float should give the same value back") {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,10 +24,10 @@ import org.neo4j.cypher.internal.frontend.v3_0.{bottomUp, Rewriter}
 
 case object fuseSelections extends Rewriter {
 
-  def apply(input: AnyRef) = bottomUp(instance).apply(input)
+  override def apply(input: AnyRef) = instance.apply(input)
 
-  private val instance: Rewriter = Rewriter.lift {
+  private val instance: Rewriter = bottomUp(Rewriter.lift {
     case topSelection@Selection(predicates1, Selection(predicates2, lhs)) =>
       Selection(predicates1 ++ predicates2, lhs)(topSelection.solved)
-  }
+  })
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,7 +20,8 @@
 package org.neo4j.cypher.internal.frontend.v3_0.ast
 
 import org.neo4j.cypher.internal.frontend.v3_0.Foldable._
-import org.neo4j.cypher.internal.frontend.v3_0.{ast, _}
+import org.neo4j.cypher.internal.frontend.v3_0.SemanticCheckResult._
+import org.neo4j.cypher.internal.frontend.v3_0._
 import org.neo4j.cypher.internal.frontend.v3_0.ast.Expression._
 import org.neo4j.cypher.internal.frontend.v3_0.symbols.{CypherType, TypeSpec, _}
 
@@ -37,10 +38,10 @@ object Expression {
 
   implicit class SemanticCheckableOption[A <: Expression](option: Option[A]) {
     def semanticCheck(ctx: SemanticContext): SemanticCheck =
-      option.fold(SemanticCheckResult.success) { _.semanticCheck(ctx) }
+      option.fold(success) { _.semanticCheck(ctx) }
 
     def expectType(possibleTypes: => TypeSpec): SemanticCheck =
-      option.fold(SemanticCheckResult.success) { _.expectType(possibleTypes) }
+      option.fold(success) { _.expectType(possibleTypes) }
   }
 
   implicit class SemanticCheckableExpressionTraversable[A <: Expression](traversable: TraversableOnce[A]) extends SemanticChecking {
@@ -62,13 +63,13 @@ object Expression {
       traversable.foldSemanticCheck { _.expectType(possibleTypes) }
   }
 
-  final case class TreeAcc[A](data: A, stack: Stack[Set[Identifier]] = Stack.empty) {
-    def toSet: Set[Identifier] = stack.toSet.flatten
+  final case class TreeAcc[A](data: A, stack: Stack[Set[Variable]] = Stack.empty) {
+    def toSet: Set[Variable] = stack.toSet.flatten
     def map(f: A => A): TreeAcc[A] = copy(data = f(data))
-    def push(newIdentifier: Identifier): TreeAcc[A] = push(Set(newIdentifier))
-    def push(newIdentifiers: Set[Identifier]): TreeAcc[A] = copy(stack = stack.push(newIdentifiers))
+    def push(newVariable: Variable): TreeAcc[A] = push(Set(newVariable))
+    def push(newVariables: Set[Variable]): TreeAcc[A] = copy(stack = stack.push(newVariables))
     def pop: TreeAcc[A] = copy(stack = stack.pop)
-    def contains(identifier: Identifier) = stack.exists(_.contains(identifier))
+    def contains(variable: Variable) = stack.exists(_.contains(variable))
   }
 }
 
@@ -82,40 +83,39 @@ abstract class Expression extends ASTNode with ASTExpression with SemanticChecki
 
   def arguments: Seq[Expression] = this.treeFold(List.empty[Expression]) {
     case e: Expression if e != this =>
-      (acc, _) => acc :+ e
+      acc => (acc :+ e, None)
   }
 
-  // All identifiers referenced from this expression or any of its childs
+  // All variables referenced from this expression or any of its children
   // that are not introduced inside this expression
-  def dependencies: Set[Identifier] =
-    this.treeFold(TreeAcc[Set[Identifier]](Set.empty)) {
+  def dependencies: Set[Variable] =
+    this.treeFold(TreeAcc[Set[Variable]](Set.empty)) {
       case scope: ScopeExpression => {
-        case (acc, children) =>
-          val newAcc = acc.push(scope.identifiers)
-          children(newAcc).pop
+        acc =>
+          val newAcc = acc.push(scope.variables)
+          (newAcc, Some((x) => x.pop))
       }
-      case id: Identifier => {
-        case (acc, children) if acc.contains(id) =>
-          children(acc)
-        case (acc, children) =>
-          children(acc.map(_ + id))
+      case id: Variable => acc => {
+        val newAcc = if (acc.contains(id)) acc
+        else acc.map(_ + id)
+        (newAcc, Some(identity))
       }
     }.data
 
   // List of child expressions together with any of its dependencies introduced
   // by any of its parent expressions (where this expression is the root of the tree)
-  def inputs: Seq[(Expression, Set[Identifier])] =
-    this.treeFold(TreeAcc[Seq[(Expression, Set[Identifier])]](Seq.empty)) {
+  def inputs: Seq[(Expression, Set[Variable])] =
+    this.treeFold(TreeAcc[Seq[(Expression, Set[Variable])]](Seq.empty)) {
       case scope: ScopeExpression=> {
-        case (acc, children) =>
-          val newAcc = acc.push(scope.identifiers).map { case pairs => pairs :+ (scope -> acc.toSet) }
-          children(newAcc).pop
+        acc =>
+          val newAcc = acc.push(scope.variables).map(pairs => pairs :+ (scope -> acc.toSet))
+          (newAcc, Some((x) => x.pop))
       }
 
       case expr: Expression => {
-        case (acc, children) =>
-          val newAcc = acc.map { case pairs => pairs :+ (expr -> acc.toSet) }
-          children(newAcc)
+        acc =>
+          val newAcc = acc.map(pairs => pairs :+ (expr -> acc.toSet))
+          (newAcc, Some(identity))
       }
     }.data
 
@@ -136,7 +136,7 @@ abstract class Expression extends ASTNode with ASTExpression with SemanticChecki
         val expectedTypesString = possibleTypes.mkString(", ", " or ")
         SemanticCheckResult.error(ss, SemanticError("Type mismatch: " + messageGen(expectedTypesString, existingTypesString), position))
       case (ss, _)             =>
-        SemanticCheckResult.success(ss)
+        success(ss)
     }
   }
 
@@ -148,49 +148,20 @@ abstract class Expression extends ASTNode with ASTExpression with SemanticChecki
   }
 }
 
-trait SimpleTyping { self: Expression =>
+trait SimpleTyping {
+  self: Expression =>
+
   protected def possibleTypes: TypeSpec
+
   def semanticCheck(ctx: SemanticContext): SemanticCheck = specifyType(possibleTypes)
 }
 
-trait FunctionTyping { self: Expression =>
+trait FunctionTyping extends ExpressionCallTypeChecking {
+  self: Expression =>
 
-  case class Signature(argumentTypes: IndexedSeq[CypherType], outputType: CypherType)
-
-  def signatures: Seq[Signature]
-
-  def semanticCheck(ctx: ast.Expression.SemanticContext): SemanticCheck =
+  override def semanticCheck(ctx: ast.Expression.SemanticContext): SemanticCheck =
     arguments.semanticCheck(ctx) chain
-    checkTypes
-
-  def checkTypes: SemanticCheck = s => {
-    val initSignatures = signatures.filter(_.argumentTypes.length == arguments.length)
-
-    val (remainingSignatures: Seq[Signature], result) = arguments.foldLeft((initSignatures, SemanticCheckResult.success(s))) {
-      case (accumulator@(Seq(), _), _) =>
-        accumulator
-      case ((possibilities, r1), arg)  =>
-        val argTypes = possibilities.foldLeft(TypeSpec.none) { _ | _.argumentTypes.head.covariant }
-        val r2 = arg.expectType(argTypes)(r1.state)
-
-        val actualTypes = arg.types(r2.state)
-        val remainingPossibilities = possibilities.filter {
-          sig => actualTypes containsAny sig.argumentTypes.head.covariant
-        } map {
-          sig => sig.copy(argumentTypes = sig.argumentTypes.tail)
-        }
-        (remainingPossibilities, SemanticCheckResult(r2.state, r1.errors ++ r2.errors))
-    }
-
-    val outputType = remainingSignatures match {
-      case Seq() => TypeSpec.all
-      case _     => remainingSignatures.foldLeft(TypeSpec.none) { _ | _.outputType.invariant }
-    }
-    specifyType(outputType)(result.state) match {
-      case Left(err)    => SemanticCheckResult(result.state, result.errors :+ err)
-      case Right(state) => SemanticCheckResult(state, result.errors)
-    }
-  }
+    typeChecker.checkTypes(self)
 }
 
 trait PrefixFunctionTyping extends FunctionTyping { self: Expression =>

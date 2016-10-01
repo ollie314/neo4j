@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,6 +30,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
@@ -44,10 +45,10 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriInfo;
 
-import org.neo4j.function.Function;
 import org.neo4j.graphdb.ConstraintViolationException;
 import org.neo4j.graphdb.NotFoundException;
-import org.neo4j.helpers.Pair;
+import org.neo4j.helpers.collection.Iterables;
+import org.neo4j.helpers.collection.Pair;
 import org.neo4j.server.configuration.ServerSettings;
 import org.neo4j.server.rest.domain.EndNodeNotFoundException;
 import org.neo4j.server.rest.domain.EvaluationException;
@@ -66,7 +67,6 @@ import org.neo4j.server.rest.web.DatabaseActions.RelationshipDirection;
 
 import static java.lang.String.format;
 import static org.neo4j.helpers.collection.Iterables.map;
-import static org.neo4j.helpers.collection.IteratorUtil.single;
 import static org.neo4j.helpers.collection.MapUtil.toMap;
 import static org.neo4j.server.rest.web.Surface.PATH_LABELS;
 import static org.neo4j.server.rest.web.Surface.PATH_NODES;
@@ -1796,7 +1796,7 @@ public class RestfulGraphDatabase
             return output.badRequest( new IllegalArgumentException( "Single property key assumed" ) );
         }
 
-        String property = single( properties );
+        String property = Iterables.single( properties );
         try
         {
             if ( actions.dropSchemaIndex( labelName, property ) )

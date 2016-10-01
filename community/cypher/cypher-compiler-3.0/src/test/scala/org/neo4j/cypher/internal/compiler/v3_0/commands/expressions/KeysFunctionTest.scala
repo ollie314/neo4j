@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -45,7 +45,7 @@ class KeysFunctionTest extends CypherFunSuite {
     val ctx = ExecutionContext() += ("n" -> node)
 
     // WHEN
-    val result = KeysFunction(Identifier("n"))(ctx)(state)
+    val result = KeysFunction(Variable("n"))(ctx)(state)
 
     // THEN
     result should equal(Seq("theProp1","OtherProp","MoreProp"))
@@ -64,7 +64,7 @@ class KeysFunctionTest extends CypherFunSuite {
     val ctx = ExecutionContext() += ("n" -> node)
 
     // WHEN
-    val result = KeysFunction(Identifier("n"))(ctx)(state)
+    val result = KeysFunction(Variable("n"))(ctx)(state)
 
     // THEN
     result should equal(Seq.empty)

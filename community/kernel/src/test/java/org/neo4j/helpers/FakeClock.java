@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,28 +21,64 @@ package org.neo4j.helpers;
 
 import java.util.concurrent.TimeUnit;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
+
+/**
+ * @deprecated please use base your fake clocks on {@link java.time.Clock} instead
+ */
+@Deprecated
 public class FakeClock implements Clock
 {
     private volatile long time;
 
     public FakeClock()
     {
-        this( 0 );
+        this( 0, MILLISECONDS );
     }
 
-    public FakeClock( long currentTime )
+    public FakeClock( long currentTime, TimeUnit timeUnit )
     {
-        this.time = currentTime;
+        this.time = timeUnit.toNanos( currentTime );
     }
 
     @Override
     public long currentTimeMillis()
     {
+        return NANOSECONDS.toMillis( time );
+    }
+
+    @Override
+    public long nanoTime()
+    {
         return time;
     }
 
-    public void forward( long amount, TimeUnit timeUnit)
+    public synchronized void forward( long amount, TimeUnit timeUnit )
     {
-        time = time + timeUnit.toMillis( amount );
+        time = time + timeUnit.toNanos( amount );
+    }
+
+    public Progressor progressor( long time, TimeUnit unit )
+    {
+        return new Progressor( unit.toNanos( time ) );
+    }
+
+    /**
+     * Used to allow the clock to advance by the same number of ticks each time.
+     */
+    public class Progressor
+    {
+        private final long nanos;
+
+        private Progressor( long nanos )
+        {
+            this.nanos = nanos;
+        }
+
+        public void tick()
+        {
+            forward( nanos, NANOSECONDS );
+        }
     }
 }

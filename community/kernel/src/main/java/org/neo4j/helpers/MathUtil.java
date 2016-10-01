@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -88,6 +88,19 @@ public abstract class MathUtil
     public static int compareLongAgainstDouble( long lhs, double rhs )
     {
         return - compareDoubleAgainstLong( rhs, lhs );
+    }
+
+    /**
+     * Return an integer one less than the given integer, or throw {@link ArithmeticException} if the given integer is
+     * zero.
+     */
+    public static int decrementExactNotPastZero( int value )
+    {
+        if ( value == 0 )
+        {
+            throw new ArithmeticException( "integer underflow past zero" );
+        }
+        return value - 1;
     }
 }
 

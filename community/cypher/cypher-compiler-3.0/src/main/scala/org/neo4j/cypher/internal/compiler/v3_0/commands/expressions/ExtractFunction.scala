@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,14 +20,14 @@
 package org.neo4j.cypher.internal.compiler.v3_0.commands.expressions
 
 import org.neo4j.cypher.internal.compiler.v3_0._
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.CollectionSupport
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.ListSupport
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 
 case class ExtractFunction(collection: Expression, id: String, expression: Expression)
   extends NullInNullOutExpression(collection)
-  with CollectionSupport
+  with ListSupport
   with Closure {
 
   def compute(value: Any, m: ExecutionContext)(implicit state: QueryState) = makeTraversable(value).map {
@@ -44,9 +44,9 @@ case class ExtractFunction(collection: Expression, id: String, expression: Expre
   def arguments: Seq[Expression] = Seq(collection)
 
   def calculateType(symbols: SymbolTable): CypherType = {
-    val iteratorType = collection.evaluateType(CTCollection(CTAny), symbols).legacyIteratedType
+    val iteratorType = collection.evaluateType(CTList(CTAny), symbols).legacyIteratedType
     val innerSymbols = symbols.add(id, iteratorType)
-    CTCollection(expression.evaluateType(CTAny, innerSymbols))
+    CTList(expression.evaluateType(CTAny, innerSymbols))
   }
 
   def symbolTableDependencies = symbolTableDependencies(collection, expression, id)

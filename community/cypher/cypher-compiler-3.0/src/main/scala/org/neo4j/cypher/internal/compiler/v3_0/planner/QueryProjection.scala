@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,15 +19,14 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner
 
-import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.{IdName, LazyMode, StrictnessMode}
+import org.neo4j.cypher.internal.compiler.v3_0.ast.ResolvedCall
+import org.neo4j.cypher.internal.compiler.v3_0.pipes.CSVFormat
+import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.{EagerMode, IdName, LazyMode, StrictnessMode}
+import org.neo4j.cypher.internal.compiler.v3_0.spi.ProcedureReadOnlyAccess
 import org.neo4j.cypher.internal.frontend.v3_0.InternalException
 import org.neo4j.cypher.internal.frontend.v3_0.ast._
-import org.neo4j.cypher.internal.frontend.v3_0.perty._
 
-sealed trait QueryHorizon extends PageDocFormatting { // with ToPrettyString[QueryHorizon] {
-
-  //  def toDefaultPrettyString(formatter: DocFormatter) =
-  //    toPrettyString(formatter)(InternalDocHandler.docGen)
+sealed trait QueryHorizon {
 
   def exposedSymbols(qg: QueryGraph): Set[IdName]
 
@@ -36,12 +35,12 @@ sealed trait QueryHorizon extends PageDocFormatting { // with ToPrettyString[Que
   def preferredStrictness: Option[StrictnessMode]
 
   def dependencies: Set[IdName] = dependingExpressions.treeFold(Set.empty[IdName]) {
-    case id: Identifier =>
-      (acc, children) => children(acc + IdName(id.name))
+    case id: Variable =>
+      acc => (acc + IdName(id.name), Some(identity))
   }
 }
 
-sealed abstract class QueryProjection extends QueryHorizon { // with internalDocBuilder.GeneratorToString[Any]{
+sealed abstract class QueryProjection extends QueryHorizon {
   def projections: Map[String, Expression]
   def shuffle: QueryShuffle
   def keySet: Set[String]
@@ -60,7 +59,7 @@ object QueryProjection {
 
   def forIds(coveredIds: Set[IdName]) =
     coveredIds.toSeq.map(idName =>
-      AliasedReturnItem(Identifier(idName.name)(null), Identifier(idName.name)(null))(null))
+      AliasedReturnItem(Variable(idName.name)(null), Variable(idName.name)(null))(null))
 
   def combine(lhs: QueryProjection, rhs: QueryProjection): QueryProjection = (lhs, rhs) match {
     case (left: RegularQueryProjection, right: RegularQueryProjection) =>
@@ -74,10 +73,7 @@ object QueryProjection {
 final case class QueryShuffle(sortItems: Seq[SortItem] = Seq.empty,
                               skip: Option[Expression] = None,
                               limit: Option[Expression] = None)
-  extends PageDocFormatting { // with ToPrettyString[QueryShuffle] {
-
-//  def toDefaultPrettyString(formatter: DocFormatter) =
-//    toPrettyString(formatter)(InternalDocHandler.docGen)
+  extends {
 
   def withSortItems(sortItems: Seq[SortItem]) = copy(sortItems = sortItems)
   def withSkip(skip: Option[Skip]) = copy(skip = skip.map(_.expression))
@@ -101,6 +97,14 @@ final case class QueryShuffle(sortItems: Seq[SortItem] = Seq.empty,
 
 object QueryShuffle {
   val empty = QueryShuffle()
+}
+
+final case class PassthroughAllHorizon() extends QueryHorizon {
+  override def exposedSymbols(qg: QueryGraph) = qg.allCoveredIds
+
+  override def dependingExpressions = Seq.empty
+
+  override def preferredStrictness = None
 }
 
 final case class RegularQueryProjection(projections: Map[String, Expression] = Map.empty,
@@ -151,10 +155,26 @@ final case class AggregatingQueryProjection(groupingKeys: Map[String, Expression
   override def exposedSymbols(qg: QueryGraph) = (groupingKeys.keys ++  aggregationExpressions.keys).map(IdName.apply).toSet
 }
 
-case class UnwindProjection(identifier: IdName, exp: Expression) extends QueryHorizon {
-  override def exposedSymbols(qg: QueryGraph) = qg.allCoveredIds + identifier
+case class UnwindProjection(variable: IdName, exp: Expression) extends QueryHorizon {
+  override def exposedSymbols(qg: QueryGraph) = qg.allCoveredIds + variable
 
   override def dependingExpressions = Seq(exp)
+
+  override def preferredStrictness = None
+}
+
+case class ProcedureCallProjection(call: ResolvedCall) extends QueryHorizon {
+  override def exposedSymbols(qg: QueryGraph) = qg.allCoveredIds ++ call.callResults.map { result => IdName.fromVariable(result.variable) }
+
+  override def dependingExpressions = call.callArguments
+
+  override def preferredStrictness = Some(if (call.signature.accessMode == ProcedureReadOnlyAccess) LazyMode else EagerMode)
+}
+
+case class LoadCSVProjection(variable: IdName, url: Expression, format: CSVFormat, fieldTerminator: Option[StringLiteral]) extends QueryHorizon {
+  override def exposedSymbols(qg: QueryGraph) = qg.allCoveredIds + variable
+
+  override def dependingExpressions = Seq(url)
 
   override def preferredStrictness = None
 }

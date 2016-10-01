@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,18 +21,15 @@ package org.neo4j.cypher.internal.compiler.v3_0
 
 import java.io.PrintWriter
 import java.util
-import java.util.Collections
 
-import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionResult
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.{CollectionSupport, iteratorToVisitable}
+import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{InternalExecutionResult, InternalQueryType}
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.{ListSupport, RuntimeJavaValueConverter}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.compiler.v3_0.planDescription.InternalPlanDescription
-import org.neo4j.cypher.internal.compiler.v3_0.spi.QueryContext
+import org.neo4j.cypher.internal.compiler.v3_0.spi.{InternalResultVisitor, QueryContext}
 import org.neo4j.cypher.internal.frontend.v3_0.helpers.Eagerly
 import org.neo4j.cypher.internal.frontend.v3_0.notification.InternalNotification
-import org.neo4j.graphdb.QueryExecutionType.{QueryType, profiled, query}
 import org.neo4j.graphdb.{NotFoundException, ResourceIterator}
-import org.neo4j.graphdb.Result.ResultVisitor
 
 import scala.collection.JavaConverters._
 import scala.collection.Map
@@ -42,12 +39,13 @@ class PipeExecutionResult(val result: ResultIterator,
                           val state: QueryState,
                           val executionPlanBuilder: () => InternalPlanDescription,
                           val executionMode: ExecutionMode,
-                          val queryType: QueryType)
+                          val executionType: InternalQueryType)
   extends InternalExecutionResult
-  with CollectionSupport {
+  with ListSupport {
 
   self =>
 
+  val javaValues = new RuntimeJavaValueConverter(state.query.isGraphKernelResultValue, state.typeConverter.asPublicType)
   lazy val dumpToString = withDumper(dumper => dumper.dumpToString(_))
 
   def dumpToString(writer: PrintWriter) { withDumper(dumper => dumper.dumpToString(writer)(_)) }
@@ -58,7 +56,7 @@ class PipeExecutionResult(val result: ResultIterator,
 
   def javaColumnAs[T](column: String): ResourceIterator[T] = new WrappingResourceIterator[T] {
     def hasNext = self.hasNext
-    def next() = makeValueJavaCompatible(getAnyColumn(column, self.next())).asInstanceOf[T]
+    def next() = javaValues.asDeepJavaValue(getAnyColumn(column, self.next())).asInstanceOf[T]
   }
 
   def columnAs[T](column: String): Iterator[T] =
@@ -67,7 +65,11 @@ class PipeExecutionResult(val result: ResultIterator,
 
   def javaIterator: ResourceIterator[java.util.Map[String, Any]] = new WrappingResourceIterator[util.Map[String, Any]] {
     def hasNext = self.hasNext
-    def next() = Eagerly.immutableMapValues(self.next(), makeValueJavaCompatible).asJava
+    def next() = {
+      val value = self.next()
+      val result = Eagerly.immutableMapValues(value, javaValues.asDeepJavaValue).asJava
+      result
+    }
   }
 
   override def toList: List[Predef.Map[String, Any]] = result.toList
@@ -88,11 +90,6 @@ class PipeExecutionResult(val result: ResultIterator,
   private def getAnyColumn[T](column: String, m: Map[String, Any]): Any =
     m.getOrElse(column, columnNotFoundException(column, m.keys))
 
-  private def makeValueJavaCompatible(value: Any): Any = value match {
-    case iter: Seq[_]    => iter.map(makeValueJavaCompatible).asJava
-    case iter: Map[_, _] => Eagerly.immutableMapValues(iter, makeValueJavaCompatible).asJava
-    case x               => x
-  }
 
   private def withDumper[T](f: (ExecutionResultDumper) => (QueryContext => T)): T = {
     val result = toList
@@ -104,14 +101,12 @@ class PipeExecutionResult(val result: ResultIterator,
     def close() { self.close() }
   }
 
-  def executionType = if (executionMode == ProfileMode) profiled(queryType) else query(queryType)
-
   //notifications only present for EXPLAIN
   override val notifications = Iterable.empty[InternalNotification]
 
-  def accept[EX <: Exception](visitor: ResultVisitor[EX]) = {
+  def accept[EX <: Exception](visitor: InternalResultVisitor[EX]) = {
     try {
-      iteratorToVisitable.accept(self, visitor)
+      javaValues.feedIteratorToVisitable(self).accept(visitor)
     } finally {
       self.close()
     }

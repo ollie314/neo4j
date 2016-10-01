@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,10 +28,7 @@ case class NodeIndexSeek(idName: IdName,
                          propertyKey: PropertyKeyToken,
                          valueExpr: QueryExpression[Expression],
                          argumentIds: Set[IdName])
-                        (val solved: PlannerQuery with CardinalityEstimation) extends NodeLogicalLeafPlan {
+                        (val solved: PlannerQuery with CardinalityEstimation) extends IndexLeafPlan {
 
   def availableSymbols = argumentIds + idName
-
-  override def mapExpressions(f: (Set[IdName], Expression) => Expression): LogicalPlan =
-    copy(valueExpr = valueExpr.map(f(argumentIds, _)))(solved)
 }

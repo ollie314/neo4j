@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,30 +19,14 @@
  */
 package org.neo4j.cypher
 
-import java.nio.file.{Files, Path}
-import java.util
-
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
-import org.neo4j.graphdb.EnterpriseGraphDatabase
-import org.neo4j.graphdb.factory.{GraphDatabaseFactoryState, GraphDatabaseSettings}
-import org.neo4j.io.fs.FileUtils
-import org.neo4j.kernel.GraphDatabaseAPI
+import org.neo4j.cypher.javacompat.internal.GraphDatabaseCypherService
+import org.neo4j.test.TestEnterpriseGraphDatabaseFactory
 
 trait EnterpriseGraphDatabaseTestSupport extends GraphDatabaseTestSupport {
   self: CypherFunSuite =>
 
-  var dir: Path = null
-
-  override protected def createGraphDatabase(): GraphDatabaseAPI with Snitch = {
-    val config = new util.HashMap[String, String]()
-    config.put(GraphDatabaseSettings.pagecache_memory.name, "8M")
-    dir = Files.createTempDirectory(getClass.getSimpleName)
-    val state = new GraphDatabaseFactoryState()
-    new EnterpriseGraphDatabase(dir.toFile, config, state.databaseDependencies()) with Snitch
-  }
-
-  override protected def stopTest() {
-    super.stopTest()
-    FileUtils.deletePathRecursively(dir)
+  override protected def createGraphDatabase() = {
+    new GraphDatabaseCypherService(new TestEnterpriseGraphDatabaseFactory().newImpermanentDatabase())
   }
 }

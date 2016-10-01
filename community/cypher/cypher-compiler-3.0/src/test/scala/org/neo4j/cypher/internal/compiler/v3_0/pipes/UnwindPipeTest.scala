@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,28 +19,27 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.pipes
 
-import org.neo4j.cypher.internal.compiler.v3_0._
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.Identifier
-import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.Variable
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
+import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
 
 class UnwindPipeTest extends CypherFunSuite {
 
   private implicit val monitor = mock[PipeMonitor]
 
   private def unwindWithInput(data: Traversable[Map[String, Any]]) = {
-    val source = new FakePipe(data, "x" -> CTCollection(CTInteger))
-    val unwindPipe = new UnwindPipe(source, Identifier("x"), "y")()
+    val source = new FakePipe(data, "x" -> CTList(CTInteger))
+    val unwindPipe = new UnwindPipe(source, Variable("x"), "y")()
     unwindPipe.createResults(QueryStateHelper.empty).toList
   }
 
   test("symbols are correct") {
-    val source = new FakePipe(List.empty, "x" -> CTCollection(CTInteger), "something else" -> CTCollection(CTAny))
-    val unwindPipe = new UnwindPipe(source, Identifier("x"), "y")()
-    unwindPipe.symbols.identifiers should equal(Map(
+    val source = new FakePipe(List.empty, "x" -> CTList(CTInteger), "something else" -> CTList(CTAny))
+    val unwindPipe = new UnwindPipe(source, Variable("x"), "y")()
+    unwindPipe.symbols.variables should equal(Map(
       "y" -> CTInteger,
-      "something else" -> CTCollection(CTAny),
-      "x" -> CTCollection(CTInteger)))
+      "something else" -> CTList(CTAny),
+      "x" -> CTList(CTInteger)))
   }
 
   test("should unwind collection of numbers") {

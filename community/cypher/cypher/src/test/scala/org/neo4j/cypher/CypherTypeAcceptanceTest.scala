@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -38,7 +38,7 @@ class CypherTypeAcceptanceTest extends ExecutionEngineFunSuite {
     // When
     val result = execute("match (p:Label {id: 4611686018427387905}) return p")
 
-    result should not be(empty)
+    result should not be empty
   }
 
   test("equality takes the full value into consideration 2") {
@@ -48,7 +48,7 @@ class CypherTypeAcceptanceTest extends ExecutionEngineFunSuite {
     // When
     val result = execute("match (p:Label) where p.id = 4611686018427387905 return p")
 
-    result should not be(empty)
+    result should not be empty
   }
 
   test("equality takes the full value into consideration 3") {
@@ -69,5 +69,10 @@ class CypherTypeAcceptanceTest extends ExecutionEngineFunSuite {
     val result = execute("match (p:Label {id : 4611686018427387900}) return p")
 
     result should be(empty)
+  }
+
+  test("should be consistent in failing either statically or at runtime when trying to access an array with a non-integer index") {
+    a [SyntaxException] should be thrownBy execute("WITH [1,2,3,4,5] AS array, 3.14 AS idx RETURN array[idx]")
+    a [CypherTypeException] should be thrownBy execute("WITH [1,2,3,4,5] AS array, {idx} AS idx RETURN array[idx]", "idx" -> 3.14d)
   }
 }

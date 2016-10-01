@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,15 +21,19 @@ package org.neo4j.cypher.docgen.tooling
 
 import java.io._
 
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.StringHelper
+import org.neo4j.cypher.internal.compiler.v3_0.CypherSerializer
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
 import org.neo4j.cypher.internal.helpers.GraphIcing
+import org.neo4j.cypher.internal.spi.TransactionalContextWrapper
 import org.neo4j.cypher.internal.spi.v3_0.TransactionBoundQueryContext
-import org.neo4j.graphdb.{GraphDatabaseService, Transaction}
-import org.neo4j.kernel.GraphDatabaseAPI
-import org.neo4j.test.TestGraphDatabaseFactory
+import org.neo4j.cypher.internal.spi.v3_0.TransactionBoundQueryContext.IndexSearchMonitor
+import org.neo4j.graphdb.Transaction
+import org.neo4j.kernel.GraphDatabaseQueryService
+import org.neo4j.kernel.api.KernelTransaction
+import org.neo4j.kernel.api.index.IndexDescriptor
+import org.neo4j.kernel.impl.coreapi.{PropertyContainerLocker, InternalTransaction}
+import org.neo4j.kernel.impl.query.Neo4jTransactionalContext
 import org.scalatest.{Assertions, Matchers}
-
 
 /**
  * Base class for documentation classes
@@ -55,28 +59,30 @@ trait DocumentingTest extends CypherFunSuite with Assertions with Matchers with 
    */
   def doc: Document
 
-  runTestsFor(doc)
+  def outputPath: String = "target/docs/dev/ql/"
 
-  def runTestsFor(doc: Document) = {
+  runTestsFor(doc, outputPath)
+
+  def runTestsFor(doc: Document, outputPath: String) = {
     val result = runQueries(doc)
     reportResults(result)
     if (result.success) {
-      writeResultsToFile(doc, result)
+      writeResultsToFile(doc, result, outputPath)
     }
   }
 
-  private def writeResultsToFile(doc: Document, result: TestRunResult) {
+  private def writeResultsToFile(doc: Document, result: TestRunResult, outputPath: String) {
     val document: Document = contentAndResultMerger(doc, result)
 
     val asciiDocTree = document.asciiDoc
 
-    val dir = new File(s"target/docs/dev/ql/")
+    val outputPathWithSeparator = if(outputPath.endsWith(File.separator)) outputPath else outputPath + File.separator
+    val dir = new File(outputPathWithSeparator)
     if (!dir.exists())
       dir.mkdirs()
 
-    val file = new File(s"target/docs/dev/ql/${doc.id}.adoc")
+    val file = new File(s"$outputPathWithSeparator${doc.id}.adoc")
     val pw = new PrintWriter(file)
-    println(asciiDocTree)
     pw.write(asciiDocTree)
     pw.close()
   }
@@ -86,7 +92,7 @@ trait DocumentingTest extends CypherFunSuite with Assertions with Matchers with 
 
     def testName(q: String) = {
       count +=1
-      s"$count: $q"
+      s"$count: $q".replaceAll(System.lineSeparator(), " ")
     }
 
     result foreach {
@@ -96,12 +102,15 @@ trait DocumentingTest extends CypherFunSuite with Assertions with Matchers with 
       case QueryRunResult(q, _, Right(content)) =>
         test(testName(q))({})
 
+      case ExecutionPlanRunResult(q, _, executionPlan) =>
+        test(testName(q))({})
+
       case _:GraphVizRunResult => // Nothing to report here, unless we got a failure
     }
   }
 
   private def runQueries(doc: Document): TestRunResult = {
-    val builder = (db: GraphDatabaseService, tx: Transaction) => new QueryResultContentBuilder(new ValueFormatter(db, tx))
+    val builder = (db: GraphDatabaseQueryService, tx: InternalTransaction) => new QueryResultContentBuilder(new ValueFormatter(db, tx))
 
     val runner = new QueryRunner(builder)
     val result = runner.runQueries(contentsWithInit = doc.contentWithQueries, doc.title)
@@ -109,11 +118,17 @@ trait DocumentingTest extends CypherFunSuite with Assertions with Matchers with 
   }
 }
 
-// Used to format values coming from Cypher. Maps, collections, nodes, relationships and paths all have custom
+// Used to format values coming from Cypher. Maps, lists, nodes, relationships and paths all have custom
 // formatting applied to them
-class ValueFormatter(db: GraphDatabaseService, tx: Transaction) extends (Any => String) with StringHelper with GraphIcing {
+class ValueFormatter(db: GraphDatabaseQueryService, tx: InternalTransaction) extends (Any => String) with CypherSerializer with GraphIcing {
   def apply(x: Any): String = {
-    val ctx = new TransactionBoundQueryContext(db.asInstanceOf[GraphDatabaseAPI], tx, true, db.statement)
-    text(x, ctx)
+    val transactionalContext = new TransactionalContextWrapper(new Neo4jTransactionalContext(db, tx, db.statement, new PropertyContainerLocker))
+    val ctx = new TransactionBoundQueryContext(transactionalContext)(QuietMonitor)
+    serialize(x, ctx)
   }
+}
+
+object QuietMonitor extends IndexSearchMonitor {
+  override def indexSeek(index: IndexDescriptor, value: Any) = {}
+  override def lockingUniqueIndexSeek(index: IndexDescriptor, value: Any) = {}
 }

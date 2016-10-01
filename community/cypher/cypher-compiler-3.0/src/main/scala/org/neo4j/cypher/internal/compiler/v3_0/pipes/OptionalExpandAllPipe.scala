@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -71,7 +71,7 @@ case class OptionalExpandAllPipe(source: Pipe, fromName: String, relName: String
 
   def planDescriptionWithoutCardinality =
     source.planDescription.
-      andThen(this.id, "OptionalExpand(All)", identifiers, ExpandExpression(fromName, relName, types.names, toName, dir))
+      andThen(this.id, "OptionalExpand(All)", variables, ExpandExpression(fromName, relName, types.names, toName, dir))
 
   def symbols = source.symbols.add(toName, CTNode).add(relName, CTRelationship)
 

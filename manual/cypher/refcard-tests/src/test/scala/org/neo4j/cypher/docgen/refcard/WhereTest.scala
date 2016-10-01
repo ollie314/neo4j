@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -52,10 +52,10 @@ class WhereTest extends RefcardTest with QueryStatisticsTestSupport {
 ###assertion=returns-one parameters=aname
 MATCH (n)-->(m)
 
-WHERE  n.property <> {value}
+WHERE n.property <> {value}
 
 AND id(n) = %A% AND id(m) = %B%
-RETURN n,m###
+RETURN n, m###
 
 Use a predicate to filter.
 Note that +WHERE+ is always part of a  +MATCH+, +OPTIONAL MATCH+, +WITH+ or +START+ clause.

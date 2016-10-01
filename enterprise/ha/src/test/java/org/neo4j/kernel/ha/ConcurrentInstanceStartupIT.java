@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -116,7 +116,7 @@ public class ConcurrentInstanceStartupIT
     private HighlyAvailableGraphDatabase startDbAtBase( int i, String initialHosts )
     {
         GraphDatabaseBuilder masterBuilder = new TestHighlyAvailableGraphDatabaseFactory()
-                .newHighlyAvailableDatabaseBuilder( path( i ).getAbsolutePath() )
+                .newEmbeddedDatabaseBuilder( path( i ).getAbsoluteFile() )
                 .setConfig( ClusterSettings.initial_hosts, initialHosts )
                 .setConfig( ClusterSettings.cluster_server, "127.0.0.1:" + ( 5000 + i ) )
                 .setConfig( ClusterSettings.server_id, "" + i )

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,10 +19,10 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner.logical.idp
 
-import org.neo4j.cypher.internal.frontend.v3_0.ast.{AllIterablePredicate, FilterScope, Identifier}
 import org.neo4j.cypher.internal.compiler.v3_0.planner.QueryGraph
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.LogicalPlanningContext
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans._
+import org.neo4j.cypher.internal.frontend.v3_0.ast._
 
 case class expandSolverStep(qg: QueryGraph) extends IDPSolverStep[PatternRelationship, LogicalPlan, LogicalPlanningContext] {
 
@@ -77,9 +77,25 @@ object expandSolverStep {
         case length: VarPatternLength =>
           val availablePredicates = qg.selections.predicatesGiven(availableSymbols + patternRel.name)
           val (predicates, allPredicates) = availablePredicates.collect {
-            case all@AllIterablePredicate(FilterScope(identifier, Some(innerPredicate)), relId@Identifier(patternRel.name.name))
-              if identifier == relId || !innerPredicate.dependencies(relId) =>
-              (identifier, innerPredicate) -> all
+            //MATCH ()-[r* {prop:1337}]->()
+            case all@AllIterablePredicate(FilterScope(variable, Some(innerPredicate)), relId@Variable(patternRel.name.name))
+              if variable == relId || !innerPredicate.dependencies(relId) =>
+              (variable, innerPredicate) -> all
+            //MATCH p = ... WHERE all(n in nodes(p)... or all(r in relationships(p)
+            case all@AllIterablePredicate(FilterScope(variable, Some(innerPredicate)),
+                                          FunctionInvocation(FunctionName(fname), false,
+                                                             Seq(PathExpression(
+                                                             NodePathStep(startNode, MultiRelationshipPathStep(rel, _, NilPathStep) ))) ))
+              if (fname  == "nodes" || fname == "relationships") && startNode.name == nodeId.name && rel.name == patternRel.name.name =>
+              (variable, innerPredicate) -> all
+
+            //MATCH p = ... WHERE all(n in nodes(p)... or all(r in relationships(p)
+            case none@NoneIterablePredicate(FilterScope(variable, Some(innerPredicate)),
+                                          FunctionInvocation(FunctionName(fname), false,
+                                                             Seq(PathExpression(
+                                                             NodePathStep(startNode, MultiRelationshipPathStep(rel, _, NilPathStep) ))) ))
+              if (fname  == "nodes" || fname == "relationships") && startNode.name == nodeId.name && rel.name == patternRel.name.name =>
+              (variable, Not(innerPredicate)(innerPredicate.position)) -> none
           }.unzip
           Some(context.logicalPlanProducer.planVarExpand(plan, nodeId, dir, otherSide, patternRel, predicates, allPredicates, mode))
       }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -31,7 +31,7 @@ class SortBuilderTest extends BuilderTest {
 
   test("should_accept_if_all_work_is_done_and_sorting_not_yet") {
     val q = PartiallySolvedQuery().copy(
-      sort = Seq(Unsolved(SortItem(Property(Identifier("x"), PropertyKey("foo")), ascending = true))),
+      sort = Seq(Unsolved(SortItem(Property(Variable("x"), PropertyKey("foo")), ascending = true))),
       extracted = true
     )
 
@@ -49,7 +49,7 @@ class SortBuilderTest extends BuilderTest {
 
   test("should_not_accept_if_not_yet_extracted") {
     val q = PartiallySolvedQuery().copy(
-      sort = Seq(Unsolved(SortItem(Property(Identifier("x"), PropertyKey("foo")), ascending = true))),
+      sort = Seq(Unsolved(SortItem(Property(Variable("x"), PropertyKey("foo")), ascending = true))),
       extracted = false
     )
 

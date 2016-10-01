@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,11 +19,10 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner.logical.steps
 
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.{Ascending, Descending, SortDescription}
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical._
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans._
 import org.neo4j.cypher.internal.compiler.v3_0.planner.{PlannerQuery, QueryProjection}
-import org.neo4j.cypher.internal.frontend.v3_0.ast.Identifier
+import org.neo4j.cypher.internal.frontend.v3_0.ast.Variable
 import org.neo4j.cypher.internal.frontend.v3_0.{InternalException, ast}
 
 object sortSkipAndLimit extends PlanTransformer[PlannerQuery] {
@@ -35,17 +34,12 @@ object sortSkipAndLimit extends PlanTransformer[PlannerQuery] {
         case (Nil, s, l) =>
           addLimit(l, addSkip(s, plan))
 
-        case (sortItems, None, Some(l)) =>
-          context.logicalPlanProducer.planSortedLimit(plan, l, sortItems)
-
-        case (sortItems, Some(s), Some(l)) =>
-          context.logicalPlanProducer.planSortedSkipAndLimit(plan, s, l, sortItems)
-
-        case (sortItems, s, None) =>
-          require(sortItems.forall(_.expression.isInstanceOf[Identifier]))
+        case (sortItems, s, l) =>
+          require(sortItems.forall(_.expression.isInstanceOf[Variable]))
           val sortDescriptions = sortItems.map(sortDescription)
-          val sortPlan = context.logicalPlanProducer.planSort(plan, sortDescriptions, sortItems)
-          addSkip(s, sortPlan)
+          val sortedPlan = context.logicalPlanProducer.planSort(plan, sortDescriptions, sortItems)
+
+          addLimit(l, addSkip(s, sortedPlan))
       }
 
       producedPlan
@@ -54,9 +48,9 @@ object sortSkipAndLimit extends PlanTransformer[PlannerQuery] {
   }
 
   private def sortDescription(in: ast.SortItem): SortDescription = in match {
-    case ast.AscSortItem(ast.Identifier(key)) => Ascending(key)
-    case ast.DescSortItem(ast.Identifier(key)) => Descending(key)
-    case _ => throw new InternalException("Sort items expected to only use single identifier expression")
+    case ast.AscSortItem(ast.Variable(key)) => Ascending(IdName(key))
+    case ast.DescSortItem(ast.Variable(key)) => Descending(IdName(key))
+    case _ => throw new InternalException("Sort items expected to only use single variable expression")
   }
 
   private def addSkip(s: Option[ast.Expression], plan: LogicalPlan)(implicit context: LogicalPlanningContext) =

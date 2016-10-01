@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,6 +27,6 @@ class LiteralTest extends CypherFunSuite {
   test("collections_should_be_typed_correctly") {
     val value = Literal(Seq(Seq("Text")))
 
-    value.calculateType(SymbolTable()) should equal(CTCollection(CTCollection(CTString)))
+    value.calculateType(SymbolTable()) should equal(CTList(CTList(CTString)))
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,11 +26,11 @@ import org.junit.rules.TemporaryFolder;
 
 import org.neo4j.bolt.v1.transport.socket.client.SecureSocketConnection;
 import org.neo4j.helpers.HostnamePort;
-import org.neo4j.server.configuration.ServerSettings;
 import org.neo4j.test.server.ExclusiveServerTestBase;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
+import static org.neo4j.graphdb.factory.GraphDatabaseSettings.boltConnector;
 import static org.neo4j.server.helpers.CommunityServerBuilder.server;
 
 public class BoltIT extends ExclusiveServerTestBase
@@ -51,9 +51,10 @@ public class BoltIT extends ExclusiveServerTestBase
     {
         // When I run Neo4j with Bolt enabled
         server = server()
-                .withProperty( ServerSettings.bolt_enabled.name(), "true" )
-                .withProperty( ServerSettings.bolt_tls_enabled.name(), "true" )
-                .usingDatabaseDir( tmpDir.getRoot().getAbsolutePath() )
+                .withProperty( boltConnector( "0" ).type.name(), "BOLT" )
+                .withProperty( boltConnector( "0" ).enabled.name(), "true" )
+                .withProperty( boltConnector( "0" ).encryption_level.name(), "REQUIRED" )
+                .usingDataDir( tmpDir.getRoot().getAbsolutePath() )
                 .build();
         server.start();
 
@@ -66,10 +67,11 @@ public class BoltIT extends ExclusiveServerTestBase
     {
         // When I run Neo4j with Bolt enabled, and a non-standard port configured
         server = server()
-                .withProperty( ServerSettings.bolt_enabled.name(), "true" )
-                .withProperty( ServerSettings.bolt_tls_enabled.name(), "true" )
-                .withProperty( ServerSettings.bolt_socket_address.name(), "localhost:8776" )
-                .usingDatabaseDir( tmpDir.getRoot().getAbsolutePath() )
+                .withProperty( boltConnector( "0" ).type.name(), "BOLT" )
+                .withProperty( boltConnector( "0" ).enabled.name(), "true" )
+                .withProperty( boltConnector( "0" ).encryption_level.name(), "REQUIRED" )
+                .withProperty( boltConnector( "0" ).address.name(), "localhost:8776" )
+                .usingDataDir( tmpDir.getRoot().getAbsolutePath() )
                 .build();
         server.start();
 
@@ -81,7 +83,7 @@ public class BoltIT extends ExclusiveServerTestBase
     {
         SecureSocketConnection conn = new SecureSocketConnection();
         conn.connect( new HostnamePort( host, port ) );
-        conn.send( new byte[]{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0} );
+        conn.send( new byte[]{(byte)0x60, (byte) 0x60, (byte) 0xB0, (byte) 0x17, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0} );
         assertThat( conn.recv( 4 ), equalTo( new byte[]{0, 0, 0, 1} ));
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,6 +21,7 @@ package org.neo4j.cypher.internal.compiler.v3_0.pipes
 
 import org.neo4j.cypher.internal.compiler.v3_0._
 import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.Expression
+import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates.Equivalent
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.Effects._
 import org.neo4j.cypher.internal.compiler.v3_0.planDescription.InternalPlanDescription.Arguments.KeyNames
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
@@ -41,7 +42,7 @@ case class DistinctPipe(source: Pipe, expressions: Map[String, Expression])(val 
     state.decorator.registerParentPipe(this)
 
     // Run the return item expressions, and replace the execution context's with their values
-    val returnExpressions = input.map(ctx => {
+    val result = input.map(ctx => {
       val newMap = Eagerly.mutableMapValues(expressions, (expression: Expression) => expression(ctx)(state))
       ctx.copy(m = newMap)
     })
@@ -50,11 +51,11 @@ case class DistinctPipe(source: Pipe, expressions: Map[String, Expression])(val 
      * The filtering is done by extracting from the context the values of all return expressions, and keeping them
      * in a set.
      */
-    var seen = mutable.Set[NiceHasher]()
+    var seen = mutable.Set[Equivalent]()
 
-    returnExpressions.filter {
+    result.filter {
        case ctx =>
-         val values = new NiceHasher(keyNames.map(ctx).toSeq)
+         val values = Equivalent(keyNames.map(ctx))
 
          if (seen.contains(values)) {
            false
@@ -66,11 +67,11 @@ case class DistinctPipe(source: Pipe, expressions: Map[String, Expression])(val 
   }
 
   def planDescriptionWithoutCardinality = source.planDescription.
-                        andThen(this.id, "Distinct", identifiers, KeyNames(expressions.keys.toSeq))
+                        andThen(this.id, "Distinct", variables, KeyNames(expressions.keys.toSeq))
 
   def symbols: SymbolTable = {
-    val identifiers = Eagerly.immutableMapValues(expressions, (e: Expression) => e.evaluateType(CTAny, source.symbols))
-    SymbolTable(identifiers)
+    val variables = Eagerly.immutableMapValues(expressions, (e: Expression) => e.evaluateType(CTAny, source.symbols))
+    SymbolTable(variables)
   }
 
   def dup(sources: List[Pipe]): Pipe = {

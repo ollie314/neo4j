@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -46,7 +46,7 @@ public class LegacyIndexAddDropConcurrently
     {
         // Given
         ExecutorService exec = Executors.newFixedThreadPool( 4 );
-        final GraphDatabaseService db = dbRule.getGraphDatabaseService();
+        final GraphDatabaseService db = dbRule.getGraphDatabaseAPI();
 
         List<Callable<Object>> jobs = new ArrayList<>();
         for ( int i = 0; i < 4; i++ )

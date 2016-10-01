@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,9 +19,9 @@
  */
 package org.neo4j.kernel.api.exceptions.schema;
 
+import org.neo4j.kernel.api.TokenNameLookup;
 import org.neo4j.kernel.api.constraints.PropertyConstraint;
 import org.neo4j.kernel.api.exceptions.KernelException;
-import org.neo4j.kernel.api.TokenNameLookup;
 import org.neo4j.kernel.api.exceptions.Status;
 
 public class CreateConstraintFailureException extends SchemaKernelException
@@ -30,7 +30,7 @@ public class CreateConstraintFailureException extends SchemaKernelException
 
     public CreateConstraintFailureException( PropertyConstraint constraint, Throwable cause )
     {
-        super( Status.Schema.ConstraintCreationFailure, cause, "Unable to create constraint %s: %s", constraint,
+        super( Status.Schema.ConstraintCreationFailed, cause, "Unable to create constraint %s: %s", constraint,
                 cause.getMessage() );
         this.constraint = constraint;
     }

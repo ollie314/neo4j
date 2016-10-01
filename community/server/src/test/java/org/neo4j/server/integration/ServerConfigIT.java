@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,7 +26,7 @@ import org.junit.rules.TemporaryFolder;
 
 import javax.management.ObjectName;
 
-import org.neo4j.helpers.Settings;
+import org.neo4j.kernel.configuration.Settings;
 import org.neo4j.jmx.impl.ConfigurationBean;
 import org.neo4j.server.CommunityNeoServer;
 import org.neo4j.server.configuration.ServerSettings;
@@ -46,24 +46,23 @@ public class ServerConfigIT extends ExclusiveServerTestBase
     @Rule
     public TemporaryFolder tempDir = new TemporaryFolder();
 
+    private CommunityNeoServer server;
+
     @Test
     public void serverConfigShouldBeVisibleInJMX() throws Throwable
     {
         // Given
         String configValue = tempDir.newFile().getAbsolutePath();
         server = CommunityServerBuilder.server().withProperty(
-                ServerSettings.http_log_config_file.name(), configValue )
-                .build();
+        ServerSettings.run_directory.name(), configValue ).build();
 
         // When
         server.start();
 
         // Then
         ObjectName name = getObjectName( server.getDatabase().getGraph(), ConfigurationBean.CONFIGURATION_MBEAN_NAME );
-        assertThat( getAttribute( name, ServerSettings.http_log_config_file.name() ), equalTo( (Object)configValue ) );
+        assertThat( getAttribute( name, ServerSettings.run_directory.name() ), equalTo( (Object)configValue ) );
     }
-
-    private CommunityNeoServer server;
 
     @Test
     public void shouldBeAbleToOverrideShellConfig()  throws Throwable

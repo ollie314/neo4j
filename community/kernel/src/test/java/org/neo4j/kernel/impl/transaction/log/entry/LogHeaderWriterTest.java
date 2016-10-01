@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,7 +30,7 @@ import org.neo4j.io.fs.DefaultFileSystemAbstraction;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.fs.StoreChannel;
 import org.neo4j.kernel.impl.transaction.log.IllegalLogFormatException;
-import org.neo4j.kernel.impl.transaction.log.InMemoryLogChannel;
+import org.neo4j.kernel.impl.transaction.log.InMemoryClosableChannel;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
@@ -51,7 +51,7 @@ public class LogHeaderWriterTest
     public void shouldWriteALogHeaderInTheGivenChannel() throws IOException
     {
         // given
-        final InMemoryLogChannel channel = new InMemoryLogChannel();
+        final InMemoryClosableChannel channel = new InMemoryClosableChannel();
 
         // when
         writeLogHeader( channel, expectedLogVersion, expectedTxId );

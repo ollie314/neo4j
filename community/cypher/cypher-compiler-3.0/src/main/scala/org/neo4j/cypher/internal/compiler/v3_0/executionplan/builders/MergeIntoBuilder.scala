@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -64,7 +64,7 @@ class MergeIntoBuilder extends PlanBuilder {
   private def canWorkWith(m: MergePatternAction, s: SymbolTable): Boolean =
     m.patterns.size == 1 &&
       m.patterns.forall {
-        case r: RelatedTo => s.hasIdentifierNamed(r.left.name) && s.hasIdentifierNamed(r.right.name)
+        case r: RelatedTo => s.hasVariableNamed(r.left.name) && s.hasVariableNamed(r.right.name)
         case _ => false
       }
 }

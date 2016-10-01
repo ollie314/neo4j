@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -50,7 +50,7 @@ case class TraversalMatchPipe(source: Pipe, matcher: TraversalMatcher, trail: Tr
   def symbols = trail.symbols(source.symbols)
 
   def planDescription =
-    source.planDescription.andThen(this.id, "TraversalMatcher", identifiers, KeyNames(trail.pathDescription))
+    source.planDescription.andThen(this.id, "TraversalMatcher", variables, KeyNames(trail.pathDescription))
 
   override def localEffects = {
     // Add effects from matching nodes and relationships

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,14 +23,13 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
-import org.neo4j.function.Consumer;
 import org.neo4j.function.Factory;
 import org.neo4j.helpers.Clock;
 
 import static java.lang.String.format;
 import static java.lang.System.currentTimeMillis;
-
 import static org.neo4j.helpers.Format.duration;
 
 /**
@@ -193,12 +192,6 @@ public class TimedRepository<KEY, VALUE> implements Runnable
         return repo.keySet();
     }
 
-    protected VALUE getValue( KEY key )
-    {
-        Entry entry = repo.get( key );
-        return entry == null ? null : entry.value;
-    }
-
     @Override
     public void run()
     {
@@ -206,9 +199,9 @@ public class TimedRepository<KEY, VALUE> implements Runnable
         for ( KEY key : keys() )
         {
             Entry entry = repo.get( key );
-            if(entry != null && entry.latestActivityTimestamp < maxAllowedAge)
+            if ( (entry != null) && (entry.latestActivityTimestamp < maxAllowedAge) )
             {
-                if(entry.acquire() && entry.latestActivityTimestamp < maxAllowedAge)
+                if ( (entry.latestActivityTimestamp < maxAllowedAge) && entry.acquire() )
                 {
                     end0( key, entry.value );
                 }

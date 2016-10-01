@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,7 +24,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
-import org.neo4j.function.Predicate;
 import org.neo4j.graphalgo.GraphAlgoFactory;
 import org.neo4j.graphalgo.PathFinder;
 import org.neo4j.graphdb.GraphDatabaseService;
@@ -73,15 +72,7 @@ public class Plugin extends ServerPlugin
     public Iterable<Relationship> getRelationshipsBetween( final @Source Node start,
             final @Parameter( name = "other" ) Node end )
     {
-        return new FilteringIterable<>( start.getRelationships(), new Predicate<Relationship>()
-        {
-            @Override
-            public boolean test( Relationship item )
-            {
-                return item.getOtherNode( start )
-                        .equals( end );
-            }
-        } );
+        return new FilteringIterable<>( start.getRelationships(), item -> item.getOtherNode( start ).equals( end ) );
     }
 
     @PluginTarget( Node.class )

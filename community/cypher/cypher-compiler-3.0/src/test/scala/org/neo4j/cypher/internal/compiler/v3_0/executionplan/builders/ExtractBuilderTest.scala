@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -68,7 +68,7 @@ class ExtractBuilderTest extends BuilderTest {
   test("does_not_introduce_extract_pipe_unless_necessary") {
     //GIVEN
     val q = PartiallySolvedQuery().
-      copy(returns = Seq(Unsolved(ReturnItem(Identifier("foo"), "foo")))
+      copy(returns = Seq(Unsolved(ReturnItem(Variable("foo"), "foo")))
     )
 
     val p = createPipe(nodes = Seq("foo"))

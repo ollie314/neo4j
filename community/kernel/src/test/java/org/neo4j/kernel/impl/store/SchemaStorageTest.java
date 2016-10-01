@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,21 +19,20 @@
  */
 package org.neo4j.kernel.impl.store;
 
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.mockito.Mockito;
 
-import java.util.HashSet;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
-
-import org.neo4j.function.Functions;
 import org.neo4j.function.Predicates;
 import org.neo4j.graphdb.DependencyResolver;
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.helpers.collection.IteratorUtil;
+import org.neo4j.helpers.collection.Iterators;
 import org.neo4j.kernel.api.ReadOperations;
 import org.neo4j.kernel.api.Statement;
 import org.neo4j.kernel.api.TokenNameLookup;
@@ -42,20 +41,21 @@ import org.neo4j.kernel.api.exceptions.schema.DuplicateSchemaRuleException;
 import org.neo4j.kernel.api.exceptions.schema.EntitySchemaRuleNotFoundException;
 import org.neo4j.kernel.api.exceptions.schema.SchemaRuleNotFoundException;
 import org.neo4j.kernel.impl.core.ThreadToStatementContextBridge;
+import org.neo4j.kernel.impl.storageengine.impl.recordstorage.RecordStorageEngine;
 import org.neo4j.kernel.impl.store.SchemaStorage.IndexRuleKind;
 import org.neo4j.kernel.impl.store.record.IndexRule;
 import org.neo4j.kernel.impl.store.record.NodePropertyConstraintRule;
 import org.neo4j.kernel.impl.store.record.RelationshipPropertyExistenceConstraintRule;
-import org.neo4j.kernel.impl.store.record.SchemaRule;
 import org.neo4j.kernel.impl.store.record.UniquePropertyConstraintRule;
+import org.neo4j.storageengine.api.schema.SchemaRule;
 import org.neo4j.test.EmbeddedDatabaseRule;
 import org.neo4j.test.KernelExceptionUserMessageMatcher;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.neo4j.graphdb.DynamicLabel.label;
-import static org.neo4j.helpers.collection.IteratorUtil.asSet;
+import static org.neo4j.graphdb.Label.label;
+import static org.neo4j.helpers.collection.Iterators.asSet;
 import static org.neo4j.kernel.impl.api.index.inmemory.InMemoryIndexProviderFactory.PROVIDER_DESCRIPTOR;
 import static org.neo4j.kernel.impl.store.record.UniquePropertyConstraintRule.uniquenessConstraintRule;
 
@@ -77,7 +77,8 @@ public class SchemaStorageTest
     @Before
     public void initStorage() throws Exception
     {
-        storage = new SchemaStorage( dependencyResolver().resolveDependency( NeoStores.class ).getSchemaStore() );
+        storage = new SchemaStorage( dependencyResolver().resolveDependency( RecordStorageEngine.class )
+                .testAccessNeoStores().getSchemaStore() );
     }
 
     @Test
@@ -156,8 +157,7 @@ public class SchemaStorageTest
         createUniquenessConstraint( LABEL1, PROP1 );
 
         // When
-        Set<NodePropertyConstraintRule> listedRules = asSet( storage.schemaRulesForNodes(
-                Functions.<NodePropertyConstraintRule>identity(), NodePropertyConstraintRule.class, labelId( LABEL1 ),
+        Set<NodePropertyConstraintRule> listedRules = asSet( storage.schemaRulesForNodes( value -> value, NodePropertyConstraintRule.class, labelId( LABEL1 ),
                 Predicates.<NodePropertyConstraintRule>alwaysTrue() ) );
 
         // Then
@@ -230,7 +230,7 @@ public class SchemaStorageTest
 
         SchemaStorage schemaStorageSpy = Mockito.spy( storage );
         Mockito.when( schemaStorageSpy.loadAllSchemaRules() ).thenReturn(
-                IteratorUtil.<SchemaRule>iterator(
+                Iterators.<SchemaRule>iterator(
                         getUniquePropertyConstraintRule( 1l, LABEL1, PROP1 ),
                         getUniquePropertyConstraintRule( 2l, LABEL1, PROP1 ) ) );
 
@@ -267,7 +267,7 @@ public class SchemaStorageTest
 
         SchemaStorage schemaStorageSpy = Mockito.spy( storage );
         Mockito.when( schemaStorageSpy.loadAllSchemaRules() ).thenReturn(
-                IteratorUtil.<SchemaRule>iterator(
+                Iterators.<SchemaRule>iterator(
                         getRelationshipPropertyExistenceConstraintRule( 1l, TYPE1, PROP1 ),
                         getRelationshipPropertyExistenceConstraintRule( 2l, TYPE1, PROP1 ) ) );
 

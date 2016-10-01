@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,15 +19,11 @@
  */
 package org.neo4j.kernel.api.constraints;
 
-import org.neo4j.graphdb.DynamicLabel;
-import org.neo4j.graphdb.schema.ConstraintDefinition;
-import org.neo4j.graphdb.schema.ConstraintType;
-import org.neo4j.kernel.api.ReadOperations;
-import org.neo4j.kernel.api.StatementTokenNameLookup;
 import org.neo4j.kernel.api.TokenNameLookup;
-import org.neo4j.kernel.impl.coreapi.schema.InternalSchemaActions;
-import org.neo4j.kernel.impl.coreapi.schema.UniquenessConstraintDefinition;
 
+/**
+ * Description of uniqueness constraint over nodes given a label and a property key id.
+ */
 public class UniquenessConstraint extends NodePropertyConstraint
 {
     public UniquenessConstraint( int labelId, int propertyKeyId )
@@ -48,24 +44,9 @@ public class UniquenessConstraint extends NodePropertyConstraint
     }
 
     @Override
-    public ConstraintDefinition asConstraintDefinition( InternalSchemaActions schemaActions, ReadOperations readOps )
-    {
-        StatementTokenNameLookup lookup = new StatementTokenNameLookup( readOps );
-        return new UniquenessConstraintDefinition( schemaActions,
-                DynamicLabel.label( lookup.labelGetName( labelId ) ),
-                lookup.propertyKeyGetName( propertyKeyId ) );
-    }
-
-    @Override
-    public ConstraintType type()
-    {
-        return ConstraintType.UNIQUENESS;
-    }
-
-    @Override
     public String userDescription( TokenNameLookup tokenNameLookup )
     {
-        String labelName = tokenNameLookup.labelGetName( labelId );
+        String labelName = labelName( tokenNameLookup );
         String boundIdentifier = labelName.toLowerCase();
         return String.format( "CONSTRAINT ON ( %s:%s ) ASSERT %s.%s IS UNIQUE",
                 boundIdentifier, labelName, boundIdentifier, tokenNameLookup.propertyKeyGetName( propertyKeyId ) );

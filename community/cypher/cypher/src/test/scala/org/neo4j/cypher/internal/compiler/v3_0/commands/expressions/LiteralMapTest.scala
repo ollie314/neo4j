@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,7 +25,7 @@ import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
 class LiteralMapTest extends CypherFunSuite {
 
   test("should_present_all_child_expressions") {
-    val x = Identifier("x")
+    val x = Variable("x")
     // given
     val propX = Property(x, UnresolvedProperty("foo"))
     val count = CountStar()

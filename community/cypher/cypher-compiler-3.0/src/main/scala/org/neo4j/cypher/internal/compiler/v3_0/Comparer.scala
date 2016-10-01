@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,26 +19,25 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0
 
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.StringHelper
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.frontend.v3_0.IncomparableValuesException
 
 /**
  * Comparer is a trait that enables it's subclasses to compare to AnyRef with each other.
  */
-trait Comparer extends StringHelper {
+trait Comparer extends CypherSerializer {
 
   import Comparer._
 
   def compare(l: Any, r: Any)(implicit qtx: QueryState): Int = {
     try {
-      if ( (isString(l) && isString(r)) || (isNumber(l) && isNumber(r)))
+      if ((isString(l) && isString(r)) || (isNumber(l) && isNumber(r)) || (isBoolean(l) && isBoolean(r)))
         CypherOrdering.DEFAULT.compare(l, r)
       else
-        throw new IncomparableValuesException(textWithType(l), textWithType(r))
+        throw new IncomparableValuesException(serializeWithType(l), serializeWithType(r))
     } catch {
       case _: IllegalArgumentException =>
-        throw new IncomparableValuesException(textWithType(l), textWithType(r))
+        throw new IncomparableValuesException(serializeWithType(l), serializeWithType(r))
     }
   }
 }
@@ -52,6 +51,11 @@ object Comparer {
 
   def isNumber(value: Any): Boolean = value match {
     case _: Number => true
+    case _ => value == null
+  }
+
+  def isBoolean(value: Any): Boolean = value match {
+    case _: Boolean => true
     case _ => value == null
   }
 }

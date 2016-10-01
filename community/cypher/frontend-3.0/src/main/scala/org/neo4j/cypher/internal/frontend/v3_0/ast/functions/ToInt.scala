@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,15 +19,15 @@
  */
 package org.neo4j.cypher.internal.frontend.v3_0.ast.functions
 
-import org.neo4j.cypher.internal.frontend.v3_0.ast.{Function, SimpleTypedFunction}
+import org.neo4j.cypher.internal.frontend.v3_0.ast.{ExpressionSignature, Function, SimpleTypedFunction}
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 
 case object ToInt extends Function with SimpleTypedFunction {
-  def name = "toInt"
 
-  val signatures = Vector(
-    Signature(argumentTypes = Vector(CTFloat), outputType = CTInteger),
-    Signature(argumentTypes = Vector(CTInteger), outputType = CTInteger),
-    Signature(argumentTypes = Vector(CTString), outputType = CTInteger)
+  override def name = "toInt"
+
+  override val signatures = Vector(
+    ExpressionSignature(argumentTypes = Vector(CTString), outputType = CTInteger),
+    ExpressionSignature(argumentTypes = Vector(CTNumber), outputType = CTInteger)
   )
 }

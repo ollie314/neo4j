@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,13 +24,13 @@ import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{Effects, ReadsRela
 import org.neo4j.cypher.internal.frontend.v3_0.PatternException
 
 case class PatternGraph(patternNodes: Map[String, PatternNode],
-                        patternRels: Map[String, PatternRelationship],
+                        patternRels: Map[String, Seq[PatternRelationship]],
                         boundElements: Seq[String],
                         patternsContained: Seq[Pattern]) {
 
   def nonEmpty: Boolean = !isEmpty
 
-  def identifiers: Seq[String] = patternGraph.keys.toSeq
+  def variables: Seq[String] = patternGraph.keys.toSeq
 
   def isEmpty: Boolean = patternNodes.isEmpty && patternRels.isEmpty
 
@@ -47,23 +47,6 @@ case class PatternGraph(patternNodes: Map[String, PatternNode],
   lazy val hasBoundRelationships: Boolean = boundElements.exists(patternRels.keys.toSeq.contains)
   lazy val hasVarLengthPaths: Boolean = patternRels.values.exists(_.isInstanceOf[VariableLengthPatternRelationship])
 
-  def extractGraphFromPaths(relationshipsNotInDoubleOptionalPaths: Iterable[PatternRelationship], boundPoints: Seq[String]): PatternGraph = {
-    val oldNodes = relationshipsNotInDoubleOptionalPaths.flatMap(p => Seq(p.startNode, p.endNode)).toSeq.distinct
-
-    val newNodes = oldNodes.map(patternNode => patternNode.key ->
-      new PatternNode(patternNode.key, patternNode.labels, patternNode.properties)).toMap
-
-    val newRelationships = relationshipsNotInDoubleOptionalPaths.map {
-      case pr: VariableLengthPatternRelationship => ???
-      case pr: PatternRelationship               =>
-        val s = newNodes(pr.startNode.key)
-        val e = newNodes(pr.endNode.key)
-        pr.key -> s.relateTo(pr.key, e, pr.relTypes, pr.dir)
-    }.toMap
-
-    new PatternGraph(newNodes, newRelationships, boundPoints, Seq.empty /* This is only used for plan building and is not needed here */)
-  }
-
   def apply(key: String) = patternGraph(key)
 
   def get(key: String) = patternGraph.get(key)
@@ -73,21 +56,22 @@ case class PatternGraph(patternNodes: Map[String, PatternNode],
   def keySet = patternGraph.keySet
 
   private def validatePattern(patternNodes: Map[String, PatternNode],
-                              patternRels: Map[String, PatternRelationship]):
-  (Map[String, PatternElement], Boolean) = {
+                              patternRels: Map[String, Seq[PatternRelationship]]):
+  (Map[String, Seq[PatternElement]], Boolean) = {
 
     if (isEmpty)
       return (Map(), false)
 
     val overlaps = patternNodes.keys.filter(patternRels.keys.toSeq contains)
     if (overlaps.nonEmpty) {
-      throw new PatternException("Some identifiers are used as both relationships and nodes: " + overlaps.mkString(", "))
+      throw new PatternException("Some variables are used as both relationships and nodes: " + overlaps.mkString(", "))
     }
 
-    val elementsMap: Map[String, PatternElement] = (patternNodes.values ++ patternRels.values).map(x => (x.key -> x)).toMap
-    val allElements = elementsMap.values.toSeq
+    val elementsMap: Map[String, Seq[PatternElement]] = (patternNodes.values.map(Seq[PatternElement](_)) ++
+      patternRels.values.asInstanceOf[Iterable[Seq[PatternElement]]]).map(x => x.head.key -> x).toMap
+    val allElements = elementsMap.values.flatMap(_.toSeq).toSeq
 
-    val boundPattern: Seq[PatternElement] = boundElements.flatMap(i => elementsMap.get(i))
+    val boundPattern: Seq[PatternElement] = boundElements.flatMap(i => elementsMap.get(i)).flatMap(_.toSeq)
 
     val hasLoops = checkIfWeHaveLoops(boundPattern, allElements)
 
@@ -124,9 +108,9 @@ case class PatternGraph(patternNodes: Map[String, PatternNode],
   override def toString = if(patternRels.isEmpty && patternNodes.isEmpty) {
       "[EMPTY PATTERN]"
   } else {
-      patternRels.map(tuple=> {
-        val r = tuple._2
-        "(%s)-['%s']-(%s)".format(r.startNode.key, r, r.endNode.key)
+      patternRels.flatMap(tuple => {
+        val patternRels = tuple._2
+        patternRels.map(r => "(%s)-['%s']-(%s)".format(r.startNode.key, r, r.endNode.key))
       }).mkString(",")
   }
 }

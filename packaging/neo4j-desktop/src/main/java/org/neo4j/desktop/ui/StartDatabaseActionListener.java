@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,6 +22,9 @@ package org.neo4j.desktop.ui;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
+import org.neo4j.desktop.model.DesktopModel;
+import org.neo4j.desktop.model.exceptions.UnableToStartServerException;
+import org.neo4j.desktop.model.exceptions.UnsuitableDirectoryException;
 import org.neo4j.desktop.runtime.DatabaseActions;
 
 import static javax.swing.SwingUtilities.invokeLater;

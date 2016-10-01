@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,17 +28,16 @@ import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.matching.MatchingContext
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
-import org.neo4j.helpers.ThisShouldNotHappenError
 
 case class PathExpression(pathPattern: Seq[Pattern], predicate:Predicate=True())
   extends Expression
   with PathExtractor
   with PatternGraphBuilder {
-  val identifiers: Seq[(String, CypherType)] = pathPattern.flatMap(pattern => pattern.possibleStartPoints.filter(p => isNamed(p._1)))
-  val symbols2 = SymbolTable(identifiers.toMap)
-  val identifiersInClause = Pattern.identifiers(pathPattern)
+  val variables: Seq[(String, CypherType)] = pathPattern.flatMap(pattern => pattern.possibleStartPoints.filter(p => isNamed(p._1)))
+  val symbols2 = SymbolTable(variables.toMap)
+  val variablesInClause = Pattern.variables(pathPattern)
 
-  val matchingContext = new MatchingContext(symbols2, predicate.atoms, buildPatternGraph(symbols2, pathPattern), identifiersInClause)
+  val matchingContext = new MatchingContext(symbols2, predicate.atoms, buildPatternGraph(symbols2, pathPattern), variablesInClause)
   val interestingPoints: Seq[String] = pathPattern.
     flatMap(_.possibleStartPoints.map(_._1)).
     filter(isNamed).
@@ -47,7 +46,7 @@ case class PathExpression(pathPattern: Seq[Pattern], predicate:Predicate=True())
   def apply(ctx: ExecutionContext)(implicit state: QueryState): Any = {
     // If any of the points we need is null, the whole expression will return null
     val returnNull = interestingPoints.exists(key => ctx.get(key) match {
-      case None       => throw new ThisShouldNotHappenError("Andres", "This execution plan should not exist.")
+      case None       => throw new AssertionError("This execution plan should not exist.")
       case Some(null) => true
       case Some(_)    => false
     })
@@ -65,7 +64,7 @@ case class PathExpression(pathPattern: Seq[Pattern], predicate:Predicate=True())
 
   def rewrite(f: (Expression) => Expression): Expression = f(PathExpression(pathPattern.map(_.rewrite(f)), predicate.rewriteAsPredicate(f)))
 
-  def calculateType(symbols: SymbolTable): CypherType = CTCollection(CTPath)
+  def calculateType(symbols: SymbolTable): CypherType = CTList(CTPath)
 
   def symbolTableDependencies = {
     val patternDependencies = pathPattern.flatMap(_.symbolTableDependencies).toSet

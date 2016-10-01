@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -29,8 +29,8 @@ object LiteralTypeSupport {
     case _: Number                          => CTFloat
     case _: Boolean                         => CTBoolean
     case IsMap(_)                           => CTMap
-    case IsCollection(coll) if coll.isEmpty => CTCollection(CTAny)
-    case IsCollection(coll)                 => CTCollection(coll.map(deriveType).reduce(_ leastUpperBound _))
+    case IsList(coll) if coll.isEmpty => CTList(CTAny)
+    case IsList(coll)                 => CTList(coll.map(deriveType).reduce(_ leastUpperBound _))
     case _                                  => CTAny
   }
 }

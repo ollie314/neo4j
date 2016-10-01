@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,7 +27,7 @@ import org.neo4j.kernel.impl.transaction.log.IllegalLogFormatException;
 import org.neo4j.kernel.impl.transaction.log.LogFileInformation;
 import org.neo4j.kernel.impl.transaction.log.PhysicalLogFiles;
 
-import static org.neo4j.kernel.configuration.Config.parseLongWithUnit;
+import static org.neo4j.kernel.configuration.Settings.parseLongWithUnit;
 
 public class LogPruneStrategyFactory
 {
@@ -92,7 +92,7 @@ public class LogPruneStrategyFactory
                 case "true":
                     return NO_PRUNING;
                 case "false":
-                    final TransactionCountThreshold thresholdToUse = new TransactionCountThreshold( 1 );
+                    final EntryCountThreshold thresholdToUse = new EntryCountThreshold( 1 );
                     return new ThresholdBasedPruneStrategy( fileSystem, logFileInformation, files, thresholdToUse );
                 default:
                     throw new IllegalArgumentException( "Invalid log pruning configuration value '" + configValue +
@@ -121,17 +121,18 @@ public class LogPruneStrategyFactory
                 thresholdToUse = new FileSizeThreshold( fileSystem, thresholdValue );
                 break;
             case "txs":
-                thresholdToUse = new TransactionCountThreshold( thresholdValue );
+            case "entries": // txs and entries are synonyms
+                thresholdToUse = new EntryCountThreshold( thresholdValue );
                 break;
             case "hours":
-                thresholdToUse = new TransactionTimespanThreshold( Clock.SYSTEM_CLOCK, TimeUnit.HOURS, thresholdValue );
+                thresholdToUse = new EntryTimespanThreshold( Clock.SYSTEM_CLOCK, TimeUnit.HOURS, thresholdValue );
                 break;
             case "days":
-                thresholdToUse = new TransactionTimespanThreshold( Clock.SYSTEM_CLOCK, TimeUnit.DAYS, thresholdValue );
+                thresholdToUse = new EntryTimespanThreshold( Clock.SYSTEM_CLOCK, TimeUnit.DAYS, thresholdValue );
                 break;
             default:
                 throw new IllegalArgumentException( "Invalid log pruning configuration value '" + originalConfigValue +
-                        "'. Invalid type '" + type + "', valid are files, size, txs, hours, days." );
+                        "'. Invalid type '" + type + "', valid are files, size, txs, entries, hours, days." );
         }
         return thresholdToUse;
     }

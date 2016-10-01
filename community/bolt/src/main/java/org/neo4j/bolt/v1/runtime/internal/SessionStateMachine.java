@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,20 +21,35 @@ package org.neo4j.bolt.v1.runtime.internal;
 
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import org.neo4j.bolt.security.auth.Authentication;
+import org.neo4j.bolt.security.auth.AuthenticationException;
+import org.neo4j.bolt.security.auth.AuthenticationResult;
 import org.neo4j.bolt.v1.runtime.Session;
-import org.neo4j.bolt.v1.runtime.spi.RecordStream;
-import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.Transaction;
-import org.neo4j.kernel.TopLevelTransaction;
-import org.neo4j.kernel.api.exceptions.Status;
-import org.neo4j.kernel.impl.core.ThreadToStatementContextBridge;
-import org.neo4j.kernel.impl.logging.LogService;
-import org.neo4j.logging.Log;
 import org.neo4j.bolt.v1.runtime.StatementMetadata;
+import org.neo4j.bolt.v1.runtime.spi.RecordStream;
 import org.neo4j.bolt.v1.runtime.spi.StatementRunner;
+import org.neo4j.graphdb.security.AuthorizationViolationException;
+import org.neo4j.kernel.GraphDatabaseQueryService;
+import org.neo4j.kernel.api.KernelTransaction;
+import org.neo4j.kernel.api.Statement;
+import org.neo4j.kernel.api.exceptions.KernelException;
+import org.neo4j.kernel.api.exceptions.Status;
+import org.neo4j.kernel.api.security.AccessMode;
+import org.neo4j.kernel.impl.core.ThreadToStatementContextBridge;
+import org.neo4j.kernel.impl.coreapi.InternalTransaction;
+import org.neo4j.kernel.impl.coreapi.PropertyContainerLocker;
+import org.neo4j.kernel.impl.factory.GraphDatabaseFacade;
+import org.neo4j.kernel.impl.logging.LogService;
+import org.neo4j.kernel.impl.query.Neo4jTransactionalContext;
+import org.neo4j.kernel.impl.query.QuerySession;
 import org.neo4j.udc.UsageData;
-import org.neo4j.udc.UsageDataKeys;
+
+import static java.lang.String.format;
+import static org.neo4j.kernel.api.KernelTransaction.Type.explicit;
+import static org.neo4j.kernel.api.KernelTransaction.Type.implicit;
+import static org.neo4j.kernel.api.exceptions.Status.Security.CredentialsExpired;
 
 /**
  * State-machine based implementation of {@link Session}. With this approach,
@@ -52,20 +67,46 @@ public class SessionStateMachine implements Session, SessionState
         /**
          * Before the session has been initialized.
          */
-        UNITIALIZED
+        UNINITIALIZED
                 {
                     @Override
-                    public State init( SessionStateMachine ctx, String clientName )
+                    public State init( SessionStateMachine ctx, String clientName, Map<String,Object> authToken )
                     {
-                        ctx.usageData.get( UsageDataKeys.clientNames ).add( clientName );
-                        return IDLE;
+                        try
+                        {
+                            AuthenticationResult authResult = ctx.spi.authenticate( authToken );
+                            ctx.accessMode = authResult.getAccessMode();
+                            ctx.credentialsExpired = authResult.credentialsExpired();
+                            ctx.result( authResult.credentialsExpired() );
+                            ctx.spi.udcRegisterClient( clientName );
+                            ctx.setQuerySourceFromClientNameAndPrincipal( clientName, authToken.get( Authentication.PRINCIPAL ) );
+                            return IDLE;
+                        }
+                        catch ( AuthenticationException e )
+                        {
+                            ctx.error( new Neo4jError( e.status(), e.getMessage() ));
+                            return INIT_ERROR;
+                        }
+                        catch ( Throwable e )
+                        {
+                            ctx.error( new Neo4jError( Status.General.UnknownError, e.getMessage() ));
+                            return halt( ctx );
+                        }
+                    }
+
+                    @Override
+                    public State interrupt( SessionStateMachine ctx )
+                    {
+                        // this means that you cannot interrupt init
+                        // this ensures that a user has to either finish init or finish noImpl
+                        return UNINITIALIZED;
                     }
 
                     @Override
                     protected State onNoImplementation( SessionStateMachine ctx, String command )
                     {
                         ctx.error( new Neo4jError( Status.Request.Invalid, "No operations allowed until you send an " +
-                                                                           "INIT message." ));
+                                "INIT message successfully." ) );
                         return halt( ctx );
                     }
                 },
@@ -79,8 +120,7 @@ public class SessionStateMachine implements Session, SessionState
                     public State beginTransaction( SessionStateMachine ctx )
                     {
                         assert ctx.currentTransaction == null;
-                        ctx.implicitTransaction = false;
-                        ctx.currentTransaction = ctx.db.beginTx();
+                        ctx.currentTransaction = ctx.spi.beginTransaction( explicit, ctx.accessMode );
                         return IN_TRANSACTION;
                     }
 
@@ -89,9 +129,17 @@ public class SessionStateMachine implements Session, SessionState
                     {
                         try
                         {
-                            ctx.currentResult = ctx.statementRunner.run( ctx, statement, params );
+                            ctx.currentResult = ctx.spi.run( ctx, statement, params );
                             ctx.result( ctx.currentStatementMetadata );
-                            return STREAM_OPEN;
+                            //if the call to run failed we must remain in state ERROR
+                            if ( ctx.state == ERROR )
+                            {
+                                return ERROR;
+                            }
+                            else
+                            {
+                                return STREAM_OPEN;
+                            }
                         }
                         catch ( Throwable e )
                         {
@@ -103,16 +151,30 @@ public class SessionStateMachine implements Session, SessionState
                     public State beginImplicitTransaction( SessionStateMachine ctx )
                     {
                         assert ctx.currentTransaction == null;
-                        ctx.implicitTransaction = true;
-                        ctx.currentTransaction = ctx.db.beginTx();
+                        // NOTE: If we move away from doing implicit transactions this
+                        // way, we need a different way to kill statements running in implicit
+                        // transactions, because we do that by calling #terminate() on this tx.
+                        ctx.currentTransaction = ctx.spi.beginTransaction( implicit, ctx.accessMode );
                         return IN_TRANSACTION;
                     }
 
+                    @Override
+                    public State reset( SessionStateMachine ctx )
+                    {
+                        return IDLE;
+                    }
+
+                    @Override
+                    public State rollbackTransaction( SessionStateMachine ctx )
+                    {
+                        return error( ctx, new Neo4jError( Status.Request.Invalid,
+                                "rollback cannot be done when there is no open transaction in the session." ) );
+                    }
                 },
 
         /**
          * Open transaction, no open stream
-         * <p/>
+         * <p>
          * This is when the client has explicitly requested a transaction to be opened.
          */
         IN_TRANSACTION
@@ -128,8 +190,11 @@ public class SessionStateMachine implements Session, SessionState
                     {
                         try
                         {
-                            ctx.currentTransaction.success();
-                            ctx.currentTransaction.close();
+                            KernelTransaction tx = ctx.currentTransaction;
+                            ctx.currentTransaction = null;
+
+                            tx.success();
+                            tx.close();
                         }
                         catch ( Throwable e )
                         {
@@ -147,7 +212,7 @@ public class SessionStateMachine implements Session, SessionState
                     {
                         try
                         {
-                            Transaction tx = ctx.currentTransaction;
+                            KernelTransaction tx = ctx.currentTransaction;
                             ctx.currentTransaction = null;
 
                             tx.failure();
@@ -159,6 +224,13 @@ public class SessionStateMachine implements Session, SessionState
                             return error( ctx, e );
                         }
                     }
+
+                    @Override
+                    public State reset( SessionStateMachine ctx )
+                    {
+                        return rollbackTransaction( ctx );
+                    }
+
                 },
 
         /**
@@ -191,7 +263,7 @@ public class SessionStateMachine implements Session, SessionState
                             {
                                 return IDLE;
                             }
-                            else if ( ctx.implicitTransaction )
+                            else if ( ctx.currentTransaction.transactionType() == implicit )
                             {
                                 return IN_TRANSACTION.commitTransaction( ctx );
                             }
@@ -210,14 +282,35 @@ public class SessionStateMachine implements Session, SessionState
                         }
                     }
 
+                    @Override
+                    public State reset( SessionStateMachine ctx )
+                    {
+                        // Do an extra reset, since discardAll may put us
+                        // in the IN_TRANSACTION state
+                        return discardAll( ctx ).reset( ctx );
+                    }
+
                 },
 
         /** An error has occurred, client must acknowledge it before anything else is allowed. */
         ERROR
                 {
                     @Override
-                    public State acknowledgeError( SessionStateMachine ctx )
+                    public State reset( SessionStateMachine ctx )
                     {
+                        // There may still be a transaction open, so do
+                        // an extra reset on the outcome of ackFailure to ensure we go
+                        // to idle state.
+                        return ackFailure( ctx ).reset( ctx );
+                    }
+
+                    @Override
+                    public State ackFailure( SessionStateMachine ctx )
+                    {
+                        if( ctx.hasTransaction() )
+                        {
+                            return IN_TRANSACTION;
+                        }
                         return IDLE;
                     }
 
@@ -228,31 +321,97 @@ public class SessionStateMachine implements Session, SessionState
                         return ERROR;
                     }
                 },
-
-        /**
-         * A recoverable error has occurred within an explicitly opened transaction. After the client acknowledges
-         * it, we will move back to {@link #IN_TRANSACTION}.
-         */
-        RECOVERABLE_ERROR
+        /** Failed to authenticate, acknowledging the error leads you back to UNINITIALIZED and you get to try again.
+         * This state could be interrupted. Once interrupted, it requires reset to back to UNINITIALIZED.
+         * All other operation are illegal. */
+        INIT_ERROR
                 {
                     @Override
-                    public State acknowledgeError (SessionStateMachine ctx)
+                    public State interrupt( SessionStateMachine ctx )
                     {
-                        return IN_TRANSACTION;
+                        return INIT_INTERRUPTED;
                     }
 
                     @Override
-                    protected State onNoImplementation (SessionStateMachine ctx, String command)
+                    public State ackFailure( SessionStateMachine ctx )
                     {
-                        ctx.ignored();
-                        return RECOVERABLE_ERROR;
+                        return UNINITIALIZED;
+                    }
+
+                    @Override
+                    protected State onNoImplementation( SessionStateMachine ctx, String command )
+                    {
+                        // Just do the same as what UNINIT state will do
+                        return UNINITIALIZED.onNoImplementation( ctx, command );
                     }
                 },
 
+        /** Interrupted during init_error, resting the error leads you back to UNINITIALIZED and you get to try again.
+         * The state will remain interrupted until the amount of reset messages received is the same as the count of
+         * interrupts.
+         */
+        INIT_INTERRUPTED
+                {
+                    @Override
+                    public State interrupt( SessionStateMachine ctx )
+                    {
+                        return INIT_INTERRUPTED;
+                    }
+
+                    @Override
+                    public State reset( SessionStateMachine ctx )
+                    {
+                        return reset(ctx, UNINITIALIZED);
+                    }
+
+                    @Override
+                    protected State onNoImplementation( SessionStateMachine ctx, String command )
+                    {
+                        // Just do the same as what UNINIT state will do
+                        return UNINITIALIZED.onNoImplementation( ctx, command );
+                    }
+                },
+
+        /**
+         * The state machine is in a temporary INTERRUPT state, and will ignore
+         * all messages until a RESET is received.
+         */
+        INTERRUPTED
+                {
+                    /**
+                     * When we are in the interrupted state, we need RESET messages
+                     * to clear that state.
+                     */
+                    @Override
+                    public State reset( SessionStateMachine ctx )
+                    {
+                        return reset( ctx, IDLE );
+                    }
+
+                    @Override
+                    public State interrupt( SessionStateMachine ctx )
+                    {
+                        return INTERRUPTED;
+                    }
+
+                    @Override
+                    protected State onNoImplementation( SessionStateMachine ctx, String command )
+                    {
+                        ctx.ignored();
+                        return INTERRUPTED;
+                    }
+                },
 
         /** The state machine is permanently stopped. */
         STOPPED
                 {
+                    @Override
+                    public State interrupt( SessionStateMachine ctx )
+                    {
+                        // ignore all interrupts
+                        return STOPPED;
+                    }
+
                     @Override
                     public State halt( SessionStateMachine ctx )
                     {
@@ -269,7 +428,7 @@ public class SessionStateMachine implements Session, SessionState
 
         // Operations that a session can perform. Individual states override these if they want to support them.
 
-        public State init( SessionStateMachine ctx, String clientName )
+        public State init( SessionStateMachine ctx, String clientName, Map<String,Object> authToken )
         {
             return onNoImplementation( ctx, "initializing the session" );
         }
@@ -309,9 +468,44 @@ public class SessionStateMachine implements Session, SessionState
             return onNoImplementation( ctx, "beginning implicit transaction" );
         }
 
-        public State acknowledgeError( SessionStateMachine ctx )
+        public State reset( SessionStateMachine ctx )
         {
-            return onNoImplementation( ctx, "acknowledging an error" );
+            return onNoImplementation( ctx, "resetting the current session" );
+        }
+
+        State reset( SessionStateMachine ctx, State resetToState )
+        {
+            // If > 0 to guard against bugs making the counter negative
+            if( ctx.interruptCounter.get() > 0 )
+            {
+                if( ctx.interruptCounter.decrementAndGet() > 0 )
+                {
+                    // This happens when the user sends multiple
+                    // interrupts at the same time, we now demand
+                    // an equivalent number of RESET until we go back
+                    // to IDLE.
+                    ctx.ignored();
+                    return ctx.state;
+                }
+            }
+            return resetToState;
+        }
+
+        public State ackFailure( SessionStateMachine ctx )
+        {
+            return onNoImplementation( ctx, "acknowledging a failure" );
+        }
+
+        /**
+         * If the session has been interrupted, this will be invoked before *each*
+         * message that is processed after interruption, until the interrupt counter
+         * is reset back to 0. This exists to ensure we cleanly reset any current
+         * state, meaning the default implementation is the same as reset.
+         */
+        public State interrupt( SessionStateMachine ctx )
+        {
+            reset( ctx );
+            return INTERRUPTED;
         }
 
         protected State onNoImplementation( SessionStateMachine ctx, String command )
@@ -338,19 +532,38 @@ public class SessionStateMachine implements Session, SessionState
 
         State error( SessionStateMachine ctx, Throwable err )
         {
+            if( err instanceof AuthorizationViolationException &&
+                ctx.credentialsExpired )
+            {
+                // TODO: This is *way* too high up the stack to create this message, this should
+                //       happen much further down.
+                return error( ctx, new Neo4jError( CredentialsExpired,
+                        String.format("The credentials you provided were valid, but must be changed before you can " +
+                        "use this instance. If this is the first time you are using Neo4j, this is to " +
+                        "ensure you are not using the default credentials in production. If you are not " +
+                        "using default credentials, you are getting this message because an administrator " +
+                        "requires a password change.%n" +
+                        "Changing your password is easy to do via the Neo4j Browser.%n" +
+                        "If you are connecting via a shell or programmatically via a driver, " +
+                        "just issue a `CALL dbms.changePassword('new password')` statement in the current " +
+                        "session, and then restart your driver with the new password configured."),
+                        err ) );
+            }
             return error( ctx, Neo4jError.from( err ) );
         }
 
         State error( SessionStateMachine ctx, Neo4jError err )
         {
-            ctx.errorReporter.report( err );
+            ctx.spi.reportError( err );
             State outcome = ERROR;
             if ( ctx.hasTransaction() )
             {
-                // Is this error bad enough that we should roll back, or did the failure occur in an implicit
-                // transaction?
-                if(  err.status().code().classification().rollbackTransaction() || ctx.implicitTransaction )
+                switch( ctx.currentTransaction.transactionType() )
                 {
+                case explicit:
+                    ctx.currentTransaction.failure();
+                    break;
+                case implicit:
                     try
                     {
                         ctx.currentTransaction.failure();
@@ -358,22 +571,14 @@ public class SessionStateMachine implements Session, SessionState
                     }
                     catch ( Throwable t )
                     {
-                        ctx.log.error( "While handling '" + err.status() + "', a second failure occurred when " +
-                                       "rolling back transaction: " + t.getMessage(), t );
+                        ctx.spi.reportError( "While handling '" + err.status() + "', a second failure occurred when " +
+                                "rolling back transaction: " + t.getMessage(), t );
                     }
                     finally
                     {
                         ctx.currentTransaction = null;
                     }
-                }
-                else
-                {
-                    // A non-fatal error occurred inside an explicit transaction, such as a syntax error.
-                    // These are recoverable, so we leave the transaction open for the user.
-                    // This is mainly to cover cases of direct user-driven work, where someone might have
-                    // manually built up a large transaction, and we'd rather not have it all be thrown out
-                    // because of a spelling mistake.
-                    outcome = RECOVERABLE_ERROR;
+                    break;
                 }
             }
             ctx.error( err );
@@ -381,12 +586,8 @@ public class SessionStateMachine implements Session, SessionState
         }
     }
 
-    private final UsageData usageData;
-    private final GraphDatabaseService db;
-    private final StatementRunner statementRunner;
-    private final ErrorReporter errorReporter;
-    private final Log log;
-    private final String id;
+
+    private final String id = UUID.randomUUID().toString();
 
     /** A re-usable statement metadata instance that always represents the currently running statement */
     private final StatementMetadata currentStatementMetadata = new StatementMetadata()
@@ -398,14 +599,26 @@ public class SessionStateMachine implements Session, SessionState
         }
     };
 
+    /**
+     * This is incremented each time {@link #interrupt()} is called,
+     * and decremented each time a {@link #reset(Object, Callback)} message
+     * arrives. When this is above 0, all messages will be ignored.
+     * This way, when a reset message arrives on the network, interrupt
+     * can be called to "purge" all the messages ahead of the reset message.
+     */
+    private final AtomicInteger interruptCounter = new AtomicInteger();
+
     /** The current session state */
-    private State state = State.UNITIALIZED;
+    private State state = State.UNINITIALIZED;
 
     /** The current pending result, if present */
     private RecordStream currentResult;
 
     /** The current transaction, if present */
-    private Transaction currentTransaction;
+    private KernelTransaction currentTransaction;
+
+    /** The current query source, if initialized */
+    private String currentQuerySource;
 
     /** Callback poised to receive the next response */
     private Callback currentCallback;
@@ -413,28 +626,60 @@ public class SessionStateMachine implements Session, SessionState
     /** Callback attachment */
     private Object currentAttachment;
 
-    private ThreadToStatementContextBridge txBridge;
+    /** The current session auth state to be used for starting transactions */
+    private AccessMode accessMode;
 
     /**
-     * Flag to indicate whether the current transaction, if present, is implicit. An
-     * implicit transaction is one not explicitly requested by the user but implicitly
-     * added to wrap a statement for execution. An implicit transaction will always
-     * commit when its result is closed.
+     * If the current user has provided valid but needs-to-be-changed credentials,
+     * this flag gets set. This is not awesome - it'd be better to have a special
+     * access mode for this state, that would help disambiguate from being unauthenticated
+     * as well. Did things this way to minimize risk of introducing bugs this late
+     * in the 3.0 cycle. A further note towards adding a special AccessMode is that
+     * we need to set things up to change access mode anyway whenever the user changes
+     * credentials or is upgraded. As it is now, a new session needs to be created.
      */
-    private boolean implicitTransaction = false;
+    private boolean credentialsExpired;
 
-    // Note: We shouldn't depend on GDB like this, I think. Better to define an SPI that we can shape into a spec
-    // for exactly the kind of underlying support the state machine needs.
-    public SessionStateMachine( UsageData usageData, GraphDatabaseService db, ThreadToStatementContextBridge txBridge,
-            StatementRunner engine, LogService logging )
+    /** These are the "external" actions the state machine can take */
+    private final SPI spi;
+
+    /**
+     * This SPI encapsulates the "external" actions the state machine can take.
+     * It exists for three reasons:
+     * 1) It makes it very clear what side-effects the SSM can have
+     * 2) It decouples the SSM from the actual components performing these operations
+     * 3) It makes it *much* easier to test the SSM without having to re-implement
+     *    the whole database as mocks.
+     *
+     * If you are adding new functionality to the SSM where the new function needs
+     * to reach out to some component outside the SSM, please add it here. And when
+     * you do, please consider the law of demeter - if you are simply adding
+     * "getQueryEngine" to the SPI, you're doing it wrong, then we might as well
+     * have the full components as fields.
+     */
+    interface SPI
     {
-        this.usageData = usageData;
-        this.db = db;
-        this.txBridge = txBridge;
-        this.statementRunner = engine;
-        this.errorReporter = new ErrorReporter( logging, this.usageData );
-        this.log = logging.getInternalLog( getClass() );
-        this.id = UUID.randomUUID().toString();
+        String connectionDescriptor();
+        void reportError( Neo4jError err );
+        void reportError( String message, Throwable cause );
+        KernelTransaction beginTransaction( KernelTransaction.Type type, AccessMode mode );
+        void bindTransactionToCurrentThread( KernelTransaction tx );
+        void unbindTransactionFromCurrentThread();
+        RecordStream run( SessionStateMachine ctx, String statement, Map<String, Object> params )
+                throws KernelException;
+        AuthenticationResult authenticate( Map<String, Object> authToken ) throws AuthenticationException;
+        void udcRegisterClient( String clientName );
+        Statement currentStatement();
+    }
+    public SessionStateMachine( String connectionDescriptor, UsageData usageData, GraphDatabaseFacade db, ThreadToStatementContextBridge txBridge,
+            StatementRunner engine, LogService logging, Authentication authentication )
+    {
+        this( new StandardStateMachineSPI( connectionDescriptor, usageData, db, engine, logging, authentication, txBridge ));
+    }
+    public SessionStateMachine( SPI spi )
+    {
+        this.spi = spi;
+        this.accessMode = AccessMode.Static.NONE;
     }
 
     @Override
@@ -443,13 +688,29 @@ public class SessionStateMachine implements Session, SessionState
         return id;
     }
 
+    public String connectionDescriptor()
+    {
+        return spi.connectionDescriptor();
+    }
+
+    private String querySource()
+    {
+        return currentQuerySource;
+    }
+
+    private void setQuerySourceFromClientNameAndPrincipal( String clientName, Object principal )
+    {
+        String principalName = principal == null ? "null" : principal.toString();
+        currentQuerySource = format( "bolt\t%s\t%s\t%s>", principalName, clientName, connectionDescriptor() );
+    }
+
     @Override
-    public <A> void init( String clientName, A attachment, Callback<Void,A> callback )
+    public <A> void init( String clientName, Map<String,Object> authToken, A attachment, Callback<Boolean,A> callback )
     {
         before( attachment, callback );
         try
         {
-            state = state.init( this, clientName );
+            state = state.init( this, clientName, authToken );
         }
         finally { after(); }
     }
@@ -489,14 +750,56 @@ public class SessionStateMachine implements Session, SessionState
     }
 
     @Override
-    public <A> void acknowledgeFailure( A attachment, Callback<Void,A> callback )
+    public <A> void ackFailure( A attachment, Callback<Void,A> callback )
     {
         before( attachment, callback );
         try
         {
-            state = state.acknowledgeError( this );
+            state = state.ackFailure( this );
         }
         finally { after(); }
+    }
+
+    @Override
+    public <A> void externalError( Neo4jError error, A attachment, Callback<Void,A> callback )
+    {
+        before( attachment, callback );
+        try
+        {
+            state = state.error( this, error );
+        }
+        finally { after(); }
+
+    }
+
+    @Override
+    public <A> void reset( A attachment, Callback<Void,A> callback )
+    {
+        before( attachment, callback );
+        try
+        {
+            state = state.reset( this );
+        }
+        finally { after(); }
+    }
+
+    @Override
+    public void interrupt()
+    {
+        // NOTE: This is a side-channel method call. You *cannot*
+        //       mutate any of the regular state in the state machine
+        //       from inside this method, it WILL lead to race conditions.
+        //       Imagine this is always called from a separate thread, while
+        //       the main session worker thread is actively working on mutating
+        //       fields on the session.
+        interruptCounter.incrementAndGet();
+
+        // If there is currently a transaction running, terminate it
+        KernelTransaction tx = this.currentTransaction;
+        if(tx != null)
+        {
+            tx.markForTermination( Status.Transaction.Terminated );
+        }
     }
 
     @Override
@@ -542,6 +845,15 @@ public class SessionStateMachine implements Session, SessionState
         return currentTransaction != null;
     }
 
+    @Override
+    public QuerySession createSession( GraphDatabaseQueryService service, PropertyContainerLocker locker )
+    {
+        InternalTransaction transaction = service.beginTransaction( implicit, accessMode );
+        Neo4jTransactionalContext transactionalContext =
+                new Neo4jTransactionalContext( service, transaction, spi.currentStatement(), locker );
+        return new BoltQuerySession( transactionalContext, querySource() );
+    }
+
     public State state()
     {
         return state;
@@ -560,9 +872,22 @@ public class SessionStateMachine implements Session, SessionState
      */
     private void before( Object attachment, Callback cb )
     {
+        if ( cb != null )
+        {
+            cb.started( attachment );
+        }
+
+        if( interruptCounter.get() > 0 )
+        {
+            // Force into interrupted state. This is how we 'discover'
+            // that `interrupt` has been called.
+            // First reset, so we clean up any open resources
+            state = state.interrupt( this );
+        }
+
         if ( hasTransaction() )
         {
-            txBridge.bindTransactionToCurrentThread( (TopLevelTransaction) currentTransaction );
+            spi.bindTransactionToCurrentThread( currentTransaction );
         }
         assert this.currentCallback == null;
         assert this.currentAttachment == null;
@@ -592,7 +917,7 @@ public class SessionStateMachine implements Session, SessionState
         {
             if ( hasTransaction() )
             {
-                txBridge.unbindTransactionFromCurrentThread();
+                spi.unbindTransactionFromCurrentThread();
             }
         }
     }
@@ -600,9 +925,9 @@ public class SessionStateMachine implements Session, SessionState
     /** Forward an error to the currently attached callback */
     private void error( Neo4jError err )
     {
-        if( err.status().code().classification() == Status.Classification.DatabaseError )
+        if ( err.status().code().classification() == Status.Classification.DatabaseError )
         {
-            log.error( "A database error occurred while servicing a user request: " + err );
+            spi.reportError( err );
         }
 
         if ( currentCallback != null )
@@ -629,6 +954,23 @@ public class SessionStateMachine implements Session, SessionState
         if ( currentCallback != null )
         {
             currentCallback.ignored( currentAttachment );
+        }
+    }
+
+    private class BoltQuerySession extends QuerySession
+    {
+        private final String querySource;
+
+        public BoltQuerySession( Neo4jTransactionalContext transactionalContext, String querySource )
+        {
+            super( transactionalContext );
+            this.querySource = querySource;
+        }
+
+        @Override
+        public String toString()
+        {
+            return format( "bolt-session\t%s", querySource );
         }
     }
 }

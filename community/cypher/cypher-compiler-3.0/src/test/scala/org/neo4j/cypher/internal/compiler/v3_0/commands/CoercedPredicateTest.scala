@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,7 +20,7 @@
 package org.neo4j.cypher.internal.compiler.v3_0.commands
 
 import org.neo4j.cypher.internal.compiler.v3_0.ExecutionContext
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Collection, Literal}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{ListLiteral, Literal}
 import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates.{CoercedPredicate, True, Not}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.{QueryState, QueryStateHelper}
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
@@ -32,7 +32,7 @@ class CoercedPredicateTest extends CypherFunSuite {
 
   test("should_coerce_non_empty_collection_to_true") {
     // Given
-    val collection = Collection(Literal(1))
+    val collection = ListLiteral(Literal(1))
 
     // When
     val result = CoercedPredicate(collection).isTrue(ctx)
@@ -43,7 +43,7 @@ class CoercedPredicateTest extends CypherFunSuite {
 
   test("should_coerce_empty_collection_to_false") {
     // Given
-    val collection = Collection()
+    val collection = ListLiteral()
 
     // When
     val result = CoercedPredicate(collection).isTrue(ctx)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,34 +20,42 @@
 package org.neo4j.kernel.impl.factory;
 
 import java.io.File;
+import java.time.Clock;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
-import org.neo4j.function.Supplier;
+import org.neo4j.graphdb.DependencyResolver;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.NotFoundException;
+import org.neo4j.graphdb.Path;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
-import org.neo4j.graphdb.index.IndexManager;
-import org.neo4j.graphdb.index.RelationshipAutoIndexer;
-import org.neo4j.graphdb.schema.Schema;
+import org.neo4j.graphdb.factory.GraphDatabaseSettings;
+import org.neo4j.graphdb.spatial.Geometry;
+import org.neo4j.graphdb.spatial.Point;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.kernel.AvailabilityGuard;
 import org.neo4j.kernel.DatabaseAvailability;
-import org.neo4j.kernel.KernelEventHandlers;
-import org.neo4j.kernel.KernelHealth;
 import org.neo4j.kernel.NeoStoreDataSource;
-import org.neo4j.kernel.TransactionEventHandlers;
 import org.neo4j.kernel.api.KernelAPI;
+import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.api.Statement;
+import org.neo4j.kernel.api.dbms.DbmsOperations;
+import org.neo4j.kernel.api.legacyindex.AutoIndexing;
+import org.neo4j.kernel.builtinprocs.BuiltInProcedures;
 import org.neo4j.kernel.configuration.Config;
+import org.neo4j.kernel.guard.EmptyGuard;
 import org.neo4j.kernel.guard.Guard;
+import org.neo4j.kernel.guard.TimeoutGuard;
 import org.neo4j.kernel.impl.api.NonTransactionalTokenNameLookup;
 import org.neo4j.kernel.impl.api.SchemaWriteGuard;
+import org.neo4j.kernel.impl.api.dbms.NonTransactionalDbmsOperations;
 import org.neo4j.kernel.impl.api.index.IndexingService;
+import org.neo4j.kernel.impl.api.legacyindex.InternalAutoIndexing;
 import org.neo4j.kernel.impl.cache.MonitorGc;
-import org.neo4j.kernel.impl.core.KernelPanicEventGenerator;
+import org.neo4j.kernel.impl.core.DatabasePanicEventGenerator;
 import org.neo4j.kernel.impl.core.NodeManager;
 import org.neo4j.kernel.impl.core.NodeProxy;
 import org.neo4j.kernel.impl.core.RelationshipProxy;
@@ -55,29 +63,33 @@ import org.neo4j.kernel.impl.core.RelationshipTypeTokenHolder;
 import org.neo4j.kernel.impl.core.StartupStatisticsProvider;
 import org.neo4j.kernel.impl.core.ThreadToStatementContextBridge;
 import org.neo4j.kernel.impl.core.TokenNotFoundException;
-import org.neo4j.kernel.impl.coreapi.IndexManagerImpl;
-import org.neo4j.kernel.impl.coreapi.IndexProvider;
-import org.neo4j.kernel.impl.coreapi.IndexProviderImpl;
-import org.neo4j.kernel.impl.coreapi.LegacyIndexProxy;
-import org.neo4j.kernel.impl.coreapi.NodeAutoIndexerImpl;
-import org.neo4j.kernel.impl.coreapi.RelationshipAutoIndexerImpl;
-import org.neo4j.kernel.impl.coreapi.schema.SchemaImpl;
-import org.neo4j.kernel.impl.index.IndexConfigStore;
+import org.neo4j.kernel.impl.coreapi.CoreAPIAvailabilityGuard;
 import org.neo4j.kernel.impl.logging.LogService;
+import org.neo4j.kernel.impl.proc.ProcedureGDSFactory;
+import org.neo4j.kernel.impl.proc.Procedures;
+import org.neo4j.kernel.impl.proc.TypeMappers.SimpleConverter;
 import org.neo4j.kernel.impl.query.QueryEngineProvider;
 import org.neo4j.kernel.impl.query.QueryExecutionEngine;
-import org.neo4j.kernel.impl.store.StoreFactory;
 import org.neo4j.kernel.impl.store.StoreId;
-import org.neo4j.kernel.impl.storemigration.StoreMigrator;
-import org.neo4j.kernel.impl.storemigration.StoreUpgrader;
-import org.neo4j.kernel.impl.storemigration.monitoring.VisibleMigrationProgressMonitor;
 import org.neo4j.kernel.impl.transaction.log.PhysicalLogFile;
 import org.neo4j.kernel.impl.transaction.state.DataSourceManager;
+import org.neo4j.kernel.impl.util.Dependencies;
 import org.neo4j.kernel.info.DiagnosticsManager;
+import org.neo4j.kernel.internal.DatabaseHealth;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
+import org.neo4j.kernel.internal.KernelEventHandlers;
+import org.neo4j.kernel.internal.TransactionEventHandlers;
+import org.neo4j.kernel.internal.Version;
 import org.neo4j.kernel.lifecycle.LifeSupport;
 import org.neo4j.kernel.lifecycle.LifecycleAdapter;
+import org.neo4j.logging.Log;
 
-import static org.neo4j.kernel.impl.factory.GraphDatabaseFacadeFactory.Configuration.execution_guard_enabled;
+import static org.neo4j.kernel.api.proc.CallableProcedure.Context.KERNEL_TRANSACTION;
+import static org.neo4j.kernel.api.proc.Neo4jTypes.NTNode;
+import static org.neo4j.kernel.api.proc.Neo4jTypes.NTPath;
+import static org.neo4j.kernel.api.proc.Neo4jTypes.NTRelationship;
+import static org.neo4j.kernel.api.proc.Neo4jTypes.NTGeometry;
+import static org.neo4j.kernel.api.proc.Neo4jTypes.NTPoint;
 
 /**
  * Datasource module for {@link GraphDatabaseFacadeFactory}. This implements all the
@@ -94,10 +106,6 @@ public class DataSourceModule
 
     public final NeoStoreDataSource neoStoreDataSource;
 
-    public final IndexManager indexManager;
-
-    public final Schema schema;
-
     public final Supplier<KernelAPI> kernelAPI;
 
     public final Supplier<QueryExecutionEngine> queryExecutor;
@@ -107,6 +115,8 @@ public class DataSourceModule
     public final TransactionEventHandlers transactionEventHandlers;
 
     public final Supplier<StoreId> storeId;
+
+    public final AutoIndexing autoIndexing;
 
     public DataSourceModule( final GraphDatabaseFacadeFactory.Dependencies dependencies,
             final PlatformModule platformModule, EditionModule editionModule )
@@ -133,90 +143,92 @@ public class DataSourceModule
                 createRelationshipActions( graphDatabaseFacade, threadToTransactionBridge, nodeManager,
                         relationshipTypeTokenHolder ) );
 
-        transactionEventHandlers = new TransactionEventHandlers( nodeActions, relationshipActions,
-                threadToTransactionBridge );
-
-        IndexConfigStore indexStore =
-                life.add( deps.satisfyDependency( new IndexConfigStore( storeDir, fileSystem ) ) );
+        transactionEventHandlers = new TransactionEventHandlers( nodeActions, relationshipActions );
 
         diagnosticsManager.prependProvider( config );
 
         life.add( platformModule.kernelExtensions );
 
-        schema = new SchemaImpl( threadToTransactionBridge );
-
-        final LegacyIndexProxy.Lookup indexLookup = new LegacyIndexProxy.Lookup()
-        {
-            @Override
-            public GraphDatabaseService getGraphDatabaseService()
-            {
-                return graphDatabaseFacade;
-            }
-        };
-
-        final IndexProvider indexProvider = new IndexProviderImpl( indexLookup, threadToTransactionBridge );
-        NodeAutoIndexerImpl nodeAutoIndexer = life.add( new NodeAutoIndexerImpl( config, indexProvider, nodeManager ) );
-        RelationshipAutoIndexer relAutoIndexer = life.add( new RelationshipAutoIndexerImpl( config, indexProvider,
-                nodeManager ) );
-        indexManager = new IndexManagerImpl(
-                threadToTransactionBridge, indexProvider, nodeAutoIndexer, relAutoIndexer );
-
         // Factories for things that needs to be created later
         PageCache pageCache = platformModule.pageCache;
-        StoreFactory storeFactory = new StoreFactory( storeDir, config, editionModule.idGeneratorFactory,
-                pageCache, fileSystem, logging.getInternalLogProvider() );
 
         StartupStatisticsProvider startupStatistics = deps.satisfyDependency( new StartupStatisticsProvider() );
 
         SchemaWriteGuard schemaWriteGuard = deps.satisfyDependency( editionModule.schemaWriteGuard );
 
-        StoreUpgrader storeMigrationProcess = new StoreUpgrader( editionModule.upgradeConfiguration, fileSystem,
-                platformModule.monitors.newMonitor( StoreUpgrader.Monitor.class ), logging.getInternalLogProvider() );
-
-        VisibleMigrationProgressMonitor progressMonitor =
-                new VisibleMigrationProgressMonitor( logging.getInternalLog( StoreMigrator.class ) );
-        storeMigrationProcess.addParticipant(
-                new StoreMigrator( progressMonitor, fileSystem, pageCache, config, logging ) );
-
-        Guard guard = config.get( execution_guard_enabled ) ?
-                      deps.satisfyDependency( new Guard( logging.getInternalLog( Guard.class ) ) ) :
-                      null;
+        Clock clock = getClock();
+        Guard guard = createGuard( deps, config, clock, logging );
 
         kernelEventHandlers = new KernelEventHandlers( logging.getInternalLog( KernelEventHandlers.class ) );
 
-        KernelPanicEventGenerator kernelPanicEventGenerator = deps.satisfyDependency(
-                new KernelPanicEventGenerator( kernelEventHandlers ) );
+        DatabasePanicEventGenerator databasePanicEventGenerator = deps.satisfyDependency(
+                new DatabasePanicEventGenerator( kernelEventHandlers ) );
 
-        KernelHealth kernelHealth = deps.satisfyDependency( new KernelHealth( kernelPanicEventGenerator,
-                logging.getInternalLog( KernelHealth.class ) ) );
+        DatabaseHealth databaseHealth = deps.satisfyDependency( new DatabaseHealth( databasePanicEventGenerator,
+                logging.getInternalLog( DatabaseHealth.class ) ) );
 
-        neoStoreDataSource = deps.satisfyDependency( new NeoStoreDataSource( storeDir, config,
-                storeFactory, logging.getInternalLogProvider(), platformModule.jobScheduler,
-                new NonTransactionalTokenNameLookup( editionModule.labelTokenHolder,
-                        editionModule.relationshipTypeTokenHolder, editionModule.propertyKeyTokenHolder ),
-                deps, editionModule.propertyKeyTokenHolder, editionModule.labelTokenHolder, relationshipTypeTokenHolder,
-                editionModule.lockManager, schemaWriteGuard, transactionEventHandlers,
-                platformModule.monitors.newMonitor( IndexingService.Monitor.class ), fileSystem,
-                storeMigrationProcess, platformModule.transactionMonitor, kernelHealth,
+        autoIndexing = new InternalAutoIndexing( platformModule.config, editionModule.propertyKeyTokenHolder );
+
+
+        AtomicReference<QueryExecutionEngine> queryExecutor = new AtomicReference<>( QueryEngineProvider.noEngine() );
+        this.queryExecutor = queryExecutor::get;
+        Procedures procedures = setupProcedures( platformModule, editionModule.coreAPIAvailabilityGuard );
+
+        DbmsOperations dbmsOperations = new NonTransactionalDbmsOperations( procedures );
+        deps.satisfyDependency( dbmsOperations );
+
+        NonTransactionalTokenNameLookup tokenNameLookup = new NonTransactionalTokenNameLookup(
+                editionModule.labelTokenHolder,
+                editionModule.relationshipTypeTokenHolder,
+                editionModule.propertyKeyTokenHolder );
+
+        neoStoreDataSource = deps.satisfyDependency( new NeoStoreDataSource(
+                storeDir,
+                config,
+                editionModule.idGeneratorFactory,
+                editionModule.eligibleForIdReuse,
+                editionModule.idTypeConfigurationProvider,
+                logging,
+                platformModule.jobScheduler,
+                tokenNameLookup,
+                deps,
+                editionModule.propertyKeyTokenHolder,
+                editionModule.labelTokenHolder,
+                relationshipTypeTokenHolder,
+                editionModule.statementLocksFactory,
+                schemaWriteGuard,
+                transactionEventHandlers,
+                platformModule.monitors.newMonitor( IndexingService.Monitor.class ),
+                fileSystem,
+                platformModule.transactionMonitor,
+                databaseHealth,
                 platformModule.monitors.newMonitor( PhysicalLogFile.Monitor.class ),
-                editionModule.headerInformationFactory, startupStatistics, nodeManager, guard, indexStore,
-                editionModule.commitProcessFactory, pageCache, editionModule.constraintSemantics,
-                platformModule.monitors, platformModule.tracers ) );
+                editionModule.headerInformationFactory,
+                startupStatistics,
+                guard,
+                editionModule.commitProcessFactory,
+                autoIndexing,
+                pageCache,
+                editionModule.constraintSemantics,
+                platformModule.monitors,
+                platformModule.tracers,
+                procedures,
+                editionModule.ioLimiter,
+                clock ) );
+
         dataSourceManager.register( neoStoreDataSource );
 
         life.add( new MonitorGc( config, logging.getInternalLog( MonitorGc.class ) ) );
 
         life.add( nodeManager );
 
-        life.add( new DatabaseAvailability( platformModule.availabilityGuard, platformModule.transactionMonitor ) );
+        life.add( new DatabaseAvailability( platformModule.availabilityGuard, platformModule.transactionMonitor,
+                config.get( GraphDatabaseSettings.shutdown_transaction_end_timeout ) ) );
 
         life.add( new StartupWaiter( platformModule.availabilityGuard, editionModule.transactionStartTimeout ) );
 
         // Kernel event handlers should be the very last, i.e. very first to receive shutdown events
         life.add( kernelEventHandlers );
-
-        final AtomicReference<QueryExecutionEngine> queryExecutor = new AtomicReference<>( QueryEngineProvider
-                .noEngine() );
 
         dataSourceManager.addListener( new DataSourceManager.Listener()
         {
@@ -243,32 +255,13 @@ public class DataSourceModule
             }
         } );
 
-        storeId = new Supplier<StoreId>()
-        {
-            @Override
-            public StoreId get()
-            {
-                return neoStoreDataSource.getStoreId();
-            }
-        };
+        this.storeId = neoStoreDataSource::getStoreId;
+        this.kernelAPI = neoStoreDataSource::getKernel;
+    }
 
-        kernelAPI = new Supplier<KernelAPI>()
-        {
-            @Override
-            public KernelAPI get()
-            {
-                return neoStoreDataSource.getKernel();
-            }
-        };
-
-        this.queryExecutor = new Supplier<QueryExecutionEngine>()
-        {
-            @Override
-            public QueryExecutionEngine get()
-            {
-                return queryExecutor.get();
-            }
-        };
+    protected Clock getClock()
+    {
+        return Clock.systemUTC();
     }
 
     protected RelationshipProxy.RelationshipActions createRelationshipActions(
@@ -357,18 +350,6 @@ public class DataSourceModule
             }
 
             @Override
-            public Relationship lazyRelationshipProxy( long id )
-            {
-                return nodeManager.newRelationshipProxyById( id );
-            }
-
-            @Override
-            public Relationship newRelationshipProxy( long id )
-            {
-                return nodeManager.newRelationshipProxy( id );
-            }
-
-            @Override
             public Relationship newRelationshipProxy( long id, long startNodeId, int typeId, long endNodeId )
             {
                 return nodeManager.newRelationshipProxy( id, startNodeId, typeId, endNodeId );
@@ -376,6 +357,57 @@ public class DataSourceModule
         };
     }
 
+    private Guard createGuard( Dependencies deps, Config config, Clock clock, LogService logging )
+    {
+        Boolean isGuardEnabled = config.get( GraphDatabaseSettings.execution_guard_enabled );
+        Guard guard = isGuardEnabled ? createGuard( clock, logging ) : EmptyGuard.EMPTY_GUARD;
+        deps.satisfyDependency( guard );
+        return guard;
+    }
+
+    protected TimeoutGuard createGuard( Clock clock, LogService logging )
+    {
+        return new TimeoutGuard( clock, logging.getInternalLog( TimeoutGuard.class ) );
+    }
+
+    private Procedures setupProcedures( PlatformModule platform, CoreAPIAvailabilityGuard coreAPIAvailabilityGuard )
+    {
+        File pluginDir = platform.config.get( GraphDatabaseSettings.plugin_dir );
+        Log internalLog = platform.logging.getInternalLog( Procedures.class );
+
+        Procedures procedures = new Procedures(
+                new BuiltInProcedures( Version.getNeo4jVersion(),  platform.databaseInfo.edition.toString()),
+                pluginDir,  internalLog );
+        platform.life.add( procedures );
+        platform.dependencies.satisfyDependency( procedures );
+
+        procedures.registerType( Node.class, new SimpleConverter( NTNode, Node.class ) );
+        procedures.registerType( Relationship.class, new SimpleConverter( NTRelationship, Relationship.class ) );
+        procedures.registerType( Path.class, new SimpleConverter( NTPath, Path.class ) );
+        procedures.registerType( Geometry.class, new SimpleConverter( NTGeometry, Geometry.class ) );
+        procedures.registerType( Point.class, new SimpleConverter( NTPoint, Point.class ) );
+
+        // Register injected public API components
+        Log proceduresLog = platform.logging.getUserLog( Procedures.class  );
+        procedures.registerComponent( Log.class, (ctx) -> proceduresLog );
+
+        // Register injected private API components: useful to have available in procedures to access the kernel etc.
+        ProcedureGDSFactory gdsFactory = new ProcedureGDSFactory( platform.config, platform.storeDir, platform.dependencies, storeId, this.queryExecutor, coreAPIAvailabilityGuard, platform.urlAccessRule );
+        procedures.registerComponent( GraphDatabaseService.class, gdsFactory::apply );
+
+        // Below components are not public API, but are made available for internal
+        // procedures to call, and to provide temporary workarounds for the following
+        // patterns:
+        //  - Batch-transaction imports (GDAPI, needs to be real and passed to background processing threads)
+        //  - Group-transaction writes (same pattern as above, but rather than splitting large transactions,
+        //                              combine lots of small ones)
+        //  - Bleeding-edge performance (KernelTransaction, to bypass overhead of working with Core API)
+        procedures.registerComponent( DependencyResolver.class, (ctx) -> platform.dependencies );
+        procedures.registerComponent( KernelTransaction.class, ( ctx ) -> ctx.get( KERNEL_TRANSACTION ) );
+        procedures.registerComponent( GraphDatabaseAPI.class, ( ctx ) -> platform.graphDatabaseFacade );
+
+        return procedures;
+    }
 
     /**
      * At end of startup, wait for instance to become available for transactions.
@@ -388,7 +420,7 @@ public class DataSourceModule
         private final AvailabilityGuard availabilityGuard;
         private final long timeout;
 
-        public StartupWaiter( AvailabilityGuard availabilityGuard, long timeout )
+        StartupWaiter( AvailabilityGuard availabilityGuard, long timeout )
         {
             this.availabilityGuard = availabilityGuard;
             this.timeout = timeout;

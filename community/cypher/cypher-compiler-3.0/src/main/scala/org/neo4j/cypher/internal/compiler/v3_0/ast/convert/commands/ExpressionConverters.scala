@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -17,7 +17,6 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 package org.neo4j.cypher.internal.compiler.v3_0.ast.convert.commands
 
 import org.neo4j.cypher.internal.compiler.v3_0._
@@ -32,7 +31,6 @@ import org.neo4j.cypher.internal.compiler.v3_0.commands.{expressions => commande
 import org.neo4j.cypher.internal.frontend.v3_0.ast._
 import org.neo4j.cypher.internal.frontend.v3_0.ast.functions._
 import org.neo4j.cypher.internal.frontend.v3_0.helpers.NonEmptyList
-import org.neo4j.cypher.internal.frontend.v3_0.parser.{LikePatternParser, ParsedLikePattern, convertLikePatternToRegex}
 import org.neo4j.cypher.internal.frontend.v3_0.{InternalException, SemanticDirection, ast}
 import org.neo4j.graphdb.Direction
 
@@ -88,10 +86,6 @@ object ExpressionConverters {
         }
       case Exp => commandexpressions.ExpFunction(toCommandExpression(invocation.arguments.head))
       case Floor => commandexpressions.FloorFunction(toCommandExpression(invocation.arguments.head))
-      case Has =>
-        val property = invocation.arguments.head.asInstanceOf[ast.Property]
-        commands.predicates.PropertyExists(toCommandExpression(property.map), PropertyKey(property.propertyKey.name))
-
       case Haversin => commandexpressions.HaversinFunction(toCommandExpression(invocation.arguments.head))
       case Head =>
         commandexpressions.ContainerIndex(
@@ -150,6 +144,11 @@ object ExpressionConverters {
         else
           command
       case Pi => commandexpressions.PiFunction()
+      case Distance =>
+        val firstArg = toCommandExpression(invocation.arguments.head)
+        val secondArg = toCommandExpression(invocation.arguments(1))
+        commandexpressions.DistanceFunction(firstArg, secondArg)
+      case Point => commandexpressions.PointFunction(toCommandExpression(invocation.arguments.head))
       case Radians => commandexpressions.RadiansFunction(toCommandExpression(invocation.arguments.head))
       case Rand => commandexpressions.RandFunction()
       case functions.Range =>
@@ -197,7 +196,6 @@ object ExpressionConverters {
           commandexpressions.Distinct(command, inner)
         else
           command
-      case Str => commandexpressions.StrFunction(toCommandExpression(invocation.arguments.head))
       case Substring =>
         commandexpressions.SubstringFunction(
           toCommandExpression(invocation.arguments.head),
@@ -212,7 +210,7 @@ object ExpressionConverters {
         else
           command
       case Tail =>
-        commandexpressions.CollectionSliceExpression(
+        commandexpressions.ListSlice(
           toCommandExpression(invocation.arguments.head),
           Some(commandexpressions.Literal(1)),
           None
@@ -222,9 +220,9 @@ object ExpressionConverters {
       case ToFloat => commandexpressions.ToFloatFunction(toCommandExpression(invocation.arguments.head))
       case ToInt => commandexpressions.ToIntFunction(toCommandExpression(invocation.arguments.head))
       case ToLower => commandexpressions.LowerFunction(toCommandExpression(invocation.arguments.head))
-      case ToStr => commandexpressions.StrFunction(toCommandExpression(invocation.arguments.head))
       case ToString => commandexpressions.ToStringFunction(toCommandExpression(invocation.arguments.head))
       case ToUpper => commandexpressions.UpperFunction(toCommandExpression(invocation.arguments.head))
+      case Properties => commandexpressions.PropertiesFunction(toCommandExpression(invocation.arguments.head))
       case Trim => commandexpressions.TrimFunction(toCommandExpression(invocation.arguments.head))
       case Type => commandexpressions.RelationshipTypeFunction(toCommandExpression(invocation.arguments.head))
       case Upper => commandexpressions.UpperFunction(toCommandExpression(invocation.arguments.head))
@@ -235,7 +233,7 @@ object ExpressionConverters {
     case e: ast.True => predicates.True()
     case e: ast.False => predicates.Not(predicates.True())
     case e: ast.Literal => commandexpressions.Literal(e.value)
-    case e: ast.Identifier => identifier(e)
+    case e: ast.Variable => variable(e)
     case e: ast.Or => predicates.Or(toCommandPredicate(e.lhs), toCommandPredicate(e.rhs))
     case e: ast.Xor => predicates.Xor(toCommandPredicate(e.lhs), toCommandPredicate(e.rhs))
     case e: ast.And => predicates.And(toCommandPredicate(e.lhs), toCommandPredicate(e.rhs))
@@ -248,6 +246,7 @@ object ExpressionConverters {
     case e: ast.In => in(e)
     case e: ast.StartsWith => predicates.StartsWith(toCommandExpression(e.lhs), toCommandExpression(e.rhs))
     case e: ast.EndsWith => predicates.EndsWith(toCommandExpression(e.lhs), toCommandExpression(e.rhs))
+    case e: ast.CoerceTo => commandexpressions.CoerceTo(toCommandExpression(e.expr), e.typ)
     case e: ast.Contains => predicates.Contains(toCommandExpression(e.lhs), toCommandExpression(e.rhs))
     case e: ast.IsNull => predicates.IsNull(toCommandExpression(e.lhs))
     case e: ast.IsNotNull => predicates.Not(predicates.IsNull(toCommandExpression(e.lhs)))
@@ -268,24 +267,24 @@ object ExpressionConverters {
     case e: ast.PatternExpression => commands.PathExpression(e.pattern.asLegacyPatterns)
     case e: ast.ShortestPathExpression => commandexpressions.ShortestPathExpression(e.pattern.asLegacyPatterns(None).head)
     case e: ast.HasLabels => hasLabels(e)
-    case e: ast.Collection => commandexpressions.Collection(toCommandExpression(e.expressions): _*)
+    case e: ast.ListLiteral => commandexpressions.ListLiteral(toCommandExpression(e.expressions): _*)
     case e: ast.MapExpression => mapExpression(e)
-    case e: ast.CollectionSlice => commandexpressions.CollectionSliceExpression(toCommandExpression(e.collection), toCommandExpression(e.from), toCommandExpression(e.to))
+    case e: ast.ListSlice => commandexpressions.ListSlice(toCommandExpression(e.list), toCommandExpression(e.from), toCommandExpression(e.to))
     case e: ast.ContainerIndex => commandexpressions.ContainerIndex(toCommandExpression(e.expr), toCommandExpression(e.idx))
-    case e: ast.FilterExpression => commandexpressions.FilterFunction(toCommandExpression(e.expression), e.identifier.name, e.innerPredicate.map(toCommandPredicate).getOrElse(predicates.True()))
-    case e: ast.ExtractExpression => commandexpressions.ExtractFunction(toCommandExpression(e.expression), e.identifier.name, toCommandExpression(e.scope.extractExpression.get))
+    case e: ast.FilterExpression => commandexpressions.FilterFunction(toCommandExpression(e.expression), e.variable.name, e.innerPredicate.map(toCommandPredicate).getOrElse(predicates.True()))
+    case e: ast.ExtractExpression => commandexpressions.ExtractFunction(toCommandExpression(e.expression), e.variable.name, toCommandExpression(e.scope.extractExpression.get))
     case e: ast.ListComprehension => listComprehension(e)
-    case e: ast.AllIterablePredicate => commands.AllInCollection(toCommandExpression(e.expression), e.identifier.name, e.innerPredicate.map(toCommandPredicate).getOrElse(predicates.True()))
-    case e: ast.AnyIterablePredicate => commands.AnyInCollection(toCommandExpression(e.expression), e.identifier.name, e.innerPredicate.map(toCommandPredicate).getOrElse(predicates.True()))
-    case e: ast.NoneIterablePredicate => commands.NoneInCollection(toCommandExpression(e.expression), e.identifier.name, e.innerPredicate.map(toCommandPredicate).getOrElse(predicates.True()))
-    case e: ast.SingleIterablePredicate => commands.SingleInCollection(toCommandExpression(e.expression), e.identifier.name, e.innerPredicate.map(toCommandPredicate).getOrElse(predicates.True()))
-    case e: ast.ReduceExpression => commandexpressions.ReduceFunction(toCommandExpression(e.collection), e.identifier.name, toCommandExpression(e.expression), e.accumulator.name, toCommandExpression(e.init))
+    case e: ast.AllIterablePredicate => commands.AllInList(toCommandExpression(e.expression), e.variable.name, e.innerPredicate.map(toCommandPredicate).getOrElse(predicates.True()))
+    case e: ast.AnyIterablePredicate => commands.AnyInList(toCommandExpression(e.expression), e.variable.name, e.innerPredicate.map(toCommandPredicate).getOrElse(predicates.True()))
+    case e: ast.NoneIterablePredicate => commands.NoneInList(toCommandExpression(e.expression), e.variable.name, e.innerPredicate.map(toCommandPredicate).getOrElse(predicates.True()))
+    case e: ast.SingleIterablePredicate => commands.SingleInList(toCommandExpression(e.expression), e.variable.name, e.innerPredicate.map(toCommandPredicate).getOrElse(predicates.True()))
+    case e: ast.ReduceExpression => commandexpressions.ReduceFunction(toCommandExpression(e.list), e.variable.name, toCommandExpression(e.expression), e.accumulator.name, toCommandExpression(e.init))
     case e: ast.PathExpression => toCommandProjectedPath(e)
     case e: NestedPipeExpression => commandexpressions.NestedPipeExpression(e.pipe, toCommandProjectedPath(e.path))
     case e: ast.GetDegree => getDegree(e)
     case e: PrefixSeekRangeWrapper => commandexpressions.PrefixSeekRangeExpression(e.range.map(toCommandExpression))
     case e: InequalitySeekRangeWrapper => InequalitySeekRangeExpression(e.range.mapBounds(toCommandExpression))
-    case e: ast.AndedPropertyInequalities => predicates.AndedPropertyComparablePredicates(identifier(e.identifier), toCommandProperty(e.property), e.inequalities.map(inequalityExpression))
+    case e: ast.AndedPropertyInequalities => predicates.AndedPropertyComparablePredicates(variable(e.variable), toCommandProperty(e.property), e.inequalities.map(inequalityExpression))
     case _ =>
       throw new InternalException(s"Unknown expression type during transformation (${expression.getClass})")
   }
@@ -312,7 +311,7 @@ object ExpressionConverters {
   def toCommandExpression(expressions: Seq[ast.Expression]): Seq[CommandExpression] =
     expressions.map(toCommandExpression)
 
-  private def identifier(e: ast.Identifier) = commands.expressions.Identifier(e.name)
+  private def variable(e: ast.Variable) = commands.expressions.Variable(e.name)
 
   private def inequalityExpression(original: ast.InequalityExpression): predicates.ComparablePredicate = original match {
     case e: ast.LessThan => predicates.LessThan(toCommandExpression(e.lhs), toCommandExpression(e.rhs))
@@ -326,7 +325,6 @@ object ExpressionConverters {
     commandexpressions.GetDegree(toCommandExpression(original.node), typ, original.dir)
   }
 
-
   private def regexMatch(e: ast.RegexMatch) = toCommandExpression(e.rhs) match {
     case literal: commandexpressions.Literal =>
       predicates.LiteralRegularExpression(toCommandExpression(e.lhs), literal)
@@ -334,9 +332,18 @@ object ExpressionConverters {
       predicates.RegularExpression(toCommandExpression(e.lhs), command)
   }
 
-  private def in(e: ast.In) = {
-    val innerEquals = predicates.Equals(toCommandExpression(e.lhs), commandexpressions.Identifier("-_-INNER-_-"))
-    commands.AnyInCollection(toCommandExpression(e.rhs), "-_-INNER-_-", innerEquals)
+  private def in(e: ast.In) = e.rhs match {
+    case value: Parameter =>
+      predicates.ConstantCachedIn(toCommandExpression(e.lhs), toCommandExpression(value))
+
+    case value@ListLiteral(expressions) if expressions.isEmpty =>
+      predicates.Not(predicates.True())
+
+    case value@ListLiteral(expressions) if expressions.forall(_.isInstanceOf[Literal]) =>
+      predicates.ConstantCachedIn(toCommandExpression(e.lhs), toCommandExpression(value))
+
+    case _ =>
+      predicates.DynamicCachedIn(toCommandExpression(e.lhs), toCommandExpression(e.rhs))
   }
 
   private def caseExpression(e: ast.CaseExpression) = e.expression match {
@@ -366,11 +373,11 @@ object ExpressionConverters {
       case Some(_: ast.True) | None =>
         toCommandExpression(e.expression)
       case Some(inner) =>
-        commandexpressions.FilterFunction(toCommandExpression(e.expression), e.identifier.name, toCommandPredicate(inner))
+        commandexpressions.FilterFunction(toCommandExpression(e.expression), e.variable.name, toCommandPredicate(inner))
     }
     e.extractExpression match {
       case Some(extractExpression) =>
-        commandexpressions.ExtractFunction(filter, e.identifier.name, toCommandExpression(extractExpression))
+        commandexpressions.ExtractFunction(filter, e.variable.name, toCommandExpression(extractExpression))
       case None =>
         filter
     }
@@ -379,25 +386,25 @@ object ExpressionConverters {
   def toCommandProjectedPath(e: ast.PathExpression): ProjectedPath = {
     def project(pathStep: PathStep): Projector = pathStep match {
 
-      case NodePathStep(Identifier(node), next) =>
+      case NodePathStep(Variable(node), next) =>
         singleNodeProjector(node, project(next))
 
-      case SingleRelationshipPathStep(Identifier(rel), SemanticDirection.INCOMING, next) =>
+      case SingleRelationshipPathStep(Variable(rel), SemanticDirection.INCOMING, next) =>
         singleIncomingRelationshipProjector(rel, project(next))
 
-      case SingleRelationshipPathStep(Identifier(rel), SemanticDirection.OUTGOING, next) =>
+      case SingleRelationshipPathStep(Variable(rel), SemanticDirection.OUTGOING, next) =>
         singleOutgoingRelationshipProjector(rel, project(next))
 
-      case SingleRelationshipPathStep(Identifier(rel), SemanticDirection.BOTH, next) =>
+      case SingleRelationshipPathStep(Variable(rel), SemanticDirection.BOTH, next) =>
         singleUndirectedRelationshipProjector(rel, project(next))
 
-      case MultiRelationshipPathStep(Identifier(rel), SemanticDirection.INCOMING, next) =>
+      case MultiRelationshipPathStep(Variable(rel), SemanticDirection.INCOMING, next) =>
         multiIncomingRelationshipProjector(rel, project(next))
 
-      case MultiRelationshipPathStep(Identifier(rel), SemanticDirection.OUTGOING, next) =>
+      case MultiRelationshipPathStep(Variable(rel), SemanticDirection.OUTGOING, next) =>
         multiOutgoingRelationshipProjector(rel, project(next))
 
-      case MultiRelationshipPathStep(Identifier(rel), SemanticDirection.BOTH, next) =>
+      case MultiRelationshipPathStep(Variable(rel), SemanticDirection.BOTH, next) =>
         multiUndirectedRelationshipProjector(rel, project(next))
 
       case NilPathStep =>

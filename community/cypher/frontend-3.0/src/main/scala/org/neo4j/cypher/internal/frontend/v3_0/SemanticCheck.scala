@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,7 @@
  */
 package org.neo4j.cypher.internal.frontend.v3_0
 
-import org.neo4j.cypher.internal.frontend.v3_0.ast.ASTNode
+import org.neo4j.cypher.internal.frontend.v3_0.ast.{ScopeExpression, Expression, ASTNode}
 
 object SemanticCheckResult {
   val success: SemanticCheck = SemanticCheckResult(_, Vector())
@@ -38,7 +38,8 @@ trait SemanticChecking {
 
   private val pushStateScope: SemanticCheck = state => SemanticCheckResult.success(state.newChildScope)
   private val popStateScope: SemanticCheck = state => SemanticCheckResult.success(state.popScope)
-  protected def withScopedState(check: => SemanticCheck): SemanticCheck = pushStateScope chain check chain popStateScope
+  protected def withScopedState(check: => SemanticCheck): SemanticCheck =
+    pushStateScope chain check chain popStateScope
 
   protected def noteScope(astNode: ASTNode): SemanticCheck =
     state => SemanticCheckResult.success(state.noteCurrentScope(astNode))

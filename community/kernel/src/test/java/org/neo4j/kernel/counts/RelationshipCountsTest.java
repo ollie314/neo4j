@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,13 +20,12 @@
 package org.neo4j.kernel.counts;
 
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 
 import java.util.concurrent.Future;
+import java.util.function.Supplier;
 
-import org.neo4j.function.Supplier;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
@@ -43,8 +42,8 @@ import org.neo4j.test.NamedFunction;
 import org.neo4j.test.ThreadingRule;
 
 import static org.junit.Assert.assertEquals;
-import static org.neo4j.graphdb.DynamicLabel.label;
-import static org.neo4j.graphdb.DynamicRelationshipType.withName;
+import static org.neo4j.graphdb.Label.label;
+import static org.neo4j.graphdb.RelationshipType.withName;
 
 public class RelationshipCountsTest
 {
@@ -65,7 +64,7 @@ public class RelationshipCountsTest
     public void shouldReportTotalNumberOfRelationships() throws Exception
     {
         // given
-        GraphDatabaseService graphDb = db.getGraphDatabaseService();
+        GraphDatabaseService graphDb = db.getGraphDatabaseAPI();
         long before = numberOfRelationships();
         long during;
         try ( Transaction tx = graphDb.beginTx() )
@@ -91,7 +90,7 @@ public class RelationshipCountsTest
     public void shouldAccountForDeletedRelationships() throws Exception
     {
         // given
-        GraphDatabaseService graphDb = db.getGraphDatabaseService();
+        GraphDatabaseService graphDb = db.getGraphDatabaseAPI();
         Relationship rel;
         try ( Transaction tx = graphDb.beginTx() )
         {
@@ -122,7 +121,7 @@ public class RelationshipCountsTest
     public void shouldNotCountRelationshipsCreatedInOtherTransaction() throws Exception
     {
         // given
-        GraphDatabaseService graphDb = db.getGraphDatabaseService();
+        GraphDatabaseService graphDb = db.getGraphDatabaseAPI();
         final Barrier.Control barrier = new Barrier.Control();
         long before = numberOfRelationships();
         Future<Long> tx = threading.execute( new NamedFunction<GraphDatabaseService, Long>( "create-relationships" )
@@ -161,7 +160,7 @@ public class RelationshipCountsTest
     public void shouldNotCountRelationshipsDeletedInOtherTransaction() throws Exception
     {
         // given
-        GraphDatabaseService graphDb = db.getGraphDatabaseService();
+        GraphDatabaseService graphDb = db.getGraphDatabaseAPI();
         final Relationship rel;
         try ( Transaction tx = graphDb.beginTx() )
         {
@@ -207,7 +206,7 @@ public class RelationshipCountsTest
     public void shouldCountRelationshipsByType() throws Exception
     {
         // given
-        final GraphDatabaseService graphDb = db.getGraphDatabaseService();
+        final GraphDatabaseService graphDb = db.getGraphDatabaseAPI();
         try ( Transaction tx = graphDb.beginTx() )
         {
             graphDb.createNode().createRelationshipTo( graphDb.createNode(), withName( "FOO" ) );
@@ -311,7 +310,7 @@ public class RelationshipCountsTest
     /** Transactional version of {@link #countsForRelationship(Label, RelationshipType, Label)} */
     private long numberOfRelationshipsMatching( Label lhs, RelationshipType type, Label rhs )
     {
-        try ( Transaction tx = db.getGraphDatabaseService().beginTx() )
+        try ( Transaction tx = db.getGraphDatabaseAPI().beginTx() )
         {
             long nodeCount = countsForRelationship( lhs, type, rhs );
             tx.success();

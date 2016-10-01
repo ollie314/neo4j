@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -39,7 +39,7 @@ case class SemiApplyPipe(source: Pipe, inner: Pipe, negated: Boolean)
   private def name = if (negated) "AntiSemiApply" else "SemiApply"
 
   def planDescriptionWithoutCardinality =
-    PlanDescriptionImpl(this.id, name, TwoChildren(source.planDescription, inner.planDescription), Seq.empty, identifiers)
+    PlanDescriptionImpl(this.id, name, TwoChildren(source.planDescription, inner.planDescription), Seq.empty, variables)
 
   def symbols: SymbolTable = source.symbols
 

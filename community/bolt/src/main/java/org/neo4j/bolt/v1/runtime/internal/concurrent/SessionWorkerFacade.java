@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,11 +20,12 @@
 package org.neo4j.bolt.v1.runtime.internal.concurrent;
 
 import java.util.Map;
+import java.util.function.Consumer;
 
 import org.neo4j.bolt.v1.runtime.Session;
-import org.neo4j.bolt.v1.runtime.spi.RecordStream;
-import org.neo4j.function.Consumer;
 import org.neo4j.bolt.v1.runtime.StatementMetadata;
+import org.neo4j.bolt.v1.runtime.internal.Neo4jError;
+import org.neo4j.bolt.v1.runtime.spi.RecordStream;
 
 /**
  * A session implementation that delegates work to a worker thread.
@@ -32,11 +33,13 @@ import org.neo4j.bolt.v1.runtime.StatementMetadata;
 public class SessionWorkerFacade implements Session
 {
     private final String key;
+    private final String connectionDescriptor;
     private final SessionWorker worker;
 
-    public SessionWorkerFacade( String key, SessionWorker worker )
+    public SessionWorkerFacade( String key, String connectionDescriptor, SessionWorker worker )
     {
         this.key = key;
+        this.connectionDescriptor = connectionDescriptor;
         this.worker = worker;
     }
 
@@ -47,69 +50,61 @@ public class SessionWorkerFacade implements Session
     }
 
     @Override
-    public <A> void init( final String clientName, final A attachment, final Callback<Void,A> callback )
+    public String connectionDescriptor()
     {
-        queue( new Consumer<Session>()
-        {
-            @Override
-            public void accept( Session session )
-            {
-                session.init( clientName, attachment, callback );
-            }
-        } );
+        return connectionDescriptor;
+    }
+
+    @Override
+    public <A> void init( final String clientName, Map<String,Object> authToken, final A attachment,
+            final Callback<Boolean,A> callback )
+    {
+        queue( session -> session.init( clientName, authToken, attachment, callback ) );
     }
 
     @Override
     public <A> void run( final String statement, final Map<String,Object> params, final A attachment,
             final Callback<StatementMetadata,A> callback )
     {
-        queue( new Consumer<Session>()
-        {
-            @Override
-            public void accept( Session session )
-            {
-                session.run( statement, params, attachment, callback );
-            }
-        } );
+        queue( session -> session.run( statement, params, attachment, callback ) );
     }
 
     @Override
     public <A> void pullAll( final A attachment, final Callback<RecordStream,A> callback )
     {
-        queue( new Consumer<Session>()
-        {
-            @Override
-            public void accept( Session session )
-            {
-                session.pullAll( attachment, callback );
-            }
-        } );
+        queue( session -> session.pullAll( attachment, callback ) );
     }
 
     @Override
     public <A> void discardAll( final A attachment, final Callback<Void,A> callback )
     {
-        queue( new Consumer<Session>()
-        {
-            @Override
-            public void accept( Session session )
-            {
-                session.discardAll( attachment, callback );
-            }
-        } );
+        queue( session -> session.discardAll( attachment, callback ) );
     }
 
     @Override
-    public <A> void acknowledgeFailure( final A attachment, final Callback<Void,A> callback )
+    public <A> void reset( final A attachment, final Callback<Void,A> callback )
     {
-        queue( new Consumer<Session>()
-        {
-            @Override
-            public void accept( Session session )
-            {
-                session.acknowledgeFailure( attachment, callback );
-            }
-        } );
+        worker.interrupt();
+        queue( session -> session.reset( attachment, callback ) );
+    }
+
+    @Override
+    public <A> void ackFailure( A attachment, Callback<Void,A> callback )
+    {
+        queue( session -> session.ackFailure( attachment, callback ) );
+    }
+
+
+    @Override
+    public <A> void externalError( Neo4jError error, A attachment, Callback<Void,A> callback )
+    {
+        queue( session -> session.externalError( error, attachment, callback ) );
+    }
+
+    @Override
+    public void interrupt()
+    {
+        worker.interrupt();
     }
 
     @Override

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,6 +19,11 @@
  */
 package org.neo4j.cluster.protocol.heartbeat;
 
+import org.hamcrest.CoreMatchers;
+import org.junit.Before;
+import org.junit.Test;
+import org.mockito.Mockito;
+
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -26,11 +31,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
-
-import org.hamcrest.CoreMatchers;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.Mockito;
 
 import org.neo4j.cluster.InstanceId;
 import org.neo4j.cluster.protocol.atomicbroadcast.ObjectInputStreamFactory;
@@ -43,7 +43,6 @@ import org.neo4j.cluster.protocol.election.ElectionCredentialsProvider;
 import org.neo4j.cluster.protocol.election.ElectionRole;
 import org.neo4j.cluster.timeout.Timeouts;
 import org.neo4j.helpers.collection.Iterables;
-import org.neo4j.kernel.impl.logging.NullLogService;
 import org.neo4j.logging.NullLogProvider;
 
 import static org.junit.Assert.assertEquals;
@@ -90,9 +89,9 @@ public class HeartbeatContextTest
         when( context.getConfiguration() ).thenReturn( config );
         when( context.getMyId() ).thenReturn( instanceIds[0] );
 
-        MultiPaxosContext context = new MultiPaxosContext( instanceIds[0], Iterables.<ElectionRole, ElectionRole>iterable(
+        MultiPaxosContext context = new MultiPaxosContext( instanceIds[0], 10, Iterables.<ElectionRole, ElectionRole>iterable(
                         new ElectionRole( "coordinator" ) ), config,
-                        Mockito.mock( Executor.class ), NullLogService.getInstance(),
+                        Mockito.mock( Executor.class ), NullLogProvider.getInstance(),
                         Mockito.mock( ObjectInputStreamFactory.class), Mockito.mock( ObjectOutputStreamFactory.class),
                         Mockito.mock( AcceptorInstanceStore.class), Mockito.mock( Timeouts.class),
                         mock( ElectionCredentialsProvider.class) );
@@ -154,6 +153,22 @@ public class HeartbeatContextTest
     }
 
     @Test
+    public void testFailedInstanceReportingSuspicions()
+    {
+        InstanceId suspect = instanceIds[1];
+        InstanceId newSuspiciousBastard = instanceIds[2];
+        toTest.suspicions( newSuspiciousBastard, Collections.singleton( suspect ) );
+        toTest.suspect( suspect );
+
+        // Just make sure
+        assertTrue( toTest.isFailed( suspect ) );
+
+        // Suspicions of a failed instance should be ignored
+        toTest.suspicions( suspect, Collections.singleton( newSuspiciousBastard ) );
+        assertTrue( "Suspicions should have been ignored", toTest.getSuspicionsOf( newSuspiciousBastard ).isEmpty() );
+    }
+
+    @Test
     public void testFailedInstanceBecomingAlive()
     {
         InstanceId suspect = instanceIds[1];
@@ -210,7 +225,7 @@ public class HeartbeatContextTest
     {
         // Given
         InstanceId notInCluster = new InstanceId( -1 ); // backup, for example
-        toTest.suspicions( notInCluster, Iterables.toSet( Iterables.<InstanceId, InstanceId>iterable( instanceIds[1] ) ) );
+        toTest.suspicions( notInCluster, Iterables.asSet( Iterables.<InstanceId, InstanceId>iterable( instanceIds[1] ) ) );
 
         // When
         List<InstanceId> suspicions = toTest.getSuspicionsOf ( instanceIds[1] );

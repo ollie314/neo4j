@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,8 +19,8 @@
  */
 package org.neo4j.kernel.api.exceptions.schema;
 
-import org.neo4j.kernel.api.EntityType;
 import org.neo4j.kernel.api.TokenNameLookup;
+import org.neo4j.storageengine.api.EntityType;
 
 import static java.lang.String.format;
 
@@ -31,7 +31,7 @@ public class DuplicateEntitySchemaRuleException extends DuplicateSchemaRuleExcep
     private static final String DUPLICATED_RELATIONSHIP_RULE_MESSAGE_TEMPLATE =
             "Multiple %s found for relationship type '%s' and property '%s'.";
 
-    private EntityType entityType;
+    private final EntityType entityType;
 
     public DuplicateEntitySchemaRuleException( EntityType entityType, int entityId, int propertyKeyId )
     {

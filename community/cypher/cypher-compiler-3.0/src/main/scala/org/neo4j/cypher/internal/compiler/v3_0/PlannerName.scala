@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -46,14 +46,6 @@ case object RulePlannerName extends PlannerName {
 
 /**
  * Cost based query planner uses statistics from the running database to find good
- * query execution plans using greedy search.
- */
-case object GreedyPlannerName extends CostBasedPlannerName {
-  val name = "GREEDY"
-}
-
-/**
- * Cost based query planner uses statistics from the running database to find good
  * query execution plans using limited exhaustive search based on the IDP algorithm.
  */
 case object IDPPlannerName extends CostBasedPlannerName {
@@ -68,17 +60,27 @@ case object DPPlannerName extends CostBasedPlannerName {
   val name = "DP"
 }
 
+/**
+  * Queries that doesn't require planning are dealt with by a separate planning step
+  */
+case object ProcedurePlannerName extends PlannerName {
+  val name = "PROCEDURE"
+
+  override def toTextOutput: String = "PROCEDURE"
+}
+
 object PlannerName {
 
   def apply(name: String): PlannerName = name.toUpperCase match {
     case RulePlannerName.name => RulePlannerName
-    case GreedyPlannerName.name => GreedyPlannerName
     case IDPPlannerName.name => IDPPlannerName
     case DPPlannerName.name => DPPlannerName
+    case "COST" => CostBasedPlannerName.default
+    case "DEFAULT" => CostBasedPlannerName.default
 
     // Note that conservative planner is not exposed to end users.
-    case n => throw new IllegalArgumentException(s"""$n is not a a valid planner, valid options are
-                                                   ${GreedyPlannerName.name}, ${IDPPlannerName.name},
-                                                   ${DPPlannerName.name} and ${RulePlannerName.name}""")
+    case n => throw new IllegalArgumentException(
+      s"""$n is not a a valid planner, valid options are
+         |${IDPPlannerName.name}, ${DPPlannerName.name} and ${RulePlannerName.name}""".stripMargin)
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,103 +19,59 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0
 
+import java.time.Clock
+
 import org.neo4j.cypher.internal.compiler.v3_0.CompilationPhaseTracer.CompilationPhase._
-import org.neo4j.cypher.internal.compiler.v3_0.codegen.{CodeGenerator, CodeStructure}
-import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{CompiledPlan, GeneratedQuery, NewRuntimeSuccessRateMonitor, PipeInfo}
+import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InterpretedExecutionPlanBuilder.interpretedToExecutionPlan
+import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{ExecutionPlan, NewRuntimeSuccessRateMonitor, PlanFingerprint, PlanFingerprintReference}
 import org.neo4j.cypher.internal.compiler.v3_0.helpers._
-import org.neo4j.cypher.internal.compiler.v3_0.planner.CantCompileQueryException
+import org.neo4j.cypher.internal.compiler.v3_0.planner.PeriodicCommit
 import org.neo4j.cypher.internal.compiler.v3_0.planner.execution.{PipeExecutionBuilderContext, PipeExecutionPlanBuilder}
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.LogicalPlan
 import org.neo4j.cypher.internal.compiler.v3_0.spi.PlanContext
-import org.neo4j.cypher.internal.frontend.v3_0.notification.RuntimeUnsupportedNotification
-import org.neo4j.cypher.internal.frontend.v3_0.{InternalException, InvalidArgumentException, SemanticTable}
-import org.neo4j.helpers.Clock
+import org.neo4j.cypher.internal.frontend.v3_0.SemanticTable
 
 object RuntimeBuilder {
-  def create(runtimeName: Option[RuntimeName], interpretedProducer: InterpretedPlanBuilder,
-            compiledProducer: CompiledPlanBuilder, useErrorsOverWarnings: Boolean) = runtimeName match {
-    case None | Some(InterpretedRuntimeName) => InterpretedRuntimeBuilder(interpretedProducer)
-    case Some(CompiledRuntimeName) if useErrorsOverWarnings => ErrorReportingRuntimeBuilder(compiledProducer)
-    case Some(CompiledRuntimeName) => WarningFallbackRuntimeBuilder(interpretedProducer, compiledProducer)
-  }
+
+  def create(runtimeName: Option[RuntimeName], interpretedProducer: InterpretedPlanBuilder) = InterpretedRuntimeBuilder(
+    interpretedProducer)
 }
+
 trait RuntimeBuilder {
 
-  def apply(logicalPlan: LogicalPlan, pipeBuildContext: PipeExecutionBuilderContext, planContext: PlanContext,
-            tracer: CompilationPhaseTracer, semanticTable: SemanticTable,
+  def apply(periodicCommit: Option[PeriodicCommit], logicalPlan: LogicalPlan,
+            pipeBuildContext: PipeExecutionBuilderContext,
+            planContext: PlanContext, tracer: CompilationPhaseTracer, semanticTable: SemanticTable,
             monitor: NewRuntimeSuccessRateMonitor, plannerName: PlannerName,
-            preparedQuery: PreparedQuery): Either[CompiledPlan, PipeInfo] = {
-    try {
-      Left(compiledProducer(logicalPlan, semanticTable, planContext, monitor, tracer, plannerName))
-    } catch {
-      case e: CantCompileQueryException =>
-        monitor.unableToHandlePlan(logicalPlan, e)
-        fallback(preparedQuery)
-        Right(interpretedProducer(logicalPlan, pipeBuildContext, planContext, tracer))
-    }
-  }
-
-  def compiledProducer: CompiledPlanBuilder
-
-  def interpretedProducer: InterpretedPlanBuilder
-
-  def fallback(preparedQuery: PreparedQuery): Unit
-}
-
-case class SilentFallbackRuntimeBuilder(interpretedProducer: InterpretedPlanBuilder, compiledProducer: CompiledPlanBuilder)
-  extends RuntimeBuilder {
-
-  override def fallback(preparedQuery: PreparedQuery): Unit = {}
-}
-
-case class WarningFallbackRuntimeBuilder(interpretedProducer: InterpretedPlanBuilder, compiledProducer: CompiledPlanBuilder)
-  extends RuntimeBuilder {
-
-  override def fallback(preparedQuery: PreparedQuery): Unit = preparedQuery.notificationLogger
-    .log(RuntimeUnsupportedNotification)
+            preparedQuery: PreparedQuerySemantics,
+            createFingerprintReference: Option[PlanFingerprint] => PlanFingerprintReference,
+            config: CypherCompilerConfiguration): ExecutionPlan
 }
 
 case class InterpretedRuntimeBuilder(interpretedProducer: InterpretedPlanBuilder) extends RuntimeBuilder {
 
-  override def apply(logicalPlan: LogicalPlan, pipeBuildContext: PipeExecutionBuilderContext, planContext: PlanContext,
-                     tracer: CompilationPhaseTracer, semanticTable: SemanticTable,
+  override def apply(periodicCommit: Option[PeriodicCommit], logicalPlan: LogicalPlan,
+                     pipeBuildContext: PipeExecutionBuilderContext,
+                     planContext: PlanContext, tracer: CompilationPhaseTracer, semanticTable: SemanticTable,
                      monitor: NewRuntimeSuccessRateMonitor, plannerName: PlannerName,
-                     preparedQuery: PreparedQuery): Either[CompiledPlan, PipeInfo] = {
-    Right(interpretedProducer.apply(logicalPlan, pipeBuildContext, planContext, tracer))
-  }
+                     preparedQuery: PreparedQuerySemantics,
+                     createFingerprintReference: Option[PlanFingerprint] => PlanFingerprintReference,
+                     config: CypherCompilerConfiguration): ExecutionPlan =
+    interpretedProducer(periodicCommit, logicalPlan, pipeBuildContext, planContext, tracer, preparedQuery,
+                        createFingerprintReference, config)
 
-  override def compiledProducer = throw new InternalException("This should never be called")
-
-  override def fallback(preparedQuery: PreparedQuery) = throw new InternalException("This should never be called")
 }
 
-case class ErrorReportingRuntimeBuilder(compiledProducer: CompiledPlanBuilder) extends RuntimeBuilder {
+case class InterpretedPlanBuilder(clock: Clock, monitors: Monitors, typeConverter: RuntimeTypeConverter) {
 
-  override def interpretedProducer = throw new InternalException("This should never be called")
-
-  override def fallback(preparedQuery: PreparedQuery) = throw new
-      InvalidArgumentException("The given query is not currently supported in the selected runtime")
-}
-
-case class InterpretedPlanBuilder(clock: Clock, monitors: Monitors) {
-
-  def apply(logicalPlan: LogicalPlan, pipeBuildContext: PipeExecutionBuilderContext,
-            planContext: PlanContext, tracer: CompilationPhaseTracer) =
+  def apply(periodicCommit: Option[PeriodicCommit], logicalPlan: LogicalPlan,
+            pipeBuildContext: PipeExecutionBuilderContext,
+            planContext: PlanContext, tracer: CompilationPhaseTracer, preparedQuery: PreparedQuerySemantics,
+            createFingerprintReference: Option[PlanFingerprint] => PlanFingerprintReference,
+            config: CypherCompilerConfiguration) =
     closing(tracer.beginPhase(PIPE_BUILDING)) {
-      new PipeExecutionPlanBuilder(clock, monitors).build(logicalPlan)(pipeBuildContext, planContext)
+      interpretedToExecutionPlan(new PipeExecutionPlanBuilder(clock, monitors)
+        .build(periodicCommit, logicalPlan)(pipeBuildContext, planContext),
+        planContext, preparedQuery, createFingerprintReference, config, typeConverter)
     }
-}
-
-case class CompiledPlanBuilder(clock: Clock, structure:CodeStructure[GeneratedQuery]) {
-
-  private val codeGen = new CodeGenerator(structure)
-
-  def apply(logicalPlan: LogicalPlan, semanticTable: SemanticTable, planContext: PlanContext,
-            monitor: NewRuntimeSuccessRateMonitor, tracer: CompilationPhaseTracer,
-            plannerName: PlannerName) = {
-    monitor.newPlanSeen(logicalPlan)
-    closing(tracer.beginPhase(CODE_GENERATION)) {
-      codeGen.generate(logicalPlan, planContext, clock, semanticTable, plannerName)
-    }
-  }
 }

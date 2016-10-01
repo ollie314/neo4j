@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,48 +20,68 @@
 package org.neo4j.cypher.internal.compiler.v3_0.ast.rewriters
 
 import org.neo4j.cypher.internal.frontend.v3_0.ast._
+import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 import org.neo4j.cypher.internal.frontend.v3_0.{IdentityMap, Rewriter, ast, bottomUp}
 
 object literalReplacement {
-  type LiteralReplacements = IdentityMap[Literal, Parameter]
+
+  case class LiteralReplacement(parameter: Parameter, value: AnyRef)
+  type LiteralReplacements = IdentityMap[Expression, LiteralReplacement]
 
   case class ExtractParameterRewriter(replaceableLiterals: LiteralReplacements) extends Rewriter {
-    def apply(that: AnyRef): AnyRef = bottomUp(rewriter).apply(that)
+    def apply(that: AnyRef): AnyRef = rewriter.apply(that)
 
-    private val rewriter: Rewriter = Rewriter.lift {
-      case l: Literal =>
-        replaceableLiterals.getOrElse(l, l)
-    }
+    private val rewriter: Rewriter = bottomUp(Rewriter.lift {
+      case l: Expression if replaceableLiterals.contains(l) => replaceableLiterals(l).parameter
+    })
   }
 
-  private val literalMatcher: PartialFunction[Any, (LiteralReplacements, LiteralReplacements => LiteralReplacements) => LiteralReplacements] = {
-    case _: ast.Match | _: ast.Create | _: ast.CreateUnique | _: ast.Merge | _: ast.SetClause | _: ast.Return | _: ast.With =>
-      (acc, children) => children(acc)
-    case _: ast.Clause | _: ast.PeriodicCommitHint | _: ast.Limit =>
-      (acc, _) => acc
+  private val literalMatcher: PartialFunction[Any, LiteralReplacements => (LiteralReplacements, Option[LiteralReplacements => LiteralReplacements])] = {
+    case _: ast.Match |
+         _: ast.Create |
+         _: ast.CreateUnique |
+         _: ast.Merge |
+         _: ast.SetClause |
+         _: ast.Return |
+         _: ast.With |
+         _: ast.CallClause =>
+      acc => (acc, Some(identity))
+    case _: ast.Clause |
+         _: ast.PeriodicCommitHint |
+         _: ast.Limit =>
+      acc => (acc, None)
     case n: ast.NodePattern =>
-      (acc, _) => n.properties.treeFold(acc)(literalMatcher)
+      acc => (n.properties.treeFold(acc)(literalMatcher), None)
     case r: ast.RelationshipPattern =>
-      (acc, _) => r.properties.treeFold(acc)(literalMatcher)
+      acc => (r.properties.treeFold(acc)(literalMatcher), None)
     case ast.ContainerIndex(_, _: ast.StringLiteral) =>
-      (acc, _) => acc
+      acc => (acc, None)
     case l: ast.StringLiteral =>
-      (acc, _) => acc + (l -> ast.Parameter(s"  AUTOSTRING${acc.size}")(l.position))
+      acc =>
+        val parameter = ast.Parameter(s"  AUTOSTRING${acc.size}", CTString)(l.position)
+        (acc + (l -> LiteralReplacement(parameter, l.value)), None)
     case l: ast.IntegerLiteral =>
-      (acc, _) => acc + (l -> ast.Parameter(s"  AUTOINT${acc.size}")(l.position))
+      acc =>
+        val parameter = ast.Parameter(s"  AUTOINT${acc.size}", CTInteger)(l.position)
+        (acc + (l -> LiteralReplacement(parameter, l.value)), None)
     case l: ast.DoubleLiteral =>
-      (acc, _) => acc + (l -> ast.Parameter(s"  AUTODOUBLE${acc.size}")(l.position))
+      acc =>
+        val parameter = ast.Parameter(s"  AUTODOUBLE${acc.size}", CTFloat)(l.position)
+        (acc + (l -> LiteralReplacement(parameter, l.value)), None)
     case l: ast.BooleanLiteral =>
-      (acc, _) => acc + (l -> ast.Parameter(s"  AUTOBOOL${acc.size}")(l.position))
+      acc =>
+        val parameter = ast.Parameter(s"  AUTOBOOL${acc.size}", CTBoolean)(l.position)
+        (acc + (l -> LiteralReplacement(parameter, l.value)), None)
+    case l: ast.ListLiteral if l.expressions.forall(_.isInstanceOf[Literal])=>
+      acc =>
+        val parameter = ast.Parameter(s"  AUTOLIST${acc.size}", CTList(CTAny))(l.position)
+        val values: Seq[AnyRef] = l.expressions.map(_.asInstanceOf[Literal].value)
+        (acc + (l -> LiteralReplacement(parameter, values)), None)
   }
 
   def apply(term: ASTNode): (Rewriter, Map[String, Any]) = {
-    // TODO: Replace with .exists
-    val containsParameter: Boolean = term.treeFold(false) {
-      case term: Parameter =>
-        (acc, _) => true
-      case _ =>
-        (acc, children) => if (acc) true else children(acc)
+    val containsParameter: Boolean = term.exists {
+      case _:Parameter => true
     }
 
     if (containsParameter) {
@@ -70,7 +90,7 @@ object literalReplacement {
       val replaceableLiterals = term.treeFold(IdentityMap.empty: LiteralReplacements)(literalMatcher)
 
       val extractedParams: Map[String, AnyRef] = replaceableLiterals.map {
-        case (l, p) => (p.name, l.value)
+        case (_, LiteralReplacement(parameter, value)) => (parameter.name, value)
       }
 
       (ExtractParameterRewriter(replaceableLiterals), extractedParams)

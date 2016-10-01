@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,16 +22,16 @@ package org.neo4j.cypher.internal.compiler.v3_0.planner.logical.steps
 import org.neo4j.cypher.internal.compiler.v3_0.planner.QueryGraph
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.LogicalPlanningContext
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.IdName
-import org.neo4j.cypher.internal.frontend.v3_0.ast.{Identifier, LabelName}
+import org.neo4j.cypher.internal.frontend.v3_0.ast.{Variable, LabelName}
 import org.neo4j.cypher.internal.frontend.v3_0.notification.InternalNotification
 
 object DynamicPropertyNotifier {
 
-  def process(identifiers: Set[Identifier], notification: Set[String] => InternalNotification, qg: QueryGraph)
+  def process(variables: Set[Variable], notification: Set[String] => InternalNotification, qg: QueryGraph)
              (implicit context: LogicalPlanningContext) = {
 
-    val indexedLabels = identifiers.flatMap { identifier =>
-      val labels = qg.selections.labelsOnNode(IdName(identifier.name))
+    val indexedLabels = variables.flatMap { variable =>
+      val labels = qg.selections.labelsOnNode(IdName(variable.name))
       labels.filter(withIndex)
     }
 

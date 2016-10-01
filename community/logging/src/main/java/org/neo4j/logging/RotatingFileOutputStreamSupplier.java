@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -31,12 +31,10 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
-import org.neo4j.function.LongSupplier;
-import org.neo4j.function.Supplier;
 import org.neo4j.io.fs.FileSystemAbstraction;
-
-import static java.util.concurrent.TimeUnit.SECONDS;
 
 import static org.neo4j.io.file.Files.createOrOpenAsOuputStream;
 
@@ -67,20 +65,13 @@ public class RotatingFileOutputStreamSupplier implements Supplier<OutputStream>,
         }
     }
 
-    private static final LongSupplier DEFAULT_CURRENT_TIME_SUPPLIER = new LongSupplier()
-    {
-        @Override
-        public long getAsLong()
-        {
-            return System.currentTimeMillis();
-        }
-    };
+    private static final LongSupplier DEFAULT_CURRENT_TIME_SUPPLIER = System::currentTimeMillis;
 
     private final LongSupplier currentTimeSupplier;
     private final FileSystemAbstraction fileSystem;
     private final File outputFile;
     private final long rotationThresholdBytes;
-    private final long rotationDelaySeconds;
+    private final long rotationDelay;
     private final int maxArchives;
     private final RotationListener rotationListener;
     private final Executor rotationExecutor;
@@ -94,38 +85,46 @@ public class RotatingFileOutputStreamSupplier implements Supplier<OutputStream>,
      * @param fileSystem             The filesystem to use
      * @param outputFile             The file that the latest {@link OutputStream} should output to
      * @param rotationThresholdBytes The size above which the file should be rotated
-     * @param rotationDelaySeconds   The minimum time (in seconds) after last rotation before the file may be rotated again
+     * @param rotationDelay          The minimum time (ms) after last rotation before the file may be rotated again
      * @param maxArchives            The maximum number of archived output files to keep
      * @param rotationExecutor       An {@link Executor} for performing the rotation
      * @throws IOException If the output file cannot be created
      */
-    public RotatingFileOutputStreamSupplier( FileSystemAbstraction fileSystem, File outputFile, long rotationThresholdBytes, int rotationDelaySeconds, int maxArchives, Executor rotationExecutor ) throws IOException
+    public RotatingFileOutputStreamSupplier( FileSystemAbstraction fileSystem, File outputFile,
+            long rotationThresholdBytes, long rotationDelay, int maxArchives, Executor rotationExecutor )
+            throws IOException
     {
-        this( fileSystem, outputFile, rotationThresholdBytes, rotationDelaySeconds, maxArchives, rotationExecutor, new RotationListener() );
+        this( fileSystem, outputFile, rotationThresholdBytes, rotationDelay, maxArchives, rotationExecutor,
+                new RotationListener() );
     }
 
     /**
      * @param fileSystem             The filesystem to use
      * @param outputFile             The file that the latest {@link OutputStream} should output to
      * @param rotationThresholdBytes The size above which the file should be rotated
-     * @param rotationDelaySeconds   The minimum time (in seconds) after last rotation before the file may be rotated again
+     * @param rotationDelay          The minimum time (ms) after last rotation before the file may be rotated again
      * @param maxArchives            The maximum number of archived output files to keep
      * @param rotationExecutor       An {@link Executor} for performing the rotation
      * @param rotationListener       A {@link org.neo4j.logging.RotatingFileOutputStreamSupplier.RotationListener} that can observe the rotation process and be notified of errors
      * @throws IOException If the output file cannot be created
      */
-    public RotatingFileOutputStreamSupplier( FileSystemAbstraction fileSystem, File outputFile, long rotationThresholdBytes, int rotationDelaySeconds, int maxArchives, Executor rotationExecutor, RotationListener rotationListener ) throws IOException
+    public RotatingFileOutputStreamSupplier( FileSystemAbstraction fileSystem, File outputFile,
+            long rotationThresholdBytes, long rotationDelay, int maxArchives, Executor rotationExecutor,
+            RotationListener rotationListener ) throws IOException
     {
-        this( DEFAULT_CURRENT_TIME_SUPPLIER, fileSystem, outputFile, rotationThresholdBytes, rotationDelaySeconds, maxArchives, rotationExecutor, rotationListener );
+        this( DEFAULT_CURRENT_TIME_SUPPLIER, fileSystem, outputFile, rotationThresholdBytes, rotationDelay,
+                maxArchives, rotationExecutor, rotationListener );
     }
 
-    RotatingFileOutputStreamSupplier( LongSupplier currentTimeSupplier, FileSystemAbstraction fileSystem, File outputFile, long rotationThresholdBytes, int rotationDelaySeconds, int maxArchives, Executor rotationExecutor, RotationListener rotationListener ) throws IOException
+    RotatingFileOutputStreamSupplier( LongSupplier currentTimeSupplier, FileSystemAbstraction fileSystem,
+            File outputFile, long rotationThresholdBytes, long rotationDelay, int maxArchives,
+            Executor rotationExecutor, RotationListener rotationListener ) throws IOException
     {
         this.currentTimeSupplier = currentTimeSupplier;
         this.fileSystem = fileSystem;
         this.outputFile = outputFile;
         this.rotationThresholdBytes = rotationThresholdBytes;
-        this.rotationDelaySeconds = SECONDS.toMillis( rotationDelaySeconds );
+        this.rotationDelay = rotationDelay;
         this.maxArchives = maxArchives;
         this.rotationListener = rotationListener;
         this.rotationExecutor = rotationExecutor;
@@ -191,45 +190,40 @@ public class RotatingFileOutputStreamSupplier implements Supplier<OutputStream>,
             return;
         }
 
-        Runnable runnable = new Runnable()
-        {
-            @Override
-            public void run()
+        Runnable runnable = () -> {
+            OutputStream newStream;
+            try
             {
-                OutputStream newStream;
-                try
+                if ( fileSystem.fileExists( outputFile ) )
                 {
-                    if ( fileSystem.fileExists( outputFile ) )
-                    {
-                        shiftArchivedOutputFiles();
-                        fileSystem.renameFile( outputFile, archivedOutputFile( 1 ) );
-                    }
-                    newStream = openOutputFile();
+                    shiftArchivedOutputFiles();
+                    fileSystem.renameFile( outputFile, archivedOutputFile( 1 ) );
                 }
-                catch ( Exception e )
-                {
-                    rotationListener.rotationError( e, outRef.get() );
-                    rotating.set( false );
-                    return;
-                }
-                OutputStream oldStream = outRef.get();
-                rotationListener.outputFileCreated( newStream, oldStream );
-                synchronized ( outRef )
-                {
-                    if ( !closed.get() )
-                    {
-                        outRef.set( newStream );
-                        removeCollectedReferences( archivedStreams );
-                        archivedStreams.add( new WeakReference<>( oldStream ) );
-                    }
-                }
-                if ( rotationDelaySeconds > 0 )
-                {
-                    earliestRotationTimeRef.set( currentTimeSupplier.getAsLong() + rotationDelaySeconds );
-                }
-                rotationListener.rotationCompleted( newStream, oldStream );
-                rotating.set( false );
+                newStream = openOutputFile();
             }
+            catch ( Exception e )
+            {
+                rotationListener.rotationError( e, outRef.get() );
+                rotating.set( false );
+                return;
+            }
+            OutputStream oldStream = outRef.get();
+            rotationListener.outputFileCreated( newStream, oldStream );
+            synchronized ( outRef )
+            {
+                if ( !closed.get() )
+                {
+                    outRef.set( newStream );
+                    removeCollectedReferences( archivedStreams );
+                    archivedStreams.add( new WeakReference<>( oldStream ) );
+                }
+            }
+            if ( rotationDelay > 0 )
+            {
+                earliestRotationTimeRef.set( currentTimeSupplier.getAsLong() + rotationDelay );
+            }
+            rotationListener.rotationCompleted( newStream, oldStream );
+            rotating.set( false );
         };
 
         try

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -33,22 +33,22 @@ import static org.neo4j.server.rest.domain.JsonHelper.jsonToMap;
 
 public class CypherQueriesIT extends AbstractRestFunctionalTestBase
 {
+
     @Test
-    public void runningInCompiledRuntime() throws JsonParseException
+    public void runningWithGeometryTypes() throws JsonParseException
     {
         // Document
         ResponseEntity response = gen.get()
                 .noGraph()
                 .expectedStatus( 200 )
                 .payload( quotedJson(
-                        "{ 'statements': [ { 'statement': 'CYPHER runtime=compiled MATCH (n) RETURN n' } ] }" ) )
+                        "{ 'statements': [ { 'statement': 'RETURN point({latitude:1.2,longitude:2.3}) as point' } ] }" ) )
                 .post( getDataUri() + "transaction/commit" );
 
         // Then
-        Map<String, Object> result = jsonToMap( response.entity() );
+        Map<String,Object> result = jsonToMap( response.entity() );
         assertNoErrors( result );
     }
-
 
     private void assertNoErrors( Map<String, Object> response )
     {
@@ -61,5 +61,4 @@ public class CypherQueriesIT extends AbstractRestFunctionalTestBase
     {
         return singleQuoted.replaceAll( "'", "\"" );
     }
-
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -58,6 +58,6 @@ class ShortestPathBuilder extends PlanBuilder {
     unsolvedShortestPaths.
       flatMap(sp => symbols.missingSymbolTableDependencies(sp)).
       distinct.
-      map("Unknown identifier `%s`".format(_))
+      map("Unknown variable `%s`".format(_))
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,10 +19,12 @@
  */
 package org.neo4j.cypher
 
+import org.neo4j.cypher.internal.ExtendedExecutionResult
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionResult
 import org.neo4j.cypher.internal.compiler.v3_0.planDescription.InternalPlanDescription
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
-import org.neo4j.graphdb.{Node, PropertyContainer}
+import org.neo4j.graphdb.{Result, Node, PropertyContainer}
+import org.neo4j.kernel.api.exceptions.Status
 import org.scalatest.matchers.{MatchResult, Matcher}
 
 import scala.collection.JavaConverters._
@@ -86,6 +88,16 @@ abstract class ExecutionEngineFunSuite
     }
   }
 
+  def useProjectionWith(otherText: String*): Matcher[InternalExecutionResult] = new Matcher[InternalExecutionResult] {
+    override def apply(result: InternalExecutionResult): MatchResult = {
+      val plan: InternalPlanDescription = result.executionPlanDescription()
+      MatchResult(
+        matches = otherText.forall(o => plan.find("Projection").exists(_.toString.contains(o))),
+        rawFailureMessage = s"Plan should use Projection with ${otherText.mkString(",")}:\n$plan",
+        rawNegatedFailureMessage = s"Plan should not use Projection with ${otherText.mkString(",")}:\n$plan")
+    }
+  }
+
   def haveCount(count: Int): Matcher[InternalExecutionResult] = new Matcher[InternalExecutionResult] {
     override def apply(result: InternalExecutionResult): MatchResult = {
       MatchResult(
@@ -93,5 +105,18 @@ abstract class ExecutionEngineFunSuite
         rawFailureMessage = s"Result should have $count rows",
         rawNegatedFailureMessage = s"Plan should not have $count rows")
     }
+  }
+
+  def shouldHaveWarnings(result: Result, statusCodes: List[Status]) {
+    val resultCodes = result.getNotifications.asScala.map(_.getCode)
+    statusCodes.foreach(statusCode => resultCodes should contain(statusCode.code.serialize()))
+  }
+
+  def shouldHaveWarning(result: Result, notification: Status) {
+    shouldHaveWarnings(result, List(notification))
+  }
+
+  def shouldHaveNoWarnings(result: Result) {
+    shouldHaveWarnings(result, List())
   }
 }

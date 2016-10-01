@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -32,21 +32,20 @@ case class NodeCountFromCountStorePipe(ident: String, label: Option[LazyLabel])(
 
   protected def internalCreateResults(state: QueryState): Iterator[ExecutionContext] = {
     val baseContext = state.initialContext.getOrElse(ExecutionContext.empty)
-    val labelId: Int = label match {
-      case Some(lazyLabel) => lazyLabel.id(state.query) match {
-        case Some(idOfLabel) => idOfLabel
-        case _ => throw new IllegalArgumentException("Cannot find id for label: " + lazyLabel)
+    val count = label match {
+      case Some(lazyLabel) => lazyLabel.getOptId(state.query) match {
+        case Some(idOfLabel) => state.query.nodeCountByCountStore(idOfLabel)
+        case _ => 0
       }
-      case _ => NameId.WILDCARD
+      case _ => state.query.nodeCountByCountStore(NameId.WILDCARD)
     }
-    val count = state.query.nodeCountByCountStore(labelId)
     Seq(baseContext.newWith1(ident, count)).iterator
   }
 
   def exists(predicate: Pipe => Boolean): Boolean = predicate(this)
 
   def planDescriptionWithoutCardinality = PlanDescriptionImpl(
-    this.id, "NodeCountFromCountStore", NoChildren, Seq(CountNodesExpression(ident, label)), identifiers)
+    this.id, "NodeCountFromCountStore", NoChildren, Seq(CountNodesExpression(ident, label)), variables)
 
   def symbols = new SymbolTable(Map(ident -> CTInteger))
 

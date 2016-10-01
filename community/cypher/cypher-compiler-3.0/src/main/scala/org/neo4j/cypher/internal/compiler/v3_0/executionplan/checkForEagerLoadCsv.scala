@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -33,14 +33,13 @@ object checkForEagerLoadCsv extends (Pipe => Option[InternalNotification]) {
 
     // Walk over the pipe tree and check if an Eager is to be executed after a LoadCsv
     val resultState = pipe.treeFold[SearchState](NoEagerFound) {
-      case _: LoadCSVPipe => (acc, children) =>
-        acc match {
-          case EagerFound => EagerWithLoadCsvFound
-          case e => e
-        }
+      case _: LoadCSVPipe => {
+        case EagerFound => (EagerWithLoadCsvFound, None)
+        case e => (e, None)
+      }
       case _: EagerPipe =>
-        (acc, children) =>
-          children(EagerFound)
+        acc =>
+          (EagerFound, Some(identity))
     }
 
     resultState match {

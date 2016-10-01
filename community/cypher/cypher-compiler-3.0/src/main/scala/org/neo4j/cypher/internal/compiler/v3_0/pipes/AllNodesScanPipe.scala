@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -35,7 +35,7 @@ case class AllNodesScanPipe(ident: String)(val estimatedCardinality: Option[Doub
 
   def exists(predicate: Pipe => Boolean): Boolean = predicate(this)
 
-  def planDescriptionWithoutCardinality = PlanDescriptionImpl(this.id, "AllNodesScan", NoChildren, Seq(), identifiers)
+  def planDescriptionWithoutCardinality = PlanDescriptionImpl(this.id, "AllNodesScan", NoChildren, Seq(), variables)
 
   def symbols = new SymbolTable(Map(ident -> CTNode))
 

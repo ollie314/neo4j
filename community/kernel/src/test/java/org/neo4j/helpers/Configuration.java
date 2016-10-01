@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -40,11 +40,7 @@ public class Configuration extends ExternalResource
 
     public Configuration with( Setting<?> setting, String value )
     {
-        return with( setting.name(), value );
-    }
-
-    public Configuration with( String key, String value )
-    {
+        String key = setting.name();
         if ( value == null )
         {
             configuration.remove( key );

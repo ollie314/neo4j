@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,7 +26,7 @@ import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionRe
 class PredicatesTest extends RefcardTest with QueryStatisticsTestSupport {
   val graphDescription = List("ROOT KNOWS A", "A:Person KNOWS B", "B KNOWS C", "C KNOWS ROOT")
   val title = "Predicates"
-  val css = "general c2-2 c3-3 c4-2 c5-1 c6-4"
+  val css = "general c2-2 c3-3 c4-1 c5-1 c6-4"
   override val linkId = "query-where"
 
   override def assert(name: String, result: InternalExecutionResult) {
@@ -76,7 +76,7 @@ AND
 
 n.property <> {value}
 
-RETURN n,m###
+RETURN n, m###
 
 Use comparison operators.
 
@@ -96,7 +96,7 @@ WHERE id(n) = %A% AND id(m) = %B% AND
 
 n.number >= 1 AND n.number <= 10
 
-RETURN n,m###
+RETURN n, m###
 
 Use boolean operators to combine predicates.
 
@@ -106,7 +106,7 @@ WHERE id(n) = %A% AND id(m) = %B% AND
 
 1 <= n.number <= 10
 
-RETURN n,m###
+RETURN n, m###
 
 Use chained operators to combine predicates.
 
@@ -123,12 +123,12 @@ Check for node labels.
 ###assertion=returns-one
 MATCH (n), (m)
 WHERE id(n) = %A% AND id(m) = %B%
-OPTIONAL MATCH (n)-[identifier]->(m)
+OPTIONAL MATCH (n)-[variable]->(m)
 WHERE
 
-identifier IS NULL
+variable IS NULL
 
-RETURN n,m###
+RETURN n, m###
 
 Check if something is `NULL`.
 
@@ -176,7 +176,7 @@ String matching.
 
 ###assertion=returns-one parameters=regex
 MATCH (n)
-WHERE EXISTS(n.property) AND
+WHERE exists(n.property) AND
 
 n.property =~ "Tob.*"
 
@@ -212,6 +212,6 @@ n.property IN [{value1}, {value2}]
 
 RETURN n###
 
-Check if an element exists in a collection.
+Check if an element exists in a list.
 """
 }

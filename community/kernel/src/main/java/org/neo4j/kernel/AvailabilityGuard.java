@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,8 +23,8 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
-import org.neo4j.function.Function;
 import org.neo4j.helpers.Clock;
 import org.neo4j.helpers.Format;
 import org.neo4j.helpers.Listeners;
@@ -32,7 +32,6 @@ import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.logging.Log;
 
 import static org.neo4j.helpers.Listeners.notifyListeners;
-import static org.neo4j.helpers.collection.Iterables.join;
 
 /**
  * The availability guard ensures that the database will only take calls when it is in an ok state.
@@ -138,7 +137,7 @@ public class AvailabilityGuard
         {
             if ( requirementCount.getAndIncrement() == 0 && !isShutdown.get() )
             {
-                log.debug( DATABASE_UNAVAILABLE_MSG + requirement.description() );
+                log.info( DATABASE_UNAVAILABLE_MSG + requirement.description() );
                 notifyListeners( listeners, new Listeners.Notification<AvailabilityListener>()
                 {
                     @Override
@@ -167,7 +166,7 @@ public class AvailabilityGuard
         {
             if ( requirementCount.getAndDecrement() == 1 && !isShutdown.get() )
             {
-                log.debug( DATABASE_AVAILABLE_MSG + requirement.description() );
+                log.info( DATABASE_AVAILABLE_MSG + requirement.description() );
                 notifyListeners( listeners, new Listeners.Notification<AvailabilityListener>()
                 {
                     @Override
@@ -206,7 +205,7 @@ public class AvailabilityGuard
         }
     }
 
-    private static enum Availability
+    private enum Availability
     {
         AVAILABLE,
         UNAVAILABLE,
@@ -223,6 +222,15 @@ public class AvailabilityGuard
         return availability() == Availability.AVAILABLE;
     }
 
+
+    /**
+     * Check if the database has been shut down.
+     */
+    public boolean isShutdown()
+    {
+        return availability() == Availability.SHUTDOWN;
+    }
+
     /**
      * Check if the database is available for transactions to use.
      *
@@ -232,6 +240,17 @@ public class AvailabilityGuard
     public boolean isAvailable( long millis )
     {
         return availability( millis ) == Availability.AVAILABLE;
+    }
+
+    /**
+     * Checks if available. If not then an {@link UnavailableException} is thrown describing why.
+     * This methods doesn't wait like {@link #await(long)} does.
+     *
+     * @throws UnavailableException if not available.
+     */
+    public void checkAvailable() throws UnavailableException
+    {
+        await( 0 );
     }
 
     /**
@@ -326,19 +345,12 @@ public class AvailabilityGuard
     {
         if ( blockingRequirements.size() > 0 || requirementCount.get() > 0 )
         {
-            String causes = join( ", ", Iterables.map( DESCRIPTION, blockingRequirements ) );
+            String causes = Iterables.join( ", ", Iterables.map( DESCRIPTION, blockingRequirements ) );
             return requirementCount.get() + " reasons for blocking: " + causes + ".";
         }
         return "No blocking components";
     }
 
     public static final Function<AvailabilityRequirement, String> DESCRIPTION =
-            new Function<AvailabilityRequirement, String>()
-            {
-                @Override
-                public String apply( AvailabilityRequirement availabilityRequirement )
-                {
-                    return availabilityRequirement.description();
-                }
-            };
+            AvailabilityRequirement::description;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,19 +22,16 @@ package org.neo4j.index.lucene;
 import java.io.File;
 import java.io.IOException;
 
-import org.neo4j.kernel.api.exceptions.index.IndexCapacityExceededException;
-import org.neo4j.kernel.api.impl.index.DirectoryFactory;
-import org.neo4j.kernel.api.impl.index.IndexWriterFactories;
-import org.neo4j.kernel.api.impl.index.LuceneLabelScanStore;
-import org.neo4j.kernel.api.impl.index.NodeRangeDocumentLabelScanStorageStrategy;
-import org.neo4j.kernel.api.labelscan.LabelScanStore;
 import org.neo4j.io.fs.FileSystemAbstraction;
-import org.neo4j.kernel.impl.store.NeoStores;
-import org.neo4j.kernel.impl.transaction.state.NeoStoresSupplier;
-import org.neo4j.kernel.impl.transaction.state.SimpleNeoStoresSupplier;
+import org.neo4j.kernel.api.impl.labelscan.LabelScanIndex;
+import org.neo4j.kernel.api.impl.labelscan.LuceneLabelScanIndexBuilder;
+import org.neo4j.kernel.api.impl.labelscan.LuceneLabelScanStore;
+import org.neo4j.kernel.api.labelscan.LabelScanStore;
+import org.neo4j.kernel.configuration.Config;
+import org.neo4j.kernel.impl.api.scan.LabelScanStoreProvider;
+import org.neo4j.kernel.impl.api.scan.LabelScanStoreProvider.FullStoreChangeStream;
+import org.neo4j.kernel.impl.factory.OperationalMode;
 import org.neo4j.logging.LogProvider;
-
-import static org.neo4j.kernel.impl.api.scan.LabelScanStoreProvider.fullStoreLabelUpdateStream;
 
 /**
  * Means of obtaining a {@link LabelScanStore}, independent of the {@link org.neo4j.kernel.extension.KernelExtensions}
@@ -46,20 +43,22 @@ import static org.neo4j.kernel.impl.api.scan.LabelScanStoreProvider.fullStoreLab
 public class LuceneLabelScanStoreBuilder
 {
     private final File storeDir;
-    private final NeoStoresSupplier neoStoresSupplier;
+    private final FullStoreChangeStream fullStoreStream;
     private final FileSystemAbstraction fileSystem;
+    private final Config config;
+    private final OperationalMode operationalMode;
     private final LogProvider logProvider;
 
-    private LuceneLabelScanStore labelScanStore = null;
+    private LuceneLabelScanStore labelScanStore;
 
-    public LuceneLabelScanStoreBuilder( File storeDir,
-                                        NeoStores neoStores,
-                                        FileSystemAbstraction fileSystem,
-                                        LogProvider logProvider )
+    public LuceneLabelScanStoreBuilder( File storeDir, FullStoreChangeStream fullStoreStream,
+            FileSystemAbstraction fileSystem, Config config, OperationalMode operationalMode, LogProvider logProvider )
     {
         this.storeDir = storeDir;
-        this.neoStoresSupplier = new SimpleNeoStoresSupplier( neoStores );
+        this.fullStoreStream = fullStoreStream;
         this.fileSystem = fileSystem;
+        this.config = config;
+        this.operationalMode = operationalMode;
         this.logProvider = logProvider;
     }
 
@@ -68,21 +67,21 @@ public class LuceneLabelScanStoreBuilder
         if ( null == labelScanStore )
         {
             // TODO: Replace with kernel extension based lookup
-            labelScanStore = new LuceneLabelScanStore(
-                    new NodeRangeDocumentLabelScanStorageStrategy(),
-                    DirectoryFactory.PERSISTENT,
-                    // <db>/schema/label/lucene
-                    new File( new File( new File( storeDir, "schema" ), "label" ), "lucene" ),
-                    fileSystem, IndexWriterFactories.tracking(),
-                    fullStoreLabelUpdateStream( neoStoresSupplier ),
-                    LuceneLabelScanStore.loggerMonitor( logProvider ) );
+            LabelScanIndex index = LuceneLabelScanIndexBuilder.create()
+                    .withFileSystem( fileSystem )
+                    .withIndexRootFolder( LabelScanStoreProvider.getStoreDirectory( storeDir ) )
+                    .withConfig( config )
+                    .withOperationalMode( operationalMode )
+                    .build();
+            labelScanStore = new LuceneLabelScanStore( index, fullStoreStream,
+                    logProvider, LuceneLabelScanStore.Monitor.EMPTY );
 
             try
             {
                 labelScanStore.init();
                 labelScanStore.start();
             }
-            catch ( IOException | IndexCapacityExceededException e )
+            catch ( IOException e )
             {
                 // Throw better exception
                 throw new RuntimeException( e );

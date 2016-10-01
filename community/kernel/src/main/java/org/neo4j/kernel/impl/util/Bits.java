@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -175,6 +175,11 @@ public final class Bits implements Cloneable
             }
         }
         return builder.toString();
+    }
+
+    public static String numberToString( long value, int numberOfBytes )
+    {
+        return numberToString( new StringBuilder(), value, numberOfBytes ).toString();
     }
 
     public static StringBuilder numberToString( StringBuilder builder, long value, int numberOfBytes )

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,10 +19,20 @@
  */
 package org.neo4j.kernel.impl.enterprise;
 
+
+import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.impl.constraints.ConstraintSemantics;
+import org.neo4j.kernel.impl.enterprise.id.EnterpriseIdTypeConfigurationProvider;
+import org.neo4j.kernel.impl.enterprise.transaction.log.checkpoint.ConfigurableIOLimiter;
 import org.neo4j.kernel.impl.factory.CommunityEditionModule;
 import org.neo4j.kernel.impl.factory.EditionModule;
 import org.neo4j.kernel.impl.factory.PlatformModule;
+import org.neo4j.kernel.impl.factory.StatementLocksFactorySelector;
+import org.neo4j.kernel.impl.locking.Locks;
+import org.neo4j.kernel.impl.locking.StatementLocksFactory;
+import org.neo4j.kernel.impl.logging.LogService;
+import org.neo4j.kernel.impl.store.id.configuration.IdTypeConfigurationProvider;
+import org.neo4j.kernel.impl.store.stats.IdBasedStoreEntityCounters;
 
 /**
  * This implementation of {@link EditionModule} creates the implementations of services
@@ -33,11 +43,25 @@ public class EnterpriseEditionModule extends CommunityEditionModule
     public EnterpriseEditionModule( PlatformModule platformModule )
     {
         super( platformModule );
+        platformModule.dependencies.satisfyDependency( new IdBasedStoreEntityCounters( this.idGeneratorFactory ) );
+        ioLimiter = new ConfigurableIOLimiter( platformModule.config );
+    }
+
+    @Override
+    protected IdTypeConfigurationProvider createIdTypeConfigurationProvider( Config config )
+    {
+        return new EnterpriseIdTypeConfigurationProvider( config );
     }
 
     @Override
     protected ConstraintSemantics createSchemaRuleVerifier()
     {
         return new EnterpriseConstraintSemantics();
+    }
+
+    @Override
+    protected StatementLocksFactory createStatementLocksFactory( Locks locks, Config config, LogService logService )
+    {
+        return new StatementLocksFactorySelector( locks, config, logService ).select();
     }
 }

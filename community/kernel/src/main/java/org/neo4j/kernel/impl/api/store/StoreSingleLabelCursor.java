@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,11 @@
  */
 package org.neo4j.kernel.impl.api.store;
 
-import org.neo4j.function.Consumer;
+import java.util.function.Consumer;
+
+import org.neo4j.kernel.impl.store.RecordCursor;
+import org.neo4j.kernel.impl.store.record.DynamicRecord;
+import org.neo4j.kernel.impl.store.record.NodeRecord;
 import org.neo4j.kernel.impl.util.InstanceCache;
 
 /**
@@ -29,14 +33,15 @@ public class StoreSingleLabelCursor extends StoreLabelCursor
 {
     private int labelId;
 
-    public StoreSingleLabelCursor( InstanceCache<StoreSingleLabelCursor> instanceCache )
+    public StoreSingleLabelCursor( RecordCursor<DynamicRecord> dynamicLabelRecordCursor,
+            InstanceCache<StoreSingleLabelCursor> instanceCache )
     {
-        super( (Consumer) instanceCache );
+        super( dynamicLabelRecordCursor, (Consumer) instanceCache );
     }
 
-    public StoreSingleLabelCursor init( long[] labels, int labelId )
+    public StoreSingleLabelCursor init( NodeRecord nodeRecord, int labelId )
     {
-        super.init( labels );
+        super.init( nodeRecord );
         this.labelId = labelId;
         return this;
     }

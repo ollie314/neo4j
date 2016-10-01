@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,6 +20,7 @@
 package org.neo4j.kernel.ha;
 
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -42,24 +43,24 @@ import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.TransactionFailureException;
 import org.neo4j.graphdb.TransientTransactionFailureException;
+import org.neo4j.graphdb.schema.ConstraintDefinition;
+import org.neo4j.graphdb.schema.IndexDefinition;
 import org.neo4j.helpers.Exceptions;
 import org.neo4j.kernel.api.exceptions.schema.ConstraintVerificationFailedKernelException;
 import org.neo4j.kernel.impl.ha.ClusterManager;
 import org.neo4j.test.OtherThreadExecutor.WorkerCommand;
 import org.neo4j.test.OtherThreadRule;
 import org.neo4j.test.RepeatRule;
+import org.neo4j.test.SuppressOutput;
 import org.neo4j.test.ha.ClusterRule;
-import org.neo4j.tooling.GlobalGraphOperations;
 
+import static java.lang.String.format;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.junit.Assert.assertThat;
-
-import static java.lang.String.format;
-
-import static org.neo4j.graphdb.DynamicLabel.label;
-import static org.neo4j.graphdb.DynamicRelationshipType.withName;
-import static org.neo4j.helpers.collection.IteratorUtil.loop;
+import static org.neo4j.graphdb.Label.label;
+import static org.neo4j.graphdb.RelationshipType.withName;
+import static org.neo4j.helpers.collection.Iterators.loop;
 
 /**
  * This test stress tests unique constraints in a setup where writes are being issued against a slave.
@@ -71,7 +72,9 @@ public class PropertyConstraintsStressIT
     public ConstraintOperations constraintOps;
 
     @Rule
-    public final ClusterRule clusterRule = new ClusterRule( getClass() );
+    public final SuppressOutput suppressOutput = SuppressOutput.suppressAll();
+    @ClassRule
+    public static final ClusterRule clusterRule = new ClusterRule( PropertyConstraintsStressIT.class );
 
     @Rule
     public OtherThreadRule<Object> slaveWork = new OtherThreadRule<>();
@@ -110,7 +113,38 @@ public class PropertyConstraintsStressIT
     @Before
     public void setup() throws Exception
     {
-        cluster = clusterRule.config( HaSettings.pull_interval, "0" ).startCluster();
+        cluster = clusterRule.withSharedSetting( HaSettings.pull_interval, "0" ).startCluster();
+        clearData();
+    }
+
+    private void clearData() throws InterruptedException
+    {
+        HighlyAvailableGraphDatabase db = cluster.getMaster();
+        try ( Transaction tx = db.beginTx() )
+        {
+            for ( ConstraintDefinition constraint : db.schema().getConstraints() )
+            {
+                constraint.drop();
+            }
+            for ( IndexDefinition index : db.schema().getIndexes() )
+            {
+                index.drop();
+            }
+            tx.success();
+        }
+        try ( Transaction tx = db.beginTx() )
+        {
+            for ( Relationship relationship : db.getAllRelationships() )
+            {
+                relationship.delete();
+            }
+            for ( Node node : db.getAllNodes() )
+            {
+                node.delete();
+            }
+            tx.success();
+        }
+        cluster.sync();
     }
 
     /* The different orders and delays in the below variations try to stress all known scenarios, as well as
@@ -539,7 +573,7 @@ public class PropertyConstraintsStressIT
         {
             try ( Transaction tx = db.beginTx() )
             {
-                for ( Relationship relationship : GlobalGraphOperations.at( db ).getAllRelationships() )
+                for ( Relationship relationship : db.getAllRelationships() )
                 {
                     if ( relationship.getType().name().equals( type ) )
                     {

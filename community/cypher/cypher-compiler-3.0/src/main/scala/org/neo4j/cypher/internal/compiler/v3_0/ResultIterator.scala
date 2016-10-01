@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,10 +19,8 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0
 
+import org.neo4j.cypher.internal.frontend.v3_0.CypherException
 import org.neo4j.cypher.internal.frontend.v3_0.helpers.Eagerly
-import org.neo4j.cypher.internal.frontend.v3_0.{CypherException, NodeStillHasRelationshipsException}
-import org.neo4j.graphdb.TransactionFailureException
-import org.neo4j.kernel.api.exceptions.Status
 
 import scala.collection.immutable
 
@@ -72,17 +70,15 @@ class ClosingIterator(inner: Iterator[collection.Map[String, Any]],
   def next(): Map[String, Any] = failIfThrows {
     if (closer.isClosed) return Iterator.empty.next()
 
-    val input: collection.Map[String, Any] = inner.next()
-    val result: Map[String, Any] = Eagerly.immutableMapValues(input, materialize)
-    if (!inner.hasNext) {
-      close(success = true)
-    }
+    val value = inner.next()
+    val result = Eagerly.immutableMapValues(value, materialize)
     result
   }
 
+  // TODO: Get rid of this in favor of using ScalaRuntimeValueConverte
   private def materialize(v: Any): Any = v match {
     case (x: Stream[_])   => x.map(materialize).toList
-    case (x: Map[_, _])   => Eagerly.immutableMapValues(x, materialize)
+    case (x: collection.Map[_, _])   => Eagerly.immutableMapValues(x.toMap, materialize)
     case (x: Iterable[_]) => x.map(materialize)
     case x => x
   }
@@ -91,29 +87,8 @@ class ClosingIterator(inner: Iterator[collection.Map[String, Any]],
     close(success = true)
   }
 
-  def close(success: Boolean) = translateException {
+  def close(success: Boolean) = decoratedCypherException({
     closer.close(success)
-  }
-
-  private def translateException[U](f: => U): U = decoratedCypherException({
-    try {
-      f
-    } catch {
-      case e: TransactionFailureException =>
-        e.getCause match {
-          case exception: org.neo4j.kernel.api.exceptions.TransactionFailureException =>
-            val status = exception.status()
-            if (status == Status.Transaction.ValidationFailed) {
-              exception.getMessage match {
-                case still_has_relationships(id) => throw new NodeStillHasRelationshipsException(id.toLong, e)
-                case _                           => throw e
-              }
-            }
-          case _ =>
-        }
-
-        throw e
-    }
   })
 
   private def failIfThrows[U](f: => U): U = decoratedCypherException({

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,9 +19,7 @@
  */
 package org.neo4j.kernel.impl.pagecache;
 
-import java.lang.management.ManagementFactory;
-import java.lang.reflect.Method;
-
+import org.neo4j.kernel.impl.util.OsBeanUtil;
 import org.neo4j.helpers.Service;
 import org.neo4j.io.ByteUnit;
 import org.neo4j.io.fs.FileSystemAbstraction;
@@ -48,13 +46,13 @@ public class ConfiguringPageCacheFactory
     public ConfiguringPageCacheFactory(
             FileSystemAbstraction fs, Config config, PageCacheTracer tracer, Log log )
     {
-        this.swapperFactory = createAndConfigureSwapperFactory( fs, config );
+        this.swapperFactory = createAndConfigureSwapperFactory( fs, config, log );
         this.config = config;
         this.tracer = tracer;
         this.log = log;
     }
 
-    private PageSwapperFactory createAndConfigureSwapperFactory( FileSystemAbstraction fs, Config config )
+    private PageSwapperFactory createAndConfigureSwapperFactory( FileSystemAbstraction fs, Config config, Log log )
     {
         String desiredImplementation = config.get( pagecache_swapper );
 
@@ -70,9 +68,11 @@ public class ConfiguringPageCacheFactory
                         ConfigurablePageSwapperFactory configurableFactory = (ConfigurablePageSwapperFactory) factory;
                         configurableFactory.configure( config );
                     }
+                    log.info( "Configured " + pagecache_swapper.name() + ": " + desiredImplementation );
                     return factory;
                 }
             }
+            throw new IllegalArgumentException( "Cannot find PageSwapperFactory: " + desiredImplementation );
         }
 
         SingleFilePageSwapperFactory factory = new SingleFilePageSwapperFactory();
@@ -129,9 +129,9 @@ public class ConfiguringPageCacheFactory
     {
         int cachePageSize = calculatePageSize( config, swapperFactory );
         long maxPages = calculateMaxPages( config, cachePageSize );
-        long totalPhysicalMemory = totalPhysicalMemory();
-        String totalPhysicalMemMb = totalPhysicalMemory == -1? "?" : "" + ByteUnit.Byte.toMebiBytes(
-                totalPhysicalMemory );
+        long totalPhysicalMemory = OsBeanUtil.getTotalPhysicalMemory();
+        String totalPhysicalMemMb = (totalPhysicalMemory == OsBeanUtil.VALUE_UNAVAILABLE)
+                                    ? "?" : "" + ByteUnit.Byte.toMebiBytes( totalPhysicalMemory );
         long maxVmUsageMb = ByteUnit.Byte.toMebiBytes( Runtime.getRuntime().maxMemory() );
         long pageCacheMb = ByteUnit.Byte.toMebiBytes(maxPages * cachePageSize);
         String msg = "Physical mem: " + totalPhysicalMemMb + " MiB," +
@@ -139,21 +139,5 @@ public class ConfiguringPageCacheFactory
                      " Page cache size: " + pageCacheMb + " MiB.";
 
         log.info( msg );
-    }
-
-    public long totalPhysicalMemory()
-    {
-        try
-        {
-            Class<?> beanClass = Thread.currentThread().getContextClassLoader().loadClass(
-                    "com.sun.management.OperatingSystemMXBean" );
-            Method method = beanClass.getMethod( "getTotalPhysicalMemorySize" );
-            return (long) method.invoke( ManagementFactory.getOperatingSystemMXBean() );
-        }
-        catch ( Exception | LinkageError e )
-        {
-            // We tried, but at this point we actually have no idea.
-            return -1;
-        }
     }
 }

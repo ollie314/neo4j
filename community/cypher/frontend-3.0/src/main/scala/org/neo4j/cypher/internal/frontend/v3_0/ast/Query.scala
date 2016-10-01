@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,6 +24,8 @@ import org.neo4j.cypher.internal.frontend.v3_0.{InputPosition, SemanticChecking,
 case class Query(periodicCommitHint: Option[PeriodicCommitHint], part: QueryPart)(val position: InputPosition)
   extends Statement with SemanticChecking {
 
+  override def returnColumns = part.returnColumns
+
   override def semanticCheck =
     part.semanticCheck chain
     periodicCommitHint.semanticCheck chain
@@ -34,18 +36,22 @@ case class Query(periodicCommitHint: Option[PeriodicCommitHint], part: QueryPart
 
 sealed trait QueryPart extends ASTNode with ASTPhrase with SemanticCheckable {
   def containsUpdates: Boolean
+  def returnColumns: List[String]
 }
 
 case class SingleQuery(clauses: Seq[Clause])(val position: InputPosition) extends QueryPart {
   assert(clauses.nonEmpty)
 
-  def containsUpdates:Boolean =
+  override def containsUpdates =
     clauses.exists {
+      case call: CallClause => !call.containsNoUpdates
       case _: UpdateClause => true
       case _               => false
     }
 
-  def semanticCheck: SemanticCheck =
+  override def returnColumns = clauses.last.returnColumns
+
+  override def semanticCheck =
     checkOrder chain
     checkClauses chain
     checkIndexHints
@@ -54,7 +60,7 @@ case class SingleQuery(clauses: Seq[Clause])(val position: InputPosition) extend
     val hints = clauses.collect { case m: Match => m.hints }.flatten
     val hasStartClause = clauses.exists(_.isInstanceOf[Start])
     if (hints.nonEmpty && hasStartClause) {
-      SemanticCheckResult.error(s, SemanticError("Cannot use index hints with start clause", hints.head.position))
+      SemanticCheckResult.error(s, SemanticError("Cannot use planner hints with start clause", hints.head.position))
     } else {
       SemanticCheckResult.success(s)
     }
@@ -62,7 +68,7 @@ case class SingleQuery(clauses: Seq[Clause])(val position: InputPosition) extend
 
   private def checkOrder: SemanticCheck = s => {
     val (lastPair, errors) = clauses.sliding(2).foldLeft(Seq.empty[Clause], Vector.empty[SemanticError]) {
-      case ((_, errors), pair) =>
+      case ((_, semanticErrors), pair) =>
         val optError = pair match {
           case Seq(_: With, _: Start) =>
             None
@@ -83,14 +89,13 @@ case class SingleQuery(clauses: Seq[Clause])(val position: InputPosition) extend
           case _ =>
             None
         }
-        (pair, optError.fold(errors)(errors :+ _))
+        (pair, optError.fold(semanticErrors)(semanticErrors :+ _))
     }
 
     val lastError = lastPair.last match {
-      case _: UpdateClause =>
-        None
-      case _: Return =>
-        None
+      case _: UpdateClause => None
+      case _: Return => None
+      case _: CallClause if clauses.size == 1 => None
       case clause =>
         Some(SemanticError(s"Query cannot conclude with ${clause.name} (must be RETURN or an update clause)", clause.position))
     }
@@ -117,6 +122,8 @@ case class SingleQuery(clauses: Seq[Clause])(val position: InputPosition) extend
 sealed trait Union extends QueryPart with SemanticChecking {
   def part: QueryPart
   def query: SingleQuery
+
+  def returnColumns = query.returnColumns
 
   def containsUpdates:Boolean = part.containsUpdates || query.containsUpdates
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,16 +30,16 @@ class PropertyValueComparisonTest extends CypherFunSuite {
   private val expectedNull = null.asInstanceOf[Any]
 
   test("nullNodeShouldGiveNullProperty") {
-    val p = Property(Identifier("identifier"), PropertyKey("property"))
-    val ctx = ExecutionContext.from("identifier" -> null)
+    val p = Property(Variable("variable"), PropertyKey("property"))
+    val ctx = ExecutionContext.from("variable" -> null)
     val state = QueryStateHelper.empty
 
     p(ctx)(state) should equal(expectedNull)
   }
 
   test("nonExistentPropertyShouldEvaluateToNull") {
-    val p = Property(Identifier("identifier"), PropertyKey("nonExistent"))
-    val ctx = ExecutionContext.from("identifier" -> Map("property" -> 42))
+    val p = Property(Variable("variable"), PropertyKey("nonExistent"))
+    val ctx = ExecutionContext.from("variable" -> Map("property" -> 42))
     val state = QueryStateHelper.empty
 
     p(ctx)(state) should equal(expectedNull)

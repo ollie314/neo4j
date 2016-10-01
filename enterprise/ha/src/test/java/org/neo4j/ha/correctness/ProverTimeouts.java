@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -29,7 +29,7 @@ import org.neo4j.cluster.com.message.MessageProcessor;
 import org.neo4j.cluster.com.message.MessageType;
 import org.neo4j.cluster.timeout.FixedTimeoutStrategy;
 import org.neo4j.cluster.timeout.Timeouts;
-import org.neo4j.helpers.Pair;
+import org.neo4j.helpers.collection.Pair;
 
 class ProverTimeouts extends Timeouts
 {
@@ -69,9 +69,14 @@ class ProverTimeouts extends Timeouts
     }
 
     @Override
-    public void cancelTimeout( Object key )
+    public Message<? extends MessageType> cancelTimeout( Object key )
     {
-        timeouts.remove( key );
+        Pair<ProverTimeout,Long> timeout = timeouts.remove( key );
+        if ( timeout != null )
+        {
+            return timeout.first().getTimeoutMessage();
+        }
+        return null;
     }
 
     @Override

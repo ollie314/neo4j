@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -31,6 +31,18 @@ class MathFunctionsTest extends CypherFunSuite with NumericHelper {
     calc(AbsFunction(Literal(-1))) should equal(1)
     calc(AbsFunction(Literal(1))) should equal(1)
     intercept[CypherTypeException](calc(AbsFunction(Literal("wut"))))
+  }
+
+  test("abs should give only longs back on integral input") {
+    calc(AbsFunction(Literal(Byte.box(-1)))) should equal(1L)
+    calc(AbsFunction(Literal(Short.box(-1)))) should equal(1L)
+    calc(AbsFunction(Literal(Int.box(-1)))) should equal(1L)
+    calc(AbsFunction(Literal(Long.box(-1)))) should equal(1L)
+  }
+
+  test("abs should give only doubles back on integral input") {
+    calc(AbsFunction(Literal(Float.box(-1.5f)))) should equal(1.5)
+    calc(AbsFunction(Literal(Double.box(-1.5)))) should equal(1.5)
   }
 
   test("acosTests") {
@@ -112,8 +124,10 @@ class MathFunctionsTest extends CypherFunSuite with NumericHelper {
   }
 
   test("signTests") {
-    calc(SignFunction(Literal(-1))) should equal(-1)
-    calc(SignFunction(Literal(1))) should equal(1)
+    calc(SignFunction(Literal(-1))).asInstanceOf[Long] should equal(-1L)
+    calc(SignFunction(Literal(1))).asInstanceOf[Long] should equal(1L)
+    calc(SignFunction(Literal(Double.NegativeInfinity))).asInstanceOf[Long] should equal(-1L)
+    calc(SignFunction(Literal(Math.PI))).asInstanceOf[Long] should equal(1L)
     intercept[CypherTypeException](calc(SignFunction(Literal("wut"))))
   }
 

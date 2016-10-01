@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,20 +19,39 @@
  */
 package org.neo4j.kernel.impl.factory;
 
+import java.io.File;
+
 import org.neo4j.graphdb.DependencyResolver;
-import org.neo4j.kernel.IdGeneratorFactory;
-import org.neo4j.kernel.KernelDiagnostics;
+import org.neo4j.graphdb.factory.GraphDatabaseSettings;
+import org.neo4j.io.pagecache.IOLimiter;
 import org.neo4j.kernel.NeoStoreDataSource;
-import org.neo4j.kernel.impl.constraints.ConstraintSemantics;
+import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.impl.api.CommitProcessFactory;
 import org.neo4j.kernel.impl.api.SchemaWriteGuard;
+import org.neo4j.kernel.impl.constraints.ConstraintSemantics;
 import org.neo4j.kernel.impl.core.LabelTokenHolder;
 import org.neo4j.kernel.impl.core.PropertyKeyTokenHolder;
 import org.neo4j.kernel.impl.core.RelationshipTypeTokenHolder;
+import org.neo4j.kernel.impl.coreapi.CoreAPIAvailabilityGuard;
+import org.neo4j.kernel.impl.factory.GraphDatabaseFacadeFactory.Configuration;
 import org.neo4j.kernel.impl.locking.Locks;
-import org.neo4j.kernel.impl.storemigration.UpgradeConfiguration;
+import org.neo4j.kernel.impl.locking.StatementLocksFactory;
+import org.neo4j.kernel.impl.store.id.IdGeneratorFactory;
+import org.neo4j.kernel.impl.store.id.IdReuseEligibility;
+import org.neo4j.kernel.impl.store.id.configuration.IdTypeConfigurationProvider;
 import org.neo4j.kernel.impl.transaction.TransactionHeaderInformationFactory;
 import org.neo4j.kernel.info.DiagnosticsManager;
+import org.neo4j.kernel.internal.KernelDiagnostics;
+import org.neo4j.kernel.lifecycle.LifeSupport;
+import org.neo4j.logging.LogProvider;
+import org.neo4j.server.security.auth.AuthManager;
+import org.neo4j.server.security.auth.BasicAuthManager;
+import org.neo4j.server.security.auth.FileUserRepository;
+import org.neo4j.udc.UsageData;
+import org.neo4j.udc.UsageDataKeys;
+
+import static java.time.Clock.systemUTC;
+import static java.util.Collections.singletonMap;
 
 /**
  * Edition module for {@link org.neo4j.kernel.impl.factory.GraphDatabaseFacadeFactory}. Implementations of this class
@@ -41,12 +60,15 @@ import org.neo4j.kernel.info.DiagnosticsManager;
 public abstract class EditionModule
 {
     public IdGeneratorFactory idGeneratorFactory;
+    public IdTypeConfigurationProvider idTypeConfigurationProvider;
 
     public LabelTokenHolder labelTokenHolder;
 
     public PropertyKeyTokenHolder propertyKeyTokenHolder;
 
     public Locks lockManager;
+
+    public StatementLocksFactory statementLocksFactory;
 
     public CommitProcessFactory commitProcessFactory;
 
@@ -58,18 +80,51 @@ public abstract class EditionModule
 
     public SchemaWriteGuard schemaWriteGuard;
 
-    public UpgradeConfiguration upgradeConfiguration;
-
     public ConstraintSemantics constraintSemantics;
 
-    protected void doAfterRecoveryAndStartup( String editionName, DependencyResolver dependencyResolver)
+    public CoreAPIAvailabilityGuard coreAPIAvailabilityGuard;
+
+    public IOLimiter ioLimiter;
+
+    public IdReuseEligibility eligibleForIdReuse;
+
+    protected void doAfterRecoveryAndStartup( DatabaseInfo databaseInfo, DependencyResolver dependencyResolver )
     {
         DiagnosticsManager diagnosticsManager = dependencyResolver.resolveDependency( DiagnosticsManager.class );
         NeoStoreDataSource neoStoreDataSource = dependencyResolver.resolveDependency( NeoStoreDataSource.class );
 
         diagnosticsManager.prependProvider( new KernelDiagnostics.Versions(
-                editionName, neoStoreDataSource.get().getMetaDataStore().getStoreId() ) );
+                databaseInfo, neoStoreDataSource.getStoreId() ) );
         neoStoreDataSource.registerDiagnosticsWith( diagnosticsManager );
         diagnosticsManager.appendProvider( new KernelDiagnostics.StoreFiles( neoStoreDataSource.getStoreDir() ) );
+    }
+
+    protected void publishEditionInfo( UsageData sysInfo, DatabaseInfo databaseInfo, Config config )
+    {
+        sysInfo.set( UsageDataKeys.edition, databaseInfo.edition );
+        sysInfo.set( UsageDataKeys.operationalMode, databaseInfo.operationalMode );
+        config.augment( singletonMap( Configuration.editionName.name(), databaseInfo.edition.toString() ) );
+    }
+
+    protected AuthManager createAuthManager( Config config, LifeSupport life, LogProvider logProvider )
+    {
+        boolean authEnabled = config.get( GraphDatabaseSettings.auth_enabled );
+        if ( authEnabled )
+        {
+            File storePath = config.get( GraphDatabaseSettings.auth_store );
+            if ( storePath == null )
+            {
+                logProvider.getLog( EditionModule.class ).warn( "Authentication not enabled because %s is not set.",
+                        GraphDatabaseSettings.auth_store.name() );
+                return AuthManager.NO_AUTH;
+            }
+            FileUserRepository users = life.add( new FileUserRepository( storePath.toPath(), logProvider ) );
+            return life.add( new BasicAuthManager( users, systemUTC(), true ) );
+        }
+        else
+        {
+            return AuthManager.NO_AUTH;
+        }
+
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,8 +23,8 @@ import org.hamcrest.Description;
 import org.hamcrest.Matcher;
 import org.hamcrest.TypeSafeMatcher;
 
-import org.neo4j.kernel.api.exceptions.Status;
 import org.neo4j.bolt.v1.runtime.spi.Record;
+import org.neo4j.kernel.api.exceptions.Status;
 
 import static java.util.Arrays.asList;
 
@@ -43,7 +43,26 @@ public class SessionMatchers
             @Override
             public void describeTo( Description description )
             {
+                description.appendText( "SUCCESS" );
+            }
+        };
+    }
 
+    public static Matcher<RecordingCallback.Call> successButRequiresPasswordChange()
+    {
+        return new TypeSafeMatcher<RecordingCallback.Call>()
+        {
+            @Override
+            protected boolean matchesSafely( RecordingCallback.Call item )
+            {
+                return item instanceof RecordingCallback.InitSuccess
+                       && ((RecordingCallback.InitSuccess) item).credentialsExpired();
+            }
+
+            @Override
+            public void describeTo( Description description )
+            {
+                description.appendText( "SUCCESS (but password change required)" );
             }
         };
     }
@@ -82,6 +101,24 @@ public class SessionMatchers
         };
     }
 
+    public static Matcher<? super RecordingCallback.Call> failed()
+    {
+        return new TypeSafeMatcher<RecordingCallback.Call>()
+        {
+            @Override
+            protected boolean matchesSafely( RecordingCallback.Call item )
+            {
+                return item.error() != null;
+            }
+
+            @Override
+            public void describeTo( Description description )
+            {
+                description.appendText( "Failed" );
+            }
+        };
+    }
+
     public static Matcher<? super RecordingCallback.Call> failedWith( final Status expected )
     {
         return new TypeSafeMatcher<RecordingCallback.Call>()
@@ -90,13 +127,30 @@ public class SessionMatchers
             protected boolean matchesSafely( RecordingCallback.Call item )
             {
                 return expected == item.error().status();
-
             }
 
             @Override
             public void describeTo( Description description )
             {
                 description.appendText( expected.toString() );
+            }
+        };
+    }
+
+    public static Matcher<? super RecordingCallback.Call> failedWith( final String expected )
+    {
+        return new TypeSafeMatcher<RecordingCallback.Call>()
+        {
+            @Override
+            protected boolean matchesSafely( RecordingCallback.Call item )
+            {
+                return expected.equals( item.error().message() );
+            }
+
+            @Override
+            public void describeTo( Description description )
+            {
+                description.appendText( expected );
             }
         };
     }
@@ -115,7 +169,40 @@ public class SessionMatchers
             @Override
             public void describeTo( Description description )
             {
-                description.appendText( "ignored" );
+                description.appendText( "IGNORED" );
+            }
+        };
+    }
+
+    public static Matcher<RecordingCallback> recorded( Matcher<? super RecordingCallback.Call> ... messages )
+    {
+        return new TypeSafeMatcher<RecordingCallback>()
+        {
+            @Override
+            protected boolean matchesSafely( RecordingCallback recordingCallback )
+            {
+                for ( Matcher<? super RecordingCallback.Call> message : messages )
+                {
+                    try
+                    {
+                        if(!message.matches( recordingCallback.next() ))
+                        {
+                            return false;
+                        }
+                    }
+                    catch ( InterruptedException e )
+                    {
+                        throw new RuntimeException( e );
+                    }
+                }
+
+                return true;
+            }
+
+            @Override
+            public void describeTo( Description description )
+            {
+                description.appendList( "[", ", ", "]", asList(messages) );
             }
         };
     }

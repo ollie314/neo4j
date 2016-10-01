@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -128,7 +128,7 @@ public class TransientErrorIT extends AbstractRestFunctionalTestBase
 
         // request fails because specified CSV resource is invalid
         assertThat( second.status(), is( 200 ) );
-        assertThat( second, hasErrors( Status.Statement.ExternalResourceFailure ) );
+        assertThat( second, hasErrors( Status.Statement.ExternalResourceFailed ) );
 
         // transaction was rolled back on the previous step and we can't commit it
         HTTP.Response commit = POST( second.stringFromContent( "commit" ) );

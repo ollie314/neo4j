@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,7 +25,7 @@ import org.mockito.Mockito.{mock => jmock, _}
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 import org.neo4j.cypher.internal.compiler.v3_0.ExecutionContext
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Identifier, Property, Expression, Literal}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions._
 import org.neo4j.cypher.internal.compiler.v3_0.commands.values.{KeyToken, TokenType}
 import org.neo4j.cypher.internal.compiler.v3_0.mutation.{PropertySetAction, SetAction}
 import org.neo4j.cypher.internal.compiler.v3_0.spi.{Operations, QueryContext}
@@ -34,7 +34,7 @@ import org.neo4j.cypher.internal.frontend.v3_0.SemanticDirection
 import org.neo4j.cypher.internal.frontend.v3_0.SemanticDirection.{INCOMING, OUTGOING}
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
-import org.neo4j.graphdb.DynamicRelationshipType.withName
+import org.neo4j.graphdb.RelationshipType.withName
 import org.neo4j.graphdb.{Node, Relationship}
 
 class MergeIntoPipeTest extends CypherFunSuite {
@@ -291,6 +291,29 @@ class MergeIntoPipeTest extends CypherFunSuite {
     verifyNoMoreInteractions(query.relationshipOps)
   }
 
+  test("should find a matching relationship between two nodes with matching array properties") {
+    // given
+    implicit val query = setupMockingInQueryContext()
+    markAsNotDense(node_a)
+    markAsNotDense(node_b)
+
+    // when
+    setupRelationshipFromNode(node_a, INCOMING, rel_a_A_b)
+    when(query.relationshipOps.getProperty(1, "key".hashCode())).thenReturn(Array(42, 43), Seq.empty: _*)
+    when(query.relationshipOps.getProperty(1, "foo".hashCode())).thenReturn(Array("foo", "bar"), Seq.empty: _*)
+
+    val left = newMockedPipe("a", row("a" -> node_a, "b" -> node_b))
+    val result = createPipeAndRun(query, left, INCOMING, "A", Map("key" -> ListLiteral(Literal(42), Literal(43)),
+                                                                  "foo" -> ListLiteral(Literal("foo"), Literal("bar"))))
+
+    // then
+    val (single :: Nil) = result
+    single.m should equal(Map("a" -> node_a, "r" -> rel_a_A_b, "b" -> node_b))
+    verify(query.relationshipOps).getProperty(1, "key".hashCode())
+    verify(query.relationshipOps).getProperty(1, "foo".hashCode())
+    verifyNoMoreInteractions(query.relationshipOps)
+  }
+
   test("should set properties on create") {
     // given
     implicit val query = setupMockingInQueryContext()
@@ -302,8 +325,8 @@ class MergeIntoPipeTest extends CypherFunSuite {
     // when
     val left = newMockedPipe("a", row("a" -> node_a, "b" -> node_b))
     val propertySetAction = Seq(
-      PropertySetAction(Property(Identifier("r"), resolve("key")), Literal(42)),
-      PropertySetAction(Property(Identifier("r"), resolve("foo")), Literal("bar")))
+      PropertySetAction(Property(Variable("r"), resolve("key")), Literal(42)),
+      PropertySetAction(Property(Variable("r"), resolve("foo")), Literal("bar")))
     val result = createPipeAndRun(query, left, INCOMING, "A", relProperties = Map.empty,
       onCreateProperties = propertySetAction)
 
@@ -325,8 +348,8 @@ class MergeIntoPipeTest extends CypherFunSuite {
     // when
     val left = newMockedPipe("a", row("a" -> node_a, "b" -> node_b))
     val propertySetAction = Seq(
-      PropertySetAction(Property(Identifier("r"), resolve("key")), Literal(42)),
-      PropertySetAction(Property(Identifier("r"), resolve("foo")), Literal("bar")))
+      PropertySetAction(Property(Variable("r"), resolve("key")), Literal(42)),
+      PropertySetAction(Property(Variable("r"), resolve("foo")), Literal("bar")))
     val result = createPipeAndRun(query, left, OUTGOING, "A", relProperties = Map.empty,
       onCreateProperties = propertySetAction)
 
@@ -347,8 +370,8 @@ class MergeIntoPipeTest extends CypherFunSuite {
     // when
     val left = newMockedPipe("a", row("a" -> node_a, "b" -> node_b))
     val propertySetAction = Seq(
-      PropertySetAction(Property(Identifier("r"), resolve("key")), Literal(42)),
-      PropertySetAction(Property(Identifier("r"), resolve("foo")), Literal("bar")))
+      PropertySetAction(Property(Variable("r"), resolve("key")), Literal(42)),
+      PropertySetAction(Property(Variable("r"), resolve("foo")), Literal("bar")))
     val result = createPipeAndRun(query, left, INCOMING, "A", relProperties = Map.empty,
       onCreateProperties = Seq.empty, onMatchProperties = propertySetAction)
 
@@ -360,7 +383,8 @@ class MergeIntoPipeTest extends CypherFunSuite {
   }
 
   private def createPipeAndRun(query: QueryContext, left: Pipe, dir: SemanticDirection = OUTGOING, relType: String,
-                               relProperties: Map[String, Expression], onCreateProperties: Seq[SetAction] = Seq.empty, onMatchProperties: Seq[SetAction] = Seq.empty): List[ExecutionContext] = {
+                               relProperties: Map[String, Expression], onCreateProperties: Seq[SetAction] = Seq.empty,
+                               onMatchProperties: Seq[SetAction] = Seq.empty): List[ExecutionContext] = {
     val f: PartialFunction[(String, Expression), (KeyToken, Expression)] = {
       case (k, v) => resolve(k) -> v
     }

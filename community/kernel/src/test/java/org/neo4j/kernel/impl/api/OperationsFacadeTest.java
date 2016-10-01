@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,7 +28,7 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.runners.MockitoJUnitRunner;
 
-import org.neo4j.helpers.collection.IteratorUtil;
+import org.neo4j.helpers.collection.Iterators;
 import org.neo4j.kernel.api.TokenNameLookup;
 import org.neo4j.kernel.api.exceptions.schema.DuplicateIndexSchemaRuleException;
 import org.neo4j.kernel.api.exceptions.schema.IndexSchemaRuleNotFoundException;
@@ -68,7 +68,7 @@ public class OperationsFacadeTest
         expectedException.expect( new KernelExceptionUserMessageMatcher<>( tokenNameLookup,
                 "Index for label 'Label1' and property 'Prop1' not found." ) );
 
-        operationsFacade.indexesGetForLabelAndPropertyKey( LABEL1_ID, PROP1_ID );
+        operationsFacade.indexGetForLabelAndPropertyKey( LABEL1_ID, PROP1_ID );
     }
 
     @Test
@@ -78,7 +78,7 @@ public class OperationsFacadeTest
         SchemaReadOperations readOperations = setupSchemaReadOperations();
         Mockito.when( readOperations
                 .uniqueIndexesGetForLabel( Mockito.any( KernelStatement.class ), Mockito.eq( LABEL1_ID ) ) )
-                .thenReturn( IteratorUtil.iterator( new IndexDescriptor( LABEL1_ID, PROP1_ID ),
+                .thenReturn( Iterators.iterator( new IndexDescriptor( LABEL1_ID, PROP1_ID ),
                         new IndexDescriptor( LABEL1_ID, PROP1_ID ) ) );
         TokenNameLookup tokenNameLookup = getDefaultTokenNameLookup();
 
@@ -97,7 +97,7 @@ public class OperationsFacadeTest
         TokenNameLookup tokenNameLookup = getDefaultTokenNameLookup();
         Mockito.when( readOperations
                 .uniqueIndexesGetForLabel( Mockito.any( KernelStatement.class ), Mockito.eq( LABEL1_ID ) ) )
-                .thenReturn( IteratorUtil.<IndexDescriptor>emptyIterator() );
+                .thenReturn( Iterators.<IndexDescriptor>emptyIterator() );
 
         expectedException.expect( IndexSchemaRuleNotFoundException.class );
         expectedException.expect( new KernelExceptionUserMessageMatcher<>( tokenNameLookup,

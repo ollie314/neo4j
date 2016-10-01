@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -62,10 +62,11 @@ class UpdateCountingQueryContext(inner: QueryContext) extends DelegatingQueryCon
     inner.createNode()
   }
 
-  override def nodeOps: Operations[Node] = new CountingOps[Node](inner.nodeOps, nodesDeleted)
+  override def nodeOps: Operations[Node] =
+    new CountingOps[Node](inner.nodeOps, nodesDeleted)
 
-  override def relationshipOps: Operations[Relationship] = new CountingOps[Relationship](inner.relationshipOps,
-    relationshipsDeleted)
+  override def relationshipOps: Operations[Relationship] =
+    new CountingOps[Relationship](inner.relationshipOps, relationshipsDeleted)
 
   override def setLabelsOnNode(node: Long, labelIds: Iterator[Int]): Int = {
     val added = inner.setLabelsOnNode(node, labelIds)
@@ -87,6 +88,13 @@ class UpdateCountingQueryContext(inner: QueryContext) extends DelegatingQueryCon
     val removed = inner.removeLabelsFromNode(node, labelIds)
     labelsRemoved.increase(removed)
     removed
+  }
+
+  override def detachDeleteNode(obj: Node): Int = {
+    nodesDeleted.increase()
+    val count = inner.detachDeleteNode(obj)
+    relationshipsDeleted.increase(count)
+    count
   }
 
   override def addIndexRule(labelId: Int, propertyKeyId: Int) = {
@@ -145,8 +153,7 @@ class UpdateCountingQueryContext(inner: QueryContext) extends DelegatingQueryCon
     }
   }
 
-  private class CountingOps[T <: PropertyContainer](inner: Operations[T],
-                                                    deletes: Counter)
+  private class CountingOps[T <: PropertyContainer](inner: Operations[T], deletes: Counter)
     extends DelegatingOperations[T](inner) {
 
     override def delete(obj: T) {

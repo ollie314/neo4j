@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -35,7 +35,7 @@ trait UpdateAction extends TypeSafe with AstNode[UpdateAction] {
 
   def exec(context: ExecutionContext, state: pipes.QueryState): Iterator[ExecutionContext]
 
-  def identifiers: Seq[(String, CypherType)]
+  def variables: Seq[(String, CypherType)]
 
   def rewrite(f: Expression => Expression): UpdateAction
 
@@ -62,7 +62,7 @@ trait UpdateAction extends TypeSafe with AstNode[UpdateAction] {
   }
 
   // This is here to give FOREACH action a chance to introduce symbols
-  def updateSymbols(symbol: SymbolTable): SymbolTable = symbol.add(identifiers.toMap)
+  def updateSymbols(symbol: SymbolTable): SymbolTable = symbol.add(variables.toMap)
 
   def localEffects(symbols: SymbolTable): Effects
 }

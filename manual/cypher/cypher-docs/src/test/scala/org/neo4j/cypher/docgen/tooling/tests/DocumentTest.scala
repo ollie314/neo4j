@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -66,8 +66,8 @@ class DocumentAsciiDocTest extends CypherFunSuite {
 
   test("Section inside Section") {
     val doc = Document("title", "myId", initQueries = Seq.empty,
-      Section("outer", Seq.empty,
-        Paragraph("first") ~ Section("inner", Seq.empty, Paragraph("second"))
+      Section("outer", None, Seq.empty,
+        Paragraph("first") ~ Section("inner", None, Seq.empty, Paragraph("second"))
       ))
 
     doc.asciiDoc should equal(
@@ -78,6 +78,29 @@ class DocumentAsciiDocTest extends CypherFunSuite {
         |
         |first
         |
+        |=== inner
+        |
+        |second
+        |
+        |""".stripMargin)
+  }
+
+  test("Section with IDREF") {
+    val doc = Document("title", "myId", initQueries = Seq.empty,
+      Section("outer", Some("IDREF1"), Seq.empty,
+        Paragraph("first") ~ Section("inner", Some("IDREF2"), Seq.empty, Paragraph("second"))
+      ))
+
+    doc.asciiDoc should equal(
+      """[[myId]]
+        |= title
+        |
+        |[[IDREF1]]
+        |== outer
+        |
+        |first
+        |
+        |[[IDREF2]]
         |=== inner
         |
         |second
@@ -233,10 +256,9 @@ class DocumentAsciiDocTest extends CypherFunSuite {
         |[role="queryresult",options="footer",cols="1*<m"]
         ||===
         |1+|(empty result)
-        |1+|0 rows
-        |Nodes created: 2
+        |1+d|0 rows +
+        |Nodes created: 2 +
         |Relationships created: 1
-        |
         ||===
         |
         |""".stripMargin)
@@ -251,7 +273,7 @@ class DocumentAsciiDocTest extends CypherFunSuite {
         ||===
         ||n1|n2
         ||1|2
-        |2+|1 row
+        |2+d|1 row
         ||===
         |
         |""".stripMargin)
@@ -266,8 +288,31 @@ class DocumentAsciiDocTest extends CypherFunSuite {
         ||===
         ||n1\|x1|n2
         ||1\|2|2
-        |2+|1 row
+        |2+d|1 row
         ||===
+        |
+        |""".stripMargin)
+  }
+
+  test("Simple console data") {
+    val consoleData = ConsoleData(Seq("global1", "global2"), Seq("local1", "local2"), "myquery")
+
+    consoleData.asciiDoc(0) should equal(
+      """ifndef::nonhtmloutput[]
+        |[subs="none"]
+        |++++
+        |<formalpara role="cypherconsole">
+        |<title>Try this query live</title>
+        |<para><database><![CDATA[
+        |global1
+        |global2
+        |local1
+        |local2
+        |]]></database><command><![CDATA[
+        |myquery
+        |]]></command></para></formalpara>
+        |++++
+        |endif::nonhtmloutput[]
         |
         |""".stripMargin)
   }
@@ -278,9 +323,9 @@ class DocumentQueryTest extends CypherFunSuite {
 
   test("finds all queries and the init-queries they need") {
     val tableV = new TablePlaceHolder(NoAssertions)
-    val graphV: GraphVizPlaceHolder = new GraphVizPlaceHolder()
-    val doc = Document("title", "myId", Seq("1"), Section("h1", Seq("2"),
-      Section("h2", Seq("3"),
+    val graphV: GraphVizPlaceHolder = new GraphVizPlaceHolder("")
+    val doc = Document("title", "myId", Seq("1"), Section("h1", None, Seq("2"),
+      Section("h2", None, Seq("3"),
         Query("q", NoAssertions, Seq.empty, tableV)
       ) ~ Query("q2", NoAssertions, Seq.empty, graphV)
     ))
@@ -301,8 +346,8 @@ class DocumentQueryTest extends CypherFunSuite {
       """[[myId]]
         |= title
         |
-        |[source,cypher]
         |.Query
+        |[source,cypher]
         |----
         |MATCH (n)
         |RETURN n

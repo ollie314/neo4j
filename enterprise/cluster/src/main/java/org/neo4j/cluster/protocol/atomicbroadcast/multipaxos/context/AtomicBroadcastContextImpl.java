@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,7 +30,7 @@ import org.neo4j.cluster.timeout.Timeouts;
 import org.neo4j.cluster.util.Quorums;
 import org.neo4j.helpers.Listeners;
 import org.neo4j.helpers.collection.Iterables;
-import org.neo4j.kernel.impl.logging.LogService;
+import org.neo4j.logging.LogProvider;
 
 /**
  * Context for {@link AtomicBroadcastState} state machine.
@@ -46,10 +46,10 @@ class AtomicBroadcastContextImpl
     private final HeartbeatContext heartbeatContext;
 
     AtomicBroadcastContextImpl( org.neo4j.cluster.InstanceId me, CommonContextState commonState,
-                                LogService logService,
+                                LogProvider logging,
                                 Timeouts timeouts, Executor executor, HeartbeatContext heartbeatContext  )
     {
-        super( me, commonState, logService, timeouts );
+        super( me, commonState, logging, timeouts );
         this.executor = executor;
         this.heartbeatContext = heartbeatContext;
     }
@@ -79,10 +79,10 @@ class AtomicBroadcastContextImpl
         } );
     }
 
-    public AtomicBroadcastContextImpl snapshot( CommonContextState commonStateSnapshot, LogService logService,
+    public AtomicBroadcastContextImpl snapshot( CommonContextState commonStateSnapshot, LogProvider logging,
                                                 Timeouts timeouts, Executor executor, HeartbeatContext heartbeatContext )
     {
-        return new AtomicBroadcastContextImpl( me, commonStateSnapshot, logService, timeouts, executor, heartbeatContext );
+        return new AtomicBroadcastContextImpl( me, commonStateSnapshot, logging, timeouts, executor, heartbeatContext );
     }
 
     @Override

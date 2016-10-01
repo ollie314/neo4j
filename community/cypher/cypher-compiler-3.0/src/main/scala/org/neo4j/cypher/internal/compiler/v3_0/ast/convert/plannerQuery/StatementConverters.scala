@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,60 +21,57 @@ package org.neo4j.cypher.internal.compiler.v3_0.ast.convert.plannerQuery
 
 import org.neo4j.cypher.internal.compiler.v3_0.ast.convert.plannerQuery.ClauseConverters._
 import org.neo4j.cypher.internal.compiler.v3_0.planner._
-import org.neo4j.cypher.internal.frontend.v3_0.{Foldable, ast}
+import org.neo4j.cypher.internal.frontend.v3_0.{SemanticTable, Foldable, ast}
 import org.neo4j.cypher.internal.frontend.v3_0.ast._
 
 object StatementConverters {
+  import Foldable._
 
-  implicit class SingleQueryPartConverter(val q: SingleQuery) {
-    def asPlannerQueryBuilder: PlannerQueryBuilder =
-      q.clauses.foldLeft(PlannerQueryBuilder.empty) {
-        case (acc, clause) => clause.addToLogicalPlanInput(acc)
-      }
-  }
+  def toPlannerQueryBuilder(q: SingleQuery, semanticTable: SemanticTable): PlannerQueryBuilder =
+    q.clauses.foldLeft(PlannerQueryBuilder(semanticTable)) {
+      case (acc, clause) => addToLogicalPlanInput(acc, clause)
+    }
 
-  val NODE_BLACKLIST: Set[Class[_ <: ASTNode]] = Set(
+  private val NODE_BLACKLIST: Set[Class[_ <: ASTNode]] = Set(
     classOf[And],
     classOf[Or],
     // classOf[ReturnAll],
     classOf[UnaliasedReturnItem]
   )
 
-  import Foldable._
-  def findBlacklistedNodes(node: AnyRef): Seq[ASTNode] = {
+
+  private def findBlacklistedNodes(node: AnyRef): Seq[ASTNode] = {
     node.treeFold(Seq.empty[ASTNode]) {
       case node: ASTNode if NODE_BLACKLIST.contains(node.getClass) =>
-        (acc, children)  => children(acc :+ node)
+        acc => (acc :+ node, Some(identity))
     }
   }
 
-  implicit class QueryConverter(val query: Query) {
-    def asUnionQuery: UnionQuery = {
-      val nodes = findBlacklistedNodes(query)
-      require(nodes.isEmpty, "Found a blacklisted AST node: " + nodes.head.toString)
+  def toUnionQuery(query: Query, semanticTable: SemanticTable): UnionQuery = {
+    val nodes = findBlacklistedNodes(query)
+    require(nodes.isEmpty, "Found a blacklisted AST node: " + nodes.head.toString)
 
-      query match {
-        case Query(None, queryPart: SingleQuery) =>
-          val builder = queryPart.asPlannerQueryBuilder
-          UnionQuery(Seq(builder.build()), distinct = false, builder.returns)
+    query match {
+      case Query(periodicCommitHint, queryPart: SingleQuery) =>
+        val builder = toPlannerQueryBuilder(queryPart, semanticTable)
+        UnionQuery(Seq(builder.build()), distinct = false, builder.returns, PeriodicCommit(periodicCommitHint))
 
-        case Query(None, u: ast.Union) =>
-          val queries: Seq[SingleQuery] = u.unionedQueries
-          val distinct = u match {
-            case _: UnionAll => false
-            case _: UnionDistinct => true
-          }
-          val plannedQueries: Seq[PlannerQueryBuilder] = queries.reverseMap(x => x.asPlannerQueryBuilder)
-          //UNION requires all queries to return the same identifiers
-          assert(plannedQueries.nonEmpty)
-          val returns = plannedQueries.head.returns
-          assert(plannedQueries.forall(_.returns == returns))
+      case Query(periodicCommitHint, u: ast.Union) =>
+        val queries: Seq[SingleQuery] = u.unionedQueries
+        val distinct = u match {
+          case _: UnionAll => false
+          case _: UnionDistinct => true
+        }
+        val plannedQueries: Seq[PlannerQueryBuilder] = queries.reverseMap(x => toPlannerQueryBuilder(x, semanticTable))
+        //UNION requires all queries to return the same variables
+        assert(plannedQueries.nonEmpty)
+        val returns = plannedQueries.head.returns
+        assert(plannedQueries.forall(_.returns == returns))
 
-          UnionQuery(plannedQueries.map(_.build()), distinct, returns)
+        UnionQuery(plannedQueries.map(_.build()), distinct, returns, PeriodicCommit(periodicCommitHint))
 
-        case _ =>
-          throw new CantHandleQueryException
-      }
+      case _ =>
+        throw new CantHandleQueryException
     }
   }
 }

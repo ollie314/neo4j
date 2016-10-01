@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,6 +27,7 @@ import org.neo4j.kernel.impl.transaction.log.LogVersionedStoreChannel;
 import org.neo4j.kernel.impl.transaction.log.PhysicalLogFile;
 import org.neo4j.kernel.impl.transaction.log.PhysicalLogFiles;
 import org.neo4j.kernel.impl.transaction.log.ReadAheadLogChannel;
+import org.neo4j.kernel.impl.transaction.log.ReadableClosablePositionAwareChannel;
 import org.neo4j.kernel.impl.transaction.log.ReadableLogChannel;
 import org.neo4j.kernel.impl.transaction.log.entry.CheckPoint;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntry;
@@ -35,16 +36,15 @@ import org.neo4j.kernel.impl.transaction.log.entry.LogEntryStart;
 
 import static org.neo4j.kernel.impl.transaction.log.LogVersionBridge.NO_MORE_CHANNELS;
 import static org.neo4j.kernel.impl.transaction.log.LogVersionRepository.INITIAL_LOG_VERSION;
-import static org.neo4j.kernel.impl.transaction.log.ReadAheadLogChannel.DEFAULT_READ_AHEAD_SIZE;
 
 public class LatestCheckPointFinder
 {
     private final PhysicalLogFiles logFiles;
     private final FileSystemAbstraction fileSystem;
-    private final LogEntryReader<ReadableLogChannel> logEntryReader;
+    private final LogEntryReader<ReadableClosablePositionAwareChannel> logEntryReader;
 
     public LatestCheckPointFinder( PhysicalLogFiles logFiles, FileSystemAbstraction fileSystem,
-            LogEntryReader<ReadableLogChannel> logEntryReader )
+            LogEntryReader<ReadableClosablePositionAwareChannel> logEntryReader )
     {
         this.logFiles = logFiles;
         this.fileSystem = fileSystem;
@@ -59,7 +59,8 @@ public class LatestCheckPointFinder
         long oldestVersionFound = -1;
         while ( version >= INITIAL_LOG_VERSION )
         {
-            LogVersionedStoreChannel channel = PhysicalLogFile.tryOpenForVersion( logFiles, fileSystem, version );
+            LogVersionedStoreChannel channel =
+                    PhysicalLogFile.tryOpenForVersion( logFiles, fileSystem, version, false );
             if ( channel == null )
             {
                 return new LatestCheckPoint( null, false, oldestVersionFound );
@@ -69,7 +70,7 @@ public class LatestCheckPointFinder
 
             CheckPoint latestCheckPoint = null;
             ReadableLogChannel recoveredDataChannel =
-                    new ReadAheadLogChannel( channel, NO_MORE_CHANNELS, DEFAULT_READ_AHEAD_SIZE );
+                    new ReadAheadLogChannel( channel, NO_MORE_CHANNELS );
 
             try ( LogEntryCursor cursor = new LogEntryCursor( logEntryReader, recoveredDataChannel ) )
             {

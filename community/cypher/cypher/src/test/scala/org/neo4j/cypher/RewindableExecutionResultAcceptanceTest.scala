@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,7 +28,7 @@ class RewindableExecutionResultAcceptanceTest extends ExecutionEngineFunSuite {
     val a = createNode()
     val b = createNode()
 
-    val result = rewindableExecutionResult("match (n) return n")
+    val result = execute("match (n) return n")
 
     result.toList should equal(List(Map("n" -> a), Map("n" -> b)))
     result.toList should equal(List(Map("n" -> a), Map("n" -> b)))
@@ -38,7 +38,7 @@ class RewindableExecutionResultAcceptanceTest extends ExecutionEngineFunSuite {
     val a = createNode("name" -> "Aslan")
     val b = createNode("name" -> "White Queen")
 
-    val result = rewindableExecutionResult(" match (n) return n")
+    val result = execute(" match (n) return n")
 
     assert(List(Map("n" -> a), Map("n" -> b)) === result.toList)
 
@@ -52,7 +52,7 @@ class RewindableExecutionResultAcceptanceTest extends ExecutionEngineFunSuite {
     val a = createNode("name" -> "Aslan")
     val b = createNode("name" -> "White Queen")
 
-    val result = rewindableExecutionResult("match (n) return n")
+    val result = execute("match (n) return n")
 
     assert(List(Map("n" -> a), Map("n" -> b)) === result.toList)
 
@@ -60,7 +60,4 @@ class RewindableExecutionResultAcceptanceTest extends ExecutionEngineFunSuite {
 
     nodes should equal(List(a,b))
   }
-
-  private def rewindableExecutionResult(query: String): InternalExecutionResult =
-    RewindableExecutionResult(eengine.execute(query))
 }

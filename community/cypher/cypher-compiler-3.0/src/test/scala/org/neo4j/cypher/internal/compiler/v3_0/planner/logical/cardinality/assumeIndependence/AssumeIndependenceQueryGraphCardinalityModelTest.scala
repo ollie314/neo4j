@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -57,13 +57,13 @@ class AssumeIndependenceQueryGraphCardinalityModelTest extends RandomizedCardina
         -> N * Asel * Bsel,
 
       "MATCH (a:Z)"
-        -> 0.0,
+        -> 1.0,
 
       "MATCH (a:A:Z)"
-        -> 0.0,
+        -> 0.2,
 
       "MATCH (a:Z:B)"
-        -> 0.0,
+        -> 0.1,
 
       "MATCH (a:A) WHERE a.prop = 42"
         -> A * Aprop,
@@ -240,7 +240,7 @@ class AssumeIndependenceQueryGraphCardinalityModelTest extends RandomizedCardina
     shouldHaveQueryGraphCardinality(1000.0 / 500.0 * 13.0)
   }
 
-  test("input cardinality of zero on a different identifier should not affect cardinality estimation of the pattern") {
+  test("input cardinality of zero on a different variable should not affect cardinality estimation of the pattern") {
     givenPattern("MATCH (a)").
     withQueryGraphArgumentIds(IdName("e")).
     withInboundCardinality(0.0).

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,10 +20,11 @@
 package org.neo4j.cypher.internal
 
 import org.neo4j.cypher.internal.compiler.v3_0.CompilationPhaseTracer
+import org.neo4j.cypher.internal.spi.TransactionalContextWrapper
 import org.neo4j.kernel.api.Statement
 
 trait ParsedQuery {
   def isPeriodicCommit: Boolean
-  def plan(statement: Statement, tracer: CompilationPhaseTracer): (ExecutionPlan, Map[String, Any])
+  def plan(transactionContext: TransactionalContextWrapper, tracer: CompilationPhaseTracer): (ExecutionPlan, Map[String, Any])
   def hasErrors: Boolean
 }

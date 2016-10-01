@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,7 +30,7 @@ import org.neo4j.graphdb.Node
 
 case class GetDegree(node: Expression, typ: Option[KeyToken], direction: SemanticDirection) extends NullInNullOutExpression(node) {
 
-  val getDegree: (QueryContext, Long) => Int = typ match {
+  val getDegree: (QueryContext, Long) => Long = typ match {
     case None    => (qtx, node) => qtx.nodeGetDegree(node, direction)
     case Some(t) => (qtx, node) => t.getOptId(qtx) match {
       case None            => 0

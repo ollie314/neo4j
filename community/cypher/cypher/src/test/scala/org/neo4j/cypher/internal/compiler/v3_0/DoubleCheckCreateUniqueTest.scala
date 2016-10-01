@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,13 +21,16 @@ package org.neo4j.cypher.internal.compiler.v3_0
 
 import java.lang.Iterable
 import java.util
+
 import org.neo4j.cypher.internal.compiler.v3_0.mutation.{CreateUniqueAction, UniqueLink}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.frontend.v3_0.SemanticDirection
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
-import org.neo4j.graphdb.Traverser.Order
+import org.neo4j.cypher.javacompat.internal.GraphDatabaseCypherService
 import org.neo4j.graphdb._
-import org.neo4j.test.ImpermanentGraphDatabase
+import org.neo4j.kernel.api.KernelTransaction
+import org.neo4j.kernel.api.security.AccessMode
+import org.neo4j.test.TestGraphDatabaseFactory
 
 import scala.collection.JavaConverters._
 
@@ -41,7 +44,7 @@ getRelationships on a node, we'll create a new relationship.
 
 class DoubleCheckCreateUniqueTest extends CypherFunSuite {
   var done = false
-  val db = new ImpermanentGraphDatabase() with TripIt
+  val db = new Wrapper(new TestGraphDatabaseFactory().newImpermanentDatabase())
   var tx:Transaction = null
 
   test("double_check_unique") {
@@ -65,13 +68,13 @@ class DoubleCheckCreateUniqueTest extends CypherFunSuite {
   }
 
   private def withQueryState(f: QueryState => Unit) {
-    val tx = db.beginTx()
+    val tx = db.beginTransaction( KernelTransaction.Type.explicit, AccessMode.Static.WRITE )
     f(QueryStateHelper.queryStateFrom(db, tx))
     tx.close()
   }
 
   private def createNode(): Node = {
-    val tx = db.beginTx()
+    val tx = db.beginTransaction( KernelTransaction.Type.explicit, AccessMode.Static.WRITE )
     try {
       val n = db.createNode()
       tx.success()
@@ -85,16 +88,16 @@ class DoubleCheckCreateUniqueTest extends CypherFunSuite {
     if (!done) {
       done = true
       val x = db.createNode()
-      node.createRelationshipTo(x, DynamicRelationshipType.withName("X"))
+      node.createRelationshipTo(x, RelationshipType.withName("X"))
     }
   }
 }
 
-trait TripIt extends GraphDatabaseService {
+class Wrapper(graph: GraphDatabaseService) extends GraphDatabaseCypherService(graph) {
   var afterGetRelationship: Node => Unit = (n) => {}
 
-  abstract override def createNode(): Node = {
-    val n = super.createNode()
+  override def createNode(): Node = {
+    val n = graph.createNode()
     new PausingNode(n, afterGetRelationship)
   }
 }
@@ -140,12 +143,6 @@ class PausingNode(n: Node, afterGetRelationship: Node => Unit) extends Node {
   def createRelationshipTo(otherNode: Node, `type`: RelationshipType): Relationship = {
     n.createRelationshipTo(otherNode, `type`)
   }
-
-  def traverse(traversalOrder: Order, stopEvaluator: StopEvaluator, returnableEvaluator: ReturnableEvaluator, relationshipType: RelationshipType, direction: Direction): Traverser = ???
-
-  def traverse(traversalOrder: Order, stopEvaluator: StopEvaluator, returnableEvaluator: ReturnableEvaluator, firstRelationshipType: RelationshipType, firstDirection: Direction, secondRelationshipType: RelationshipType, secondDirection: Direction): Traverser = ???
-
-  def traverse(traversalOrder: Order, stopEvaluator: StopEvaluator, returnableEvaluator: ReturnableEvaluator, relationshipTypesAndDirections: AnyRef*): Traverser = ???
 
   def getGraphDatabase: GraphDatabaseService = ???
 

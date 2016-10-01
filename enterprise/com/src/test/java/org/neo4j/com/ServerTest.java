@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,13 +27,15 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.concurrent.TimeUnit;
 
 import org.neo4j.com.monitor.RequestMonitor;
 import org.neo4j.helpers.HostnamePort;
 import org.neo4j.helpers.TickingClock;
-import org.neo4j.logging.NullLogProvider;
 import org.neo4j.kernel.impl.transaction.log.TransactionIdStore;
+import org.neo4j.kernel.impl.transaction.log.entry.VersionAwareLogEntryReader;
 import org.neo4j.kernel.monitoring.ByteCounterMonitor;
+import org.neo4j.logging.NullLogProvider;
 
 import static junit.framework.TestCase.fail;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -77,7 +79,7 @@ public class ServerTest
         try
         {
             protocol.deserializeResponse( channel.asBlockingReadHandler(), ByteBuffer.allocateDirect( 1024 ), 1,
-                    VOID_DESERIALIZER, mock( ResourceReleaser.class ) );
+                    VOID_DESERIALIZER, mock( ResourceReleaser.class ), new VersionAwareLogEntryReader<>() );
             fail( "Should have failed." );
         }
         catch ( IllegalStateException e )
@@ -132,7 +134,7 @@ public class ServerTest
                 NullLogProvider.getInstance(),
                 Protocol.DEFAULT_FRAME_LENGTH,
                 new ProtocolVersion( ((byte) 0), ProtocolVersion.INTERNAL_PROTOCOL_VERSION ),
-                checksumVerifier, new TickingClock( 0, 1 ),
+                checksumVerifier, new TickingClock( 0, 1, TimeUnit.MILLISECONDS ),
                 mock( ByteCounterMonitor.class ), mock( RequestMonitor.class ) )
         {
             @Override

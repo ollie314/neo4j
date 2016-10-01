@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,17 +22,18 @@ package org.neo4j.server.rest.batch;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 
 import org.junit.Test;
+
 import org.neo4j.server.rest.web.InternalJettyServletRequest;
 import org.neo4j.server.rest.web.InternalJettyServletResponse;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -58,7 +59,7 @@ public class BatchOperationsTest {
     public void testSchemeInInternalJettyServletRequestForHttp() throws UnsupportedEncodingException
     {
         // when
-        InternalJettyServletRequest req = new InternalJettyServletRequest( "POST", "http://localhost:7473/db/data/node", "{'name':'node1'}", new InternalJettyServletResponse() );
+        InternalJettyServletRequest req = new InternalJettyServletRequest( "POST", "http://localhost:7473/db/data/node", "{'name':'node1'}", new InternalJettyServletResponse(), mock( HttpServletRequest.class ) );
 
         // then
         assertEquals("http",req.getScheme());
@@ -68,7 +69,7 @@ public class BatchOperationsTest {
     public void testSchemeInInternalJettyServletRequestForHttps() throws UnsupportedEncodingException
     {
         // when
-        InternalJettyServletRequest req = new InternalJettyServletRequest( "POST", "https://localhost:7473/db/data/node", "{'name':'node1'}", new InternalJettyServletResponse() );
+        InternalJettyServletRequest req = new InternalJettyServletRequest( "POST", "https://localhost:7473/db/data/node", "{'name':'node1'}", new InternalJettyServletResponse(), mock( HttpServletRequest.class ) );
 
         // then
         assertEquals("https",req.getScheme());
@@ -80,7 +81,7 @@ public class BatchOperationsTest {
         // Given
         HttpServletRequest mock = mock( HttpServletRequest.class );
 
-        when(mock.getAuthType()).thenReturn( "auth" );
+        when(mock.getAuthType()).thenReturn( "authorization/auth" );
         when(mock.getRemoteAddr()).thenReturn( "127.0.0.1" );
         when(mock.getRemoteHost()).thenReturn( "localhost" );
         when(mock.getRemotePort()).thenReturn( 1 );
@@ -92,12 +93,22 @@ public class BatchOperationsTest {
                 mock );
 
         // When & then
-        assertEquals( "auth", req.getAuthType());
+        assertEquals( "authorization/auth", req.getAuthType());
         assertEquals( "127.0.0.1", req.getRemoteAddr());
         assertEquals( "localhost", req.getRemoteHost());
         assertEquals( 1, req.getRemotePort());
         assertEquals( 2, req.getLocalPort());
         assertEquals( "129.0.0.1", req.getLocalAddr());
 
+    }
+
+    @Test
+    public void shouldIgnoreUnknownAndUnparseablePlaceholders() throws Throwable
+    {
+        // When/then
+        assertEquals("foo {00000000010001010001001100111000100101010111001101110111}",
+                ops.replaceLocationPlaceholders("foo {00000000010001010001001100111000100101010111001101110111}", Collections.<Integer,String>emptyMap() ));
+        assertEquals("foo {2147483648}",
+                ops.replaceLocationPlaceholders("foo {2147483648}", Collections.<Integer,String>emptyMap() ));
     }
 }

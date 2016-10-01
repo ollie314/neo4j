@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,48 +22,44 @@ package org.neo4j.bolt.v1.messaging.msgprocess;
 import java.io.IOException;
 import java.util.Map;
 
-import org.neo4j.logging.Log;
 import org.neo4j.bolt.v1.messaging.MessageHandler;
 import org.neo4j.bolt.v1.runtime.Session;
 import org.neo4j.bolt.v1.runtime.StatementMetadata;
+import org.neo4j.bolt.v1.runtime.internal.Neo4jError;
 import org.neo4j.bolt.v1.runtime.spi.RecordStream;
+import org.neo4j.logging.Log;
 
 /** Bridges the gap between incoming deserialized messages, the user environment and back. */
 public class TransportBridge extends MessageHandler.Adapter<RuntimeException>
 {
     // Note that these callbacks can be used for multiple in-flight requests simultaneously, you cannot reset them
     // while there are in-flight requests.
+    private final MessageProcessingCallback<Boolean> initCallback;
     private final MessageProcessingCallback<StatementMetadata> runCallback;
     private final MessageProcessingCallback<RecordStream> resultStreamCallback;
     private final MessageProcessingCallback<Void> simpleCallback;
 
     private Session session;
 
-    public TransportBridge( Log log )
+    public TransportBridge( Log log, Session session, MessageHandler<IOException> output,
+            Runnable onEachCompletedRequest )
     {
         this.resultStreamCallback = new RecordStreamCallback( log );
         this.simpleCallback = new MessageProcessingCallback<>( log );
         this.runCallback = new RunCallback( log );
-    }
-
-    /**
-     * Reset this bridge to be used for a different session. This method CANNOT be called while there are in-flight
-     * requests for this bridge running, doing so will cause protocol errors.
-     */
-    public TransportBridge reset( Session session, MessageHandler<IOException> output,
-            Runnable onEachCompletedRequest )
-    {
+        this.initCallback = new InitCallback( log );
         this.session = session;
+        this.initCallback.reset( output, onEachCompletedRequest );
         this.simpleCallback.reset( output, onEachCompletedRequest );
         this.resultStreamCallback.reset( output, onEachCompletedRequest );
         this.runCallback.reset( output, onEachCompletedRequest );
-        return this;
     }
 
     @Override
-    public void handleInitMessage( String clientName ) throws RuntimeException
+    public void handleInitMessage( String clientName, Map<String,Object> authToken ) throws RuntimeException
     {
-        session.init( clientName, null, simpleCallback );
+        session.init( clientName, authToken, null, initCallback );
+
     }
 
     @Override
@@ -85,8 +81,19 @@ public class TransportBridge extends MessageHandler.Adapter<RuntimeException>
     }
 
     @Override
+    public void handleResetMessage() throws RuntimeException
+    {
+        session.reset( null, simpleCallback );
+    }
+
+    @Override
     public void handleAckFailureMessage() throws RuntimeException
     {
-        session.acknowledgeFailure( null, simpleCallback );
+        session.ackFailure( null, simpleCallback );
+    }
+
+    public void handleFatalError( Neo4jError from )
+    {
+        session.externalError( from, null, simpleCallback );
     }
 }

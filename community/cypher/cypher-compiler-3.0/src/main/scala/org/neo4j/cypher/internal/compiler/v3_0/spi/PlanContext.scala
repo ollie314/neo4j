@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,7 +20,7 @@
 package org.neo4j.cypher.internal.compiler.v3_0.spi
 
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.EntityProducer
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.matching.{TraversalMatcher, ExpanderStep}
+import org.neo4j.cypher.internal.compiler.v3_0.pipes.matching.{ExpanderStep, TraversalMatcher}
 import org.neo4j.graphdb.Node
 import org.neo4j.kernel.api.constraints.UniquenessConstraint
 import org.neo4j.kernel.api.index.IndexDescriptor
@@ -32,7 +32,7 @@ import org.neo4j.kernel.api.index.IndexDescriptor
  * want to control what operations can be executed at runtime.  For example, we do not give access
  * to index rule lookup in QueryContext as that should happen at query compile time.
  */
-trait PlanContext extends TokenContext {
+trait PlanContext extends TokenContext with ProcedureSignatureResolver {
 
   def getIndexRule(labelName: String, propertyKey: String): Option[IndexDescriptor]
 
@@ -41,6 +41,8 @@ trait PlanContext extends TokenContext {
   def getUniqueIndexRule(labelName: String, propertyKey: String): Option[IndexDescriptor]
 
   def getUniquenessConstraint(labelName: String, propertyKey: String): Option[UniquenessConstraint]
+
+  def hasPropertyExistenceConstraint(labelName: String, propertyKey: String): Boolean
 
   def checkNodeIndex(idxName: String)
 
@@ -58,4 +60,8 @@ trait PlanContext extends TokenContext {
   def bidirectionalTraversalMatcher(steps: ExpanderStep,
                                     start: EntityProducer[Node],
                                     end: EntityProducer[Node]): TraversalMatcher
+}
+
+trait ProcedureSignatureResolver {
+  def procedureSignature(name: QualifiedProcedureName): ProcedureSignature
 }

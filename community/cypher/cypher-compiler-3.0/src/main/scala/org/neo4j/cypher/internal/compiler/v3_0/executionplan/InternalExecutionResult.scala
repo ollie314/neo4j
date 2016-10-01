@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,28 +20,39 @@
 package org.neo4j.cypher.internal.compiler.v3_0.executionplan
 
 import java.io.PrintWriter
+import java.util
 
-import org.neo4j.cypher.internal.compiler.v3_0.InternalQueryStatistics
 import org.neo4j.cypher.internal.compiler.v3_0.planDescription.InternalPlanDescription
+import org.neo4j.cypher.internal.compiler.v3_0.spi.InternalResultVisitor
+import org.neo4j.cypher.internal.compiler.v3_0.{ExecutionMode, InternalQueryStatistics}
 import org.neo4j.cypher.internal.frontend.v3_0.notification.InternalNotification
-import org.neo4j.graphdb.Result.ResultVisitor
-import org.neo4j.graphdb.{QueryExecutionType, ResourceIterator}
+import org.neo4j.graphdb.ResourceIterator
 
 trait InternalExecutionResult extends Iterator[Map[String, Any]] {
+
   def columns: List[String]
+  def columnAs[T](column: String): Iterator[T]
+
   def javaColumns: java.util.List[String]
   def javaColumnAs[T](column: String): ResourceIterator[T]
-  def columnAs[T](column: String): Iterator[T]
   def javaIterator: ResourceIterator[java.util.Map[String, Any]]
+
   def dumpToString(writer: PrintWriter)
   def dumpToString(): String
+
   def queryStatistics(): InternalQueryStatistics
-  def executionPlanDescription(): InternalPlanDescription
-  def close()
+
   def planDescriptionRequested: Boolean
-  def executionType: QueryExecutionType
+  def executionPlanDescription(): InternalPlanDescription
+
+  def executionType: InternalQueryType
+  def executionMode: ExecutionMode
+
   def notifications: Iterable[InternalNotification]
-  //todo this should not depend on external visitor
+
   @throws(classOf[Exception])
-  def accept[EX <: Exception](visitor: ResultVisitor[EX])
+  def accept[EX <: Exception](visitor: InternalResultVisitor[EX])
+
+  def close()
 }
+

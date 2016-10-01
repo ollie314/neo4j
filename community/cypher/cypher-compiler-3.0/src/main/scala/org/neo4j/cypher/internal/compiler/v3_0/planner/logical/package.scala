@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,6 +19,9 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner
 
+import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.LogicalPlan
+
 package object logical {
   type Selector[P] = Iterable[P] => Option[P]
+  type LeafPlanFinder = LogicalPlanningFunction2[QueryPlannerConfiguration, QueryGraph, Set[LogicalPlan]]
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,8 @@ import org.neo4j.cypher.SyntaxException
 import org.neo4j.cypher.docgen.tooling._
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionResult
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
-import org.neo4j.graphdb.{GraphDatabaseService, Transaction}
+import org.neo4j.kernel.GraphDatabaseQueryService
+import org.neo4j.kernel.impl.coreapi.InternalTransaction
 import org.scalatest.exceptions.TestFailedException
 import org.scalatest.matchers.{MatchResult, Matcher}
 
@@ -47,7 +48,7 @@ class QueryRunnerTest extends CypherFunSuite {
 
   test("init query failing is reported as such") {
     val failingQuery = "YOU SHALL NOT PASS"
-    val result = run(Seq(failingQuery), new GraphVizPlaceHolder())
+    val result = run(Seq(failingQuery), new GraphVizPlaceHolder(""))
 
     result.queryResults should have size 1
     result should haveATestFailureOfClass(failingQuery -> classOf[SyntaxException])
@@ -57,7 +58,7 @@ class QueryRunnerTest extends CypherFunSuite {
     run(Seq(query), new TablePlaceHolder(assertions))
 
   private def run(initQueries: Seq[String], content: QueryResultPlaceHolder): TestRunResult = {
-    val formatter = (_: GraphDatabaseService, _: Transaction) => (_: InternalExecutionResult) => NoContent
+    val formatter = (_: GraphDatabaseQueryService, _: InternalTransaction) => (_: InternalExecutionResult) => NoContent
     val runner = new QueryRunner(formatter)
     runner.runQueries(contentsWithInit = Seq(ContentWithInit(initQueries, content)), "title")
   }

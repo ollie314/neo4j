@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,28 +21,20 @@ package org.neo4j.cypher.internal.compiler.v3_0.ast.rewriters
 
 import org.neo4j.cypher.internal.frontend.v3_0.{topDown, Rewriter}
 import org.neo4j.cypher.internal.frontend.v3_0.ast._
-import org.neo4j.cypher.internal.frontend.v3_0.ast.functions.{Exists, Has}
+import org.neo4j.cypher.internal.frontend.v3_0.ast.functions.Exists
 
 case object normalizeSargablePredicates extends Rewriter {
 
-  override def apply(that: AnyRef): AnyRef = topDown(instance)(that)
+  override def apply(that: AnyRef): AnyRef = instance(that)
 
-  private val instance: Rewriter = Rewriter.lift {
+  private val instance: Rewriter = topDown(Rewriter.lift {
 
     // turn n.prop IS NOT NULL into exists(n.prop)
     case predicate@IsNotNull(property@Property(_, _)) =>
       Exists.asInvocation(property)(predicate.position)
 
-    // turn has(n.prop) to exists(n.prop)
-    case func@FunctionInvocation(_, _, IndexedSeq(property@Property(_, _))) if func.function.contains(Has)  =>
-      Exists.asInvocation(property)(func.position)
-
-    // turn has(n[prop]) to exists(n[prop])
-    case func@FunctionInvocation(_, _, IndexedSeq(ci@ContainerIndex(_, _))) if func.function.contains(Has)  =>
-      Exists.asInvocation(ci)(func.position)
-
     // remove not from inequality expressions by negating them
     case Not(inequality: InequalityExpression) =>
       inequality.negated
-  }
+  })
 }

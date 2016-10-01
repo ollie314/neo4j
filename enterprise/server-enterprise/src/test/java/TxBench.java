@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -58,7 +58,7 @@ public class TxBench
         {
             FileUtils.deleteRecursively( path );
         }
-        db = new GraphDatabaseFactory().newEmbeddedDatabase( path.getAbsolutePath() );
+        db = new GraphDatabaseFactory().newEmbeddedDatabaseBuilder( path ).newGraphDatabase();
         try( Transaction tx = db.beginTx() )
         {
             db.execute( "CREATE INDEX ON :User(name)" );
@@ -127,18 +127,13 @@ public class TxBench
         for ( int i = 0; i < numWorkers; i++ )
         {
             final Worker worker = new Worker();
-            workers.add( new Callable<Object>()
-            {
-                @Override
-                public Object call() throws Exception
+            workers.add( () -> {
+                for ( int i1 = 0; i1 < iterations; i1++ )
                 {
-                    for ( int i = 0; i < iterations; i++ )
-                    {
-                        worker.operation();
-                    }
-                    return null;
+                    worker.operation();
                 }
-            });
+                return null;
+            } );
         }
         return workers;
     }

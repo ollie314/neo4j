@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,24 +20,26 @@
 package org.neo4j.cluster;
 
 import java.util.List;
+import java.util.function.Function;
 
 import org.neo4j.graphdb.config.Setting;
 import org.neo4j.graphdb.factory.Description;
 import org.neo4j.helpers.HostnamePort;
+import org.neo4j.kernel.configuration.Internal;
 
-import static org.neo4j.helpers.Settings.ANY;
-import static org.neo4j.helpers.Settings.BOOLEAN;
-import static org.neo4j.helpers.Settings.DURATION;
-import static org.neo4j.helpers.Settings.HOSTNAME_PORT;
-import static org.neo4j.helpers.Settings.MANDATORY;
-import static org.neo4j.helpers.Settings.STRING;
-import static org.neo4j.helpers.Settings.TRUE;
-import static org.neo4j.helpers.Settings.illegalValueMessage;
-import static org.neo4j.helpers.Settings.list;
-import static org.neo4j.helpers.Settings.matches;
-import static org.neo4j.helpers.Settings.setting;
-
-import org.neo4j.helpers.Function;
+import static org.neo4j.kernel.configuration.Settings.ANY;
+import static org.neo4j.kernel.configuration.Settings.BOOLEAN;
+import static org.neo4j.kernel.configuration.Settings.DURATION;
+import static org.neo4j.kernel.configuration.Settings.HOSTNAME_PORT;
+import static org.neo4j.kernel.configuration.Settings.MANDATORY;
+import static org.neo4j.kernel.configuration.Settings.STRING;
+import static org.neo4j.kernel.configuration.Settings.INTEGER;
+import static org.neo4j.kernel.configuration.Settings.TRUE;
+import static org.neo4j.kernel.configuration.Settings.illegalValueMessage;
+import static org.neo4j.kernel.configuration.Settings.list;
+import static org.neo4j.kernel.configuration.Settings.matches;
+import static org.neo4j.kernel.configuration.Settings.min;
+import static org.neo4j.kernel.configuration.Settings.setting;
 
 /**
  * Settings for cluster members
@@ -71,7 +73,8 @@ public class ClusterSettings
     public static final Setting<InstanceId> server_id = setting( "ha.server_id", INSTANCE_ID, MANDATORY );
 
     @Description( "The name of a cluster." )
-    public static final Setting<String> cluster_name = setting( "ha.cluster_name", STRING, "neo4j.ha",
+    @Internal
+    public static final Setting<String> cluster_name = setting( "unsupported.ha.cluster_name", STRING, "neo4j.ha",
             illegalValueMessage( "must be a valid cluster name", matches( ANY ) ) );
 
     @Description( "A comma-separated list of other members of the cluster to join." )
@@ -79,7 +82,7 @@ public class ClusterSettings
             list( ",", HOSTNAME_PORT ), MANDATORY );
 
     @Description( "Host and port to bind the cluster management communication." )
-    public static final Setting<HostnamePort> cluster_server = setting( "ha.cluster_server", HOSTNAME_PORT,
+    public static final Setting<HostnamePort> cluster_server = setting( "ha.host.coordination", HOSTNAME_PORT,
             "0.0.0.0:5001-5099" );
 
     @Description( "Whether to allow this instance to create a cluster if unable to join." )
@@ -142,5 +145,12 @@ public class ClusterSettings
     @Description( "Timeout for waiting for other members to finish a role election. Defaults to ha.paxos_timeout." )
     public static final Setting<Long> election_timeout = setting( "ha.election_timeout", DURATION, paxos_timeout );
 
-    public static final Setting<String> instance_name = setting("ha.instance_name", STRING, (String) null);
+    @Internal
+    public static final Setting<String> instance_name = setting("unsupported.ha.instance_name", STRING, (String) null);
+
+    @Description( "Maximum number of servers to involve when agreeing to membership changes. " +
+            "In very large clusters, the probability of half the cluster failing is low, but protecting against " +
+            "any arbitrary half failing is expensive. Therefore you may wish to set this parameter to a value less " +
+            "than the cluster size." )
+    public static final Setting<Integer> max_acceptors = setting( "ha.max_acceptors", INTEGER, "21", min( 1 ) );
 }

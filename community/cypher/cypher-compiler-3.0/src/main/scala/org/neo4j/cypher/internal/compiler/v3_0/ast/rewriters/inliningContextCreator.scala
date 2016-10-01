@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -29,41 +29,38 @@ object inliningContextCreator extends (ast.Statement => InliningContext) {
       // We cannot inline expressions in a DISTINCT with clause, projecting the result of the expression
       // would change the result of the distinctification
       case withClause: With if !withClause.distinct =>
-        (context, children) =>
-          children(context.enterQueryPart(aliasedReturnItems(withClause.returnItems.items)))
+        context =>
+          (context.enterQueryPart(aliasedReturnItems(withClause.returnItems.items)), Some(identity))
 
-      // When just passing an identifier through a WITH, do not count the identifier as used. This case shortcuts the
-      // tree folding so the identifiers are not tracked.
-      case AliasedReturnItem(Identifier(n1), alias@Identifier(n2)) if n1 == n2 =>
-        (context, children) =>
-          context
+      // When just passing a variable through a WITH, do not count the variable as used. This case shortcuts the
+      // tree folding so the variables are not tracked.
+      case AliasedReturnItem(Variable(n1), alias@Variable(n2)) if n1 == n2 =>
+        context => (context, None)
 
-      case identifier: Identifier =>
-        (context, children) =>
-          children(context.trackUsageOfIdentifier(identifier))
+      case variable: Variable =>
+        context =>
+          (context.trackUsageOfVariable(variable), Some(identity))
 
-      // When an identifier is used in ORDER BY, it should never be inlined
+      // When a variable is used in ORDER BY, it should never be inlined
       case sortItem: SortItem =>
-        (context, children) =>
-          children(context.spoilIdentifier(sortItem.expression.asInstanceOf[Identifier]))
+        context =>
+          (context.spoilVariable(sortItem.expression.asInstanceOf[Variable]), Some(identity))
 
-      // Do not inline pattern identifiers, unless they are clean aliases of previous identifiers
-      case NodePattern(Some(identifier), _, _) =>
-        (context, children) =>
-          if (context.isAliasedIdentifier(identifier))
-            children(context)
-          else
-            children(context.spoilIdentifier(identifier))
+      // Do not inline pattern variables, unless they are clean aliases of previous variables
+      case NodePattern(Some(variable), _, _) =>
+        context =>
+          (spoilVariableIfNotAliased(variable, context), Some(identity))
 
-      case RelationshipPattern(Some(identifier), _, _, _, _, _) =>
-        (context, children) =>
-          if (context.isAliasedIdentifier(identifier))
-            children(context)
-          else
-            children(context.spoilIdentifier(identifier))
+      case RelationshipPattern(Some(variable), _, _, _, _, _) =>
+        context =>
+          (spoilVariableIfNotAliased(variable, context), Some(identity))
     }
   }
 
-  private def aliasedReturnItems(items: Seq[ReturnItem]): Map[Identifier, Expression] =
+  private def spoilVariableIfNotAliased(variable: Variable, context: InliningContext): InliningContext =
+    if (context.isAliasedVarible(variable)) context
+    else context.spoilVariable(variable)
+
+  private def aliasedReturnItems(items: Seq[ReturnItem]): Map[Variable, Expression] =
     items.collect { case AliasedReturnItem(expr, ident) => ident -> expr }.toMap
 }

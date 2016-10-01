@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -31,7 +31,7 @@ This rewriter tries to limit rewriters that grow the product AST too much
 case class repeatWithSizeLimit(rewriter: Rewriter)(implicit val monitor: AstRewritingMonitor) extends Rewriter {
 
   private def astNodeSize(value: Any): Int = value.treeFold(1) {
-    case _: ASTNode => (acc, children) => children(acc+1)
+    case _: ASTNode => acc => (acc + 1, Some(identity))
   }
 
   final def apply(that: AnyRef): AnyRef = {
@@ -47,7 +47,7 @@ case class repeatWithSizeLimit(rewriter: Rewriter)(implicit val monitor: AstRewr
     val newSize = astNodeSize(t)
 
     if (newSize > limit) {
-      monitor.abortedRewriting(that )
+      monitor.abortedRewriting(that)
       that
     }
     else if (t == that) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -46,12 +46,16 @@ object addEagernessIfNecessary extends (Pipe => Pipe) {
 
       nodesReadWriteConflict(from, to) || // NOTE: Here we should _not_ consider leaf effects
         nodesCreateReadConflict(from, toWithoutLeafInfo) || // creating in a leaf is fine; always one row
-        nodesDeleteMergeConflict(fromWithoutLeafInfo, toWithoutLeafInfo) ||
-        nodePropertiesConflict(from, to) ||
-        relsReadWriteConflict(from, to) ||
+        nodesDeleteReadConflict(fromWithoutLeafInfo, toWithoutLeafInfo) ||
+        nodePropertiesConflict(
+          if (fromWithoutLeafInfo.containsRelationshipReads) fromWithoutLeafInfo else from,
+          if (toWithoutLeafInfo.containsRelationshipReads) toWithoutLeafInfo else to) ||
+        relsReadCreateConflict(fromWithoutLeafInfo, toWithoutLeafInfo) ||
+        relsReadDeleteConflict(fromWithoutLeafInfo, toWithoutLeafInfo) ||
+        relsReadDeleteNodeConflict(fromWithoutLeafInfo, toWithoutLeafInfo) ||
         relsCreateReadConflict(from, toWithoutLeafInfo) ||
-        relsDeleteMergeConflict(fromWithoutLeafInfo, toWithoutLeafInfo) ||
-        relationshipPropertiesConflict(from, to)
+        relsDeleteReadConflict(fromWithoutLeafInfo, toWithoutLeafInfo) ||
+        relationshipPropertiesConflict(fromWithoutLeafInfo, toWithoutLeafInfo)
     }
   }
 
@@ -64,30 +68,43 @@ object addEagernessIfNecessary extends (Pipe => Pipe) {
 
     val nodeNonLeafReadWriteConflict = nodesReadWriteConflict(from, to) // NOTE: Here we should _not_ consider leaf effects
     val nodeCreateReadConflict = nodesCreateReadConflict(from, toWithoutLeafInfo) // creating in a leaf is fine; always one row
-    val nodeDeleteMergeConflict = nodesDeleteMergeConflict(fromWithoutLeafInfo, toWithoutLeafInfo)
-    val nodePropConflict = nodePropertiesConflict(from, to)
+    val nodeDeleteReadConflict = nodesDeleteReadConflict(fromWithoutLeafInfo, toWithoutLeafInfo)
+    val nodePropConflict =   nodePropertiesConflict(
+      if (fromWithoutLeafInfo.containsRelationshipReads) fromWithoutLeafInfo else from,
+      if (toWithoutLeafInfo.containsRelationshipReads) toWithoutLeafInfo else to)
 
-    val relNonLeafReadWriteConflict = relsReadWriteConflict(from, to)
+    val relReadCreateConflict = relsReadCreateConflict(fromWithoutLeafInfo, toWithoutLeafInfo)
+    val relReadDeleteConflict = relsReadDeleteConflict(fromWithoutLeafInfo, toWithoutLeafInfo)
+    val relReadDeleteNodeConflict = relsReadDeleteNodeConflict(fromWithoutLeafInfo, toWithoutLeafInfo)
     val relCreateReadConflict = relsCreateReadConflict(from, toWithoutLeafInfo)
-    val relDeleteMergeConflict = relsDeleteMergeConflict(fromWithoutLeafInfo, toWithoutLeafInfo)
-    val relPropConflict = relationshipPropertiesConflict(from, to)
+    val relDeleteReadConflict = relsDeleteReadConflict(fromWithoutLeafInfo, toWithoutLeafInfo)
+    val relPropConflict = relationshipPropertiesConflict(fromWithoutLeafInfo, toWithoutLeafInfo)
 
     nodeNonLeafReadWriteConflict ||
       nodeCreateReadConflict ||
-      nodeDeleteMergeConflict ||
+      nodeDeleteReadConflict ||
       nodePropConflict ||
-      relNonLeafReadWriteConflict ||
+      relReadCreateConflict ||
+      relReadDeleteConflict ||
+      relReadDeleteNodeConflict ||
       relCreateReadConflict ||
-      relDeleteMergeConflict ||
+      relDeleteReadConflict ||
       relPropConflict
   }
 
-
-  private def relsReadWriteConflict(from: Effects, to: Effects) = {
-    readsCreatesSameRelationship(from.regardlessOfOptionalEffects, to) || readsDeletesSameRelationship(from, to)
+  private def relsReadCreateConflict(from: Effects, to: Effects) = {
+    readsCreatesSameRelationship(from.regardlessOfOptionalEffects, to)
   }
 
+  private def relsReadDeleteConflict(from: Effects, to: Effects) = {
+    readsDeletesSameRelationship(from, to)
+  }
+
+  private def relsReadDeleteNodeConflict(from: Effects, to: Effects) =
+    from.regardlessOfOptionalEffects.containsRelationshipReads && to.contains(DeletesNode)
+
   private def relsCreateReadConflict(from: Effects, to: Effects) = {
+    // Flip the order to reuse this code:
     readsCreatesSameRelationship(to, from)
   }
 
@@ -100,9 +117,14 @@ object addEagernessIfNecessary extends (Pipe => Pipe) {
     readsCreatesSameNode(from.regardlessOfOptionalEffects, to) || readsDeletesSameNode(from, to)
   }
 
-  private def relsDeleteMergeConflict(from: Effects, to: Effects) = {
-    from.contains(DeletesRelationship) && readsCreatesSameRelationship(from, to)
+  private def nodesDeleteReadConflict(from: Effects, to: Effects) = {
+    from.contains(DeletesNode) && to.containsNodeReads
   }
+
+  private def relsDeleteReadConflict(from: Effects, to: Effects) = {
+    from.contains(DeletesRelationship) && to.containsRelationshipReads
+  }
+
   private def readsCreatesSameRelationship(from: Effects, to: Effects) = {
     from.contains(ReadsAllRelationships) && to.effectsSet.exists {
       case create: CreatesRelationships => true
@@ -120,10 +142,6 @@ object addEagernessIfNecessary extends (Pipe => Pipe) {
     }
 
     (fromTypes intersect toTypes).nonEmpty
-  }
-
-  private def nodesDeleteMergeConflict(from: Effects, to: Effects) = {
-    from.contains(DeletesNode) && readsCreatesSameNode(from, to)
   }
 
   private def readsCreatesSameNode(from: Effects, to: Effects) = {
@@ -166,7 +184,7 @@ object addEagernessIfNecessary extends (Pipe => Pipe) {
     }
 
     val propertyWrites = to.effectsSet.collect {
-      case property: SetNodeProperty => property
+      case property: WriteNodeProperty => property
     }
 
     propertyReads.exists {
@@ -174,7 +192,7 @@ object addEagernessIfNecessary extends (Pipe => Pipe) {
       case ReadsGivenNodeProperty(prop) => propertyWrites(SetGivenNodeProperty(prop))
     } ||
       propertyWrites.exists {
-        case SetAnyNodeProperty => propertyReads.nonEmpty
+        case WriteAnyNodeProperty => propertyReads.nonEmpty
         case SetGivenNodeProperty(prop) => propertyReads(ReadsGivenNodeProperty(prop))
       }
   }
@@ -185,16 +203,16 @@ object addEagernessIfNecessary extends (Pipe => Pipe) {
     }
 
     val propertyWrites = to.effectsSet.collect {
-      case property: WritesRelationshipProperty => property
+      case property: WriteRelationshipProperty => property
     }
 
     propertyReads.exists {
       case ReadsAnyRelationshipProperty => propertyWrites.nonEmpty
-      case ReadsGivenRelationshipProperty(prop) => propertyWrites(WritesGivenRelationshipProperty(prop))
+      case ReadsGivenRelationshipProperty(prop) => propertyWrites(SetGivenRelationshipProperty(prop))
     } ||
       propertyWrites.exists {
-        case WritesAnyRelationshipProperty => propertyReads.nonEmpty
-        case WritesGivenRelationshipProperty(prop) => propertyReads(ReadsGivenRelationshipProperty(prop))
+        case WriteAnyRelationshipProperty => propertyReads.nonEmpty
+        case SetGivenRelationshipProperty(prop) => propertyReads(ReadsGivenRelationshipProperty(prop))
       }
   }
 }

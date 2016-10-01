@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,8 +28,8 @@ import java.lang.reflect.Field;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
-import org.neo4j.kernel.NeoStoreDataSource;
-import org.neo4j.kernel.impl.store.AbstractDynamicStore;
+import org.neo4j.kernel.impl.storageengine.impl.recordstorage.RecordStorageEngine;
+import org.neo4j.kernel.impl.AbstractNeo4jTestCase;
 import org.neo4j.kernel.impl.store.PropertyStore;
 import org.neo4j.kernel.impl.store.TestShortString;
 import org.neo4j.test.DatabaseRule;
@@ -41,7 +41,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
-import static org.neo4j.graphdb.DynamicRelationshipType.withName;
+import static org.neo4j.graphdb.RelationshipType.withName;
 import static org.neo4j.graphdb.Neo4jMatchers.hasProperty;
 import static org.neo4j.graphdb.Neo4jMatchers.inTx;
 
@@ -70,20 +70,20 @@ public class TestShortStringProperties extends TestShortString
     public void canAddMultipleShortStringsToTheSameNode() throws Exception
     {
         long recordCount = dynamicRecordsInUse();
-        Node node = graphdb.getGraphDatabaseService().createNode();
+        Node node = graphdb.getGraphDatabaseAPI().createNode();
         node.setProperty( "key", "value" );
         node.setProperty( "reverse", "esrever" );
         commit();
         assertEquals( recordCount, dynamicRecordsInUse() );
-        assertThat( node, inTx( graphdb.getGraphDatabaseService(), hasProperty( "key" ).withValue( "value" )  ) );
-        assertThat( node, inTx( graphdb.getGraphDatabaseService(), hasProperty( "reverse" ).withValue( "esrever" )  ) );
+        assertThat( node, inTx( graphdb.getGraphDatabaseAPI(), hasProperty( "key" ).withValue( "value" )  ) );
+        assertThat( node, inTx( graphdb.getGraphDatabaseAPI(), hasProperty( "reverse" ).withValue( "esrever" )  ) );
     }
 
     @Test
     public void canAddShortStringToRelationship() throws Exception
     {
         long recordCount = dynamicRecordsInUse();
-        GraphDatabaseService db = graphdb.getGraphDatabaseService();
+        GraphDatabaseService db = graphdb.getGraphDatabaseAPI();
         Relationship rel = db.createNode().createRelationshipTo( db.createNode(), withName( "REL_TYPE" ) );
         rel.setProperty( "type", "dimsedut" );
         commit();
@@ -98,7 +98,7 @@ public class TestShortStringProperties extends TestShortString
         {
             long recordCount = dynamicRecordsInUse();
             long propCount = propertyRecordsInUse();
-            Node node = graphdb.getGraphDatabaseService().createNode();
+            Node node = graphdb.getGraphDatabaseAPI().createNode();
             node.setProperty( "key", "value" );
 
             newTx();
@@ -112,7 +112,7 @@ public class TestShortStringProperties extends TestShortString
 
             assertEquals( recordCount, dynamicRecordsInUse() );
             assertEquals( propCount + 1, propertyRecordsInUse() );
-            assertThat( node, inTx( graphdb.getGraphDatabaseService(), hasProperty( "key" ).withValue( "other" )  ) );
+            assertThat( node, inTx( graphdb.getGraphDatabaseAPI(), hasProperty( "key" ).withValue( "other" )  ) );
         }
         catch ( Exception e )
         {
@@ -126,7 +126,7 @@ public class TestShortStringProperties extends TestShortString
     {
         long recordCount = dynamicRecordsInUse();
         long propCount = propertyRecordsInUse();
-        Node node = graphdb.getGraphDatabaseService().createNode();
+        Node node = graphdb.getGraphDatabaseAPI().createNode();
         node.setProperty( "key", LONG_STRING );
         newTx();
 
@@ -139,7 +139,7 @@ public class TestShortStringProperties extends TestShortString
 
         assertEquals( recordCount, dynamicRecordsInUse() );
         assertEquals( propCount + 1, propertyRecordsInUse() );
-        assertThat( node, inTx( graphdb.getGraphDatabaseService(), hasProperty( "key" ).withValue( "value" )  ) );
+        assertThat( node, inTx( graphdb.getGraphDatabaseAPI(), hasProperty( "key" ).withValue( "value" )  ) );
     }
 
     @Test
@@ -147,7 +147,7 @@ public class TestShortStringProperties extends TestShortString
     {
         long recordCount = dynamicRecordsInUse();
         long propCount = propertyRecordsInUse();
-        Node node = graphdb.getGraphDatabaseService().createNode();
+        Node node = graphdb.getGraphDatabaseAPI().createNode();
         node.setProperty( "key", "value" );
         newTx();
 
@@ -160,7 +160,7 @@ public class TestShortStringProperties extends TestShortString
 
         assertEquals( recordCount + 1, dynamicRecordsInUse() );
         assertEquals( propCount + 1, propertyRecordsInUse() );
-        assertThat( node, inTx( graphdb.getGraphDatabaseService(), hasProperty( "key" ).withValue( LONG_STRING )  ) );
+        assertThat( node, inTx( graphdb.getGraphDatabaseAPI(), hasProperty( "key" ).withValue( LONG_STRING )  ) );
     }
 
     @Test
@@ -168,7 +168,7 @@ public class TestShortStringProperties extends TestShortString
     {
         long recordCount = dynamicRecordsInUse();
         long propCount = propertyRecordsInUse();
-        GraphDatabaseService db = graphdb.getGraphDatabaseService();
+        GraphDatabaseService db = graphdb.getGraphDatabaseAPI();
         Node node = db.createNode();
         node.setProperty( "key", "value" );
         newTx();
@@ -196,7 +196,7 @@ public class TestShortStringProperties extends TestShortString
     private void encode( String string, boolean isShort )
     {
         long recordCount = dynamicRecordsInUse();
-        Node node = graphdb.getGraphDatabaseService().createNode();
+        Node node = graphdb.getGraphDatabaseAPI().createNode();
         node.setProperty( "key", string );
         newTx();
         if ( isShort )
@@ -210,41 +210,19 @@ public class TestShortStringProperties extends TestShortString
         assertEquals( string, node.getProperty( "key" ) );
     }
 
-    // === Here be (reflection) dragons ===
-
-    private static Field storeField;
-    static
-    {
-        try
-        {
-            storeField = PropertyStore.class.getDeclaredField( "stringPropertyStore" );
-            storeField.setAccessible( true );
-        }
-        catch ( Exception e )
-        {
-            throw new RuntimeException( e );
-        }
-    }
-
     private long propertyRecordsInUse()
     {
-        return propertyStore().getNumberOfIdsInUse();
+        return AbstractNeo4jTestCase.numberOfRecordsInUse( propertyStore() );
     }
 
     private long dynamicRecordsInUse()
     {
-        try
-        {
-            return ( (AbstractDynamicStore) storeField.get( propertyStore() ) ).getNumberOfIdsInUse();
-        }
-        catch ( Exception e )
-        {
-            throw new RuntimeException( e );
-        }
+        return AbstractNeo4jTestCase.numberOfRecordsInUse( propertyStore().getStringStore() );
     }
 
     private PropertyStore propertyStore()
     {
-        return graphdb.getGraphDatabaseAPI().getDependencyResolver().resolveDependency( NeoStoreDataSource.class).getNeoStores().getPropertyStore();
+        return graphdb.getGraphDatabaseAPI().getDependencyResolver().resolveDependency( RecordStorageEngine.class)
+                .testAccessNeoStores().getPropertyStore();
     }
 }

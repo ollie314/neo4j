@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -51,8 +51,8 @@ public class TestEnterpriseGraphDatabaseFactory extends TestGraphDatabaseFactory
                     protected PlatformModule createPlatform( File storeDir, Map<String,String> params,
                             Dependencies dependencies, GraphDatabaseFacade graphDatabaseFacade )
                     {
-                        return new ImpermanentGraphDatabase.ImpermanentPlatformModule( storeDir, params, dependencies,
-                                graphDatabaseFacade )
+                        return new ImpermanentGraphDatabase.ImpermanentPlatformModule( storeDir, params, databaseInfo(),
+                                dependencies, graphDatabaseFacade )
                         {
                             @Override
                             protected FileSystemAbstraction createFileSystemAbstraction()

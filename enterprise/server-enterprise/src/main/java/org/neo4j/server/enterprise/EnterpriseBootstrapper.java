@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,27 +19,47 @@
  */
 package org.neo4j.server.enterprise;
 
+import java.util.Map;
+
+import org.neo4j.cluster.ClusterSettings;
+import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.kernel.GraphDatabaseDependencies;
 import org.neo4j.kernel.configuration.Config;
+import org.neo4j.kernel.ha.HaSettings;
 import org.neo4j.logging.LogProvider;
+import org.neo4j.server.CommunityBootstrapper;
 import org.neo4j.server.NeoServer;
-import org.neo4j.server.advanced.AdvancedBootstrapper;
 
-public class EnterpriseBootstrapper extends AdvancedBootstrapper
+import static java.util.Arrays.asList;
+
+import static org.neo4j.server.enterprise.EnterpriseServerSettings.mode;
+
+public class EnterpriseBootstrapper extends CommunityBootstrapper
 {
-    public static void main( String[] args )
-    {
-        int exit = start( new EnterpriseBootstrapper(), args );
-        if ( exit != 0 )
-        {
-            System.exit( exit );
-        }
-    }
-
     @Override
     protected NeoServer createNeoServer( Config configurator, GraphDatabaseDependencies dependencies, LogProvider
             userLogProvider )
     {
         return new EnterpriseNeoServer( configurator, dependencies, userLogProvider );
+    }
+
+    @Override
+    protected Iterable<Class<?>> settingsClasses( Map<String, String> settings )
+    {
+        if ( isHAMode( settings ) )
+        {
+            return Iterables.concat(
+                    super.settingsClasses( settings ),
+                    asList( HaSettings.class, ClusterSettings.class ) );
+        }
+        else
+        {
+            return super.settingsClasses( settings );
+        }
+    }
+
+    private boolean isHAMode( Map<String, String> settings )
+    {
+        return new Config( settings, EnterpriseServerSettings.class ).get( mode ).equals( "HA" );
     }
 }

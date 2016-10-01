@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,16 +25,16 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import org.junit.Test;
 
+import java.util.function.BiFunction;
+
 import org.neo4j.bolt.transport.BoltProtocol;
 import org.neo4j.bolt.transport.SocketTransportHandler;
+import org.neo4j.bolt.v1.runtime.Session;
 import org.neo4j.bolt.v1.transport.BoltProtocolV1;
 import org.neo4j.collection.primitive.PrimitiveLongObjectMap;
-import org.neo4j.function.Function;
 import org.neo4j.kernel.impl.logging.NullLogService;
 import org.neo4j.logging.AssertableLogProvider;
 import org.neo4j.logging.NullLogProvider;
-import org.neo4j.bolt.v1.runtime.Session;
-import org.neo4j.udc.UsageData;
 
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
@@ -101,22 +101,18 @@ public class SocketTransportHandlerTest
 
     private SocketTransportHandler.ProtocolChooser protocolChooser( final Session session )
     {
-        PrimitiveLongObjectMap<Function<Channel,BoltProtocol>> availableVersions = longObjectMap();
-        availableVersions.put( BoltProtocolV1.VERSION, new Function<Channel,BoltProtocol>()
-        {
-            @Override
-            public BoltProtocol apply( Channel channel )
-            {
-                return new BoltProtocolV1( NullLogService.getInstance(), session, channel, new UsageData() );
-            }
-        } );
+        PrimitiveLongObjectMap<BiFunction<Channel,Boolean,BoltProtocol>> availableVersions = longObjectMap();
+        availableVersions.put( BoltProtocolV1.VERSION,
+                ( channel, isSecure ) -> new BoltProtocolV1( session, channel, NullLogService.getInstance() )
+        );
 
-        return new SocketTransportHandler.ProtocolChooser( availableVersions );
+        return new SocketTransportHandler.ProtocolChooser( availableVersions, true );
     }
 
     private ByteBuf handshake()
     {
         ByteBuf buf = UnpooledByteBufAllocator.DEFAULT.buffer();
+        buf.writeInt( 0x6060B017 );
         buf.writeInt( 1 );
         buf.writeInt( 0 );
         buf.writeInt( 0 );

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,22 +22,26 @@ package org.neo4j.bolt.v1.runtime.internal;
 import java.util.Map;
 
 import org.neo4j.bolt.v1.runtime.spi.RecordStream;
-import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.kernel.api.exceptions.KernelException;
 import org.neo4j.bolt.v1.runtime.spi.StatementRunner;
+import org.neo4j.graphdb.Result;
+import org.neo4j.kernel.api.exceptions.KernelException;
+import org.neo4j.kernel.impl.coreapi.PropertyContainerLocker;
+import org.neo4j.kernel.impl.query.QueryExecutionEngine;
+import org.neo4j.kernel.impl.query.QuerySession;
 
 public class CypherStatementRunner implements StatementRunner
 {
-    private final GraphDatabaseService db;
+    private static final PropertyContainerLocker locker = new PropertyContainerLocker();
+    private final QueryExecutionEngine queryExecutionEngine;
 
-    public CypherStatementRunner( GraphDatabaseService db )
+    public CypherStatementRunner( QueryExecutionEngine queryExecutionEngine )
     {
-        this.db = db;
+        this.queryExecutionEngine = queryExecutionEngine;
     }
 
     @Override
-    public RecordStream run( final SessionState ctx, final String statement,
-            final Map<String,Object> params ) throws KernelException
+    public RecordStream run( final SessionState ctx, final String statement, final Map<String,Object> params )
+            throws KernelException
     {
         // Temporary until we move parsing to cypher, or run a parser up here
         if ( statement.equalsIgnoreCase( "begin" ) )
@@ -55,17 +59,25 @@ public class CypherStatementRunner implements StatementRunner
             ctx.rollbackTransaction();
             return RecordStream.EMPTY;
         }
-        else if ( statement.equalsIgnoreCase( "foobar" ) )
-        {
-            throw new RuntimeException("Foobar occurred");
-        }
         else
         {
-            if ( !ctx.hasTransaction() )
+            boolean hasTx = ctx.hasTransaction();
+            boolean isPeriodicCommit = queryExecutionEngine.isPeriodicCommit( statement );
+
+            if ( !hasTx && !isPeriodicCommit )
             {
                 ctx.beginImplicitTransaction();
             }
-            return new CypherAdapterStream( db.execute( statement, params ) );
+
+            QuerySession session = ctx.createSession( queryExecutionEngine.queryService(), locker );
+            Result result = queryExecutionEngine.executeQuery( statement, params, session );
+
+            if ( isPeriodicCommit )
+            {
+                ctx.beginImplicitTransaction();
+            }
+
+            return new CypherAdapterStream( result );
         }
     }
 }

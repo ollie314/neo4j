@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,7 +24,7 @@ import org.neo4j.cypher.internal.compiler.v3_0.commands._
 import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.ShortestPathExpression
 import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates.Predicate
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{Effects, ReadsAllNodes, ReadsAllRelationships}
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.{CastSupport, CollectionSupport}
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.{CastSupport, ListSupport}
 import org.neo4j.cypher.internal.compiler.v3_0.planDescription.InternalPlanDescription.Arguments.LegacyExpression
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 import org.neo4j.graphdb.Path
@@ -35,30 +35,32 @@ import scala.collection.JavaConverters._
  */
 case class ShortestPathPipe(source: Pipe, shortestPathCommand: ShortestPath, predicates: Seq[Predicate] = Seq.empty)
                            (val estimatedCardinality: Option[Double] = None)(implicit pipeMonitor: PipeMonitor)
-  extends PipeWithSource(source, pipeMonitor) with CollectionSupport with RonjaPipe {
+  extends PipeWithSource(source, pipeMonitor) with ListSupport with RonjaPipe {
   private def pathName = shortestPathCommand.pathName
   private val shortestPathExpression = ShortestPathExpression(shortestPathCommand, predicates)
 
-  protected def internalCreateResults(input:Iterator[ExecutionContext], state: QueryState) = input.flatMap(ctx => {
-    val result: Stream[Path] = shortestPathExpression(ctx)(state) match {
-      case in: Stream[_] => CastSupport.castOrFail[Stream[Path]](in)
-      case null          => Stream()
-      case path: Path    => Stream(path)
-    }
+  protected def internalCreateResults(input:Iterator[ExecutionContext], state: QueryState) =
+    input.flatMap(ctx => {
+      val result: Stream[Path] = shortestPathExpression(ctx)(state) match {
+        case in: Stream[_] => CastSupport.castOrFail[Stream[Path]](in)
+        case null          => Stream()
+        case path: Path    => Stream(path)
+        case in: Iterator[_] => CastSupport.castOrFail[Stream[Path]](in.toStream)
+      }
 
-    shortestPathCommand.relIterator match {
-      case Some(relName) =>
-        result.map { (path: Path) => ctx.newWith2(pathName, path, relName, path.relationships().asScala.toSeq) }
-      case None =>
-        result.map { (path: Path) => ctx.newWith1(pathName, path) }
-    }
-  })
+      shortestPathCommand.relIterator match {
+        case Some(relName) =>
+          result.map { (path: Path) => ctx.newWith2(pathName, path, relName, path.relationships().asScala.toSeq) }
+        case None =>
+          result.map { (path: Path) => ctx.newWith1(pathName, path) }
+      }
+    })
 
   val symbols = {
     val withPath = source.symbols.add(pathName, CTPath)
     shortestPathCommand.relIterator match {
       case None    => withPath
-      case Some(x) => withPath.add(x, CTCollection(CTRelationship))
+      case Some(x) => withPath.add(x, CTList(CTRelationship))
     }
   }
 
@@ -66,7 +68,7 @@ case class ShortestPathPipe(source: Pipe, shortestPathCommand: ShortestPath, pre
     val args = predicates.map { p =>
       LegacyExpression(p)
     }
-    source.planDescription.andThen(this.id, "ShortestPath", identifiers, args:_*)
+    source.planDescription.andThen(this.id, "ShortestPath", variables, args:_*)
   }
 
   def dup(sources: List[Pipe]): Pipe = {

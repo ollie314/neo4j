@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,25 +21,28 @@ package org.neo4j.cypher.internal.compiler.v3_0.pipes
 
 import java.util.UUID
 
-import org.neo4j.collection.primitive.PrimitiveLongSet
 import org.neo4j.cypher.internal.compiler.v3_0._
 import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.PathValueBuilder
+import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates.{InCheckContainer, SingleThreadedLRUCache}
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.{IdentityTypeConverter, RuntimeTypeConverter}
 import org.neo4j.cypher.internal.compiler.v3_0.spi.QueryContext
 import org.neo4j.cypher.internal.frontend.v3_0.ParameterNotFoundException
+import org.neo4j.collection.primitive.PrimitiveLongSet
 
 import scala.collection.mutable
 
-
-
 class QueryState(val query: QueryContext,
-                 val resources: ExternalResource,
+                 val resources: ExternalCSVResource,
                  val params: Map[String, Any],
-                 val decorator: PipeDecorator,
+                 val decorator: PipeDecorator = NullPipeDecorator,
                  val timeReader: TimeReader = new TimeReader,
                  var initialContext: Option[ExecutionContext] = None,
                  val queryId: AnyRef = UUID.randomUUID().toString,
-                 val triadicState: mutable.Map[String, PrimitiveLongSet],
-                 val repeatableReads: mutable.Map[Pipe, Seq[ExecutionContext]]) {
+                 val triadicState: mutable.Map[String, PrimitiveLongSet] = mutable.Map.empty,
+                 val repeatableReads: mutable.Map[Pipe, Seq[ExecutionContext]] = mutable.Map.empty,
+                 val typeConverter: RuntimeTypeConverter = IdentityTypeConverter,
+                 val cachedIn: SingleThreadedLRUCache[Any, InCheckContainer] =
+                   new SingleThreadedLRUCache(maxSize = 16)) {
   private var _pathValueBuilder: PathValueBuilder = null
 
   def clearPathValueBuilder = {
@@ -57,13 +60,13 @@ class QueryState(val query: QueryContext,
   def getStatistics = query.getOptStatistics.getOrElse(QueryState.defaultStatistics)
 
   def withDecorator(decorator: PipeDecorator) =
-    new QueryState(query, resources, params, decorator, timeReader, initialContext, queryId, triadicState, repeatableReads)
+    new QueryState(query, resources, params, decorator, timeReader, initialContext, queryId, triadicState, repeatableReads, typeConverter, cachedIn)
 
   def withInitialContext(initialContext: ExecutionContext) =
-    new QueryState(query, resources, params, decorator, timeReader, Some(initialContext), queryId, triadicState, repeatableReads)
+    new QueryState(query, resources, params, decorator, timeReader, Some(initialContext), queryId, triadicState, repeatableReads, typeConverter, cachedIn)
 
   def withQueryContext(query: QueryContext) =
-    new QueryState(query, resources, params, decorator, timeReader, initialContext, queryId, triadicState, repeatableReads)
+    new QueryState(query, resources, params, decorator, timeReader, initialContext, queryId, triadicState, repeatableReads, typeConverter, cachedIn)
 }
 
 object QueryState {

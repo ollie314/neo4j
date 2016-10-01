@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,14 +19,15 @@
  */
 package org.neo4j.cypher.internal.frontend.v3_0.ast.functions
 
-import org.neo4j.cypher.internal.frontend.v3_0.ast.{AggregatingFunction, SimpleTypedFunction}
+import org.neo4j.cypher.internal.frontend.v3_0.ast.{AggregatingFunction, ExpressionSignature, SimpleTypedFunction}
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 
 case object Min extends AggregatingFunction with SimpleTypedFunction {
-  def name = "min"
+  override def name = "min"
 
-  val signatures = Vector(
-    Signature(argumentTypes = Vector(CTInteger), outputType = CTInteger),
-    Signature(argumentTypes = Vector(CTFloat), outputType = CTFloat)
+  override val signatures = Vector(
+    ExpressionSignature(argumentTypes = Vector(CTInteger), outputType = CTInteger),
+    ExpressionSignature(argumentTypes = Vector(CTFloat), outputType = CTFloat),
+    ExpressionSignature(argumentTypes = Vector(CTString), outputType = CTString)
   )
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,6 +19,13 @@
  */
 package org.neo4j.server.enterprise;
 
+import static javax.servlet.http.HttpServletResponse.SC_FORBIDDEN;
+import static org.junit.Assert.assertEquals;
+import static org.neo4j.server.rest.MasterInfoService.BASE_PATH;
+import static org.neo4j.server.rest.MasterInfoService.IS_MASTER_PATH;
+import static org.neo4j.server.rest.MasterInfoService.IS_SLAVE_PATH;
+import static org.neo4j.test.server.ha.EnterpriseServerHelper.createNonPersistentServer;
+
 import java.io.IOException;
 import java.util.Map;
 
@@ -32,14 +39,6 @@ import org.neo4j.server.rest.JaxRsResponse;
 import org.neo4j.server.rest.RestRequest;
 import org.neo4j.server.rest.domain.JsonHelper;
 import org.neo4j.test.TargetDirectory;
-
-import static org.apache.http.HttpStatus.SC_FORBIDDEN;
-import static org.junit.Assert.assertEquals;
-
-import static org.neo4j.server.webadmin.rest.MasterInfoService.BASE_PATH;
-import static org.neo4j.server.webadmin.rest.MasterInfoService.IS_MASTER_PATH;
-import static org.neo4j.server.webadmin.rest.MasterInfoService.IS_SLAVE_PATH;
-import static org.neo4j.test.server.ha.EnterpriseServerHelper.createNonPersistentServer;
 
 public class StandaloneHaInfoFunctionalTest
 {

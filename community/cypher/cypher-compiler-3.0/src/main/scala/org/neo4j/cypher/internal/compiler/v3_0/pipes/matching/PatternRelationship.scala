@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -39,7 +39,7 @@ class PatternRelationship(key: String,
   extends PatternElement(key) {
   private val types = LazyTypes(relTypes)
 
-  def identifiers2: Map[String, CypherType] = Map(startNode.key -> CTNode, endNode.key -> CTNode, key -> CTRelationship)
+  def variables2: Map[String, CypherType] = Map(startNode.key -> CTNode, endNode.key -> CTNode, key -> CTRelationship)
 
   def getOtherNode(node: PatternNode) = if (startNode == node) endNode else startNode
 
@@ -132,10 +132,10 @@ class VariableLengthPatternRelationship(pathName: String,
   extends PatternRelationship(pathName, start, end, relType, properties, dir) {
 
 
-  override def identifiers2: Map[String, CypherType] =
+  override def variables2: Map[String, CypherType] =
     Map(startNode.key -> CTNode,
       endNode.key -> CTNode,
-      key -> CTCollection(CTRelationship)) ++ relIterable.map(_ -> CTCollection(CTRelationship)).toMap
+      key -> CTList(CTRelationship)) ++ relIterable.map(_ -> CTList(CTRelationship)).toMap
 
   override def getGraphRelationships(node: PatternNode, realNode: Node, state: QueryState, f: => ExecutionContext): Seq[GraphRelationship] = {
     val matchedPaths: Iterator[Path] = state.query.variableLengthPathExpand(node, realNode, minHops, maxHops, getDirection(node), relType)

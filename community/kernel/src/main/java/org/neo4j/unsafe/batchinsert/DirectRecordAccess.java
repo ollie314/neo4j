@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.neo4j.helpers.collection.IterableWrapper;
-import org.neo4j.kernel.impl.store.AbstractRecordStore;
+import org.neo4j.kernel.impl.store.RecordStore;
 import org.neo4j.kernel.impl.store.record.AbstractBaseRecord;
 import org.neo4j.kernel.impl.transaction.state.RecordAccess;
 import org.neo4j.kernel.impl.util.statistics.IntCounter;
@@ -39,13 +39,13 @@ import org.neo4j.kernel.impl.util.statistics.IntCounter;
 public class DirectRecordAccess<KEY extends Comparable<KEY>,RECORD extends AbstractBaseRecord,ADDITIONAL>
         implements RecordAccess<KEY,RECORD,ADDITIONAL>
 {
-    private final AbstractRecordStore<RECORD> store;
+    private final RecordStore<RECORD> store;
     private final Loader<KEY, RECORD, ADDITIONAL> loader;
     private final Map<KEY,DirectRecordProxy> batch = new HashMap<>();
 
     private final IntCounter changeCounter = new IntCounter();
 
-    public DirectRecordAccess( AbstractRecordStore<RECORD> store, Loader<KEY, RECORD, ADDITIONAL> loader )
+    public DirectRecordAccess( RecordStore<RECORD> store, Loader<KEY, RECORD, ADDITIONAL> loader )
     {
         this.store = store;
         this.loader = loader;
@@ -114,10 +114,11 @@ public class DirectRecordAccess<KEY extends Comparable<KEY>,RECORD extends Abstr
 
     private class DirectRecordProxy implements RecordProxy<KEY,RECORD,ADDITIONAL>
     {
-        private KEY key;
-        private RECORD record;
-        private ADDITIONAL additionalData;
+        private final KEY key;
+        private final RECORD record;
+        private final ADDITIONAL additionalData;
         private boolean changed = false;
+        private final boolean created;
 
         public DirectRecordProxy( KEY key, RECORD record, ADDITIONAL additionalData, boolean created )
         {
@@ -128,6 +129,7 @@ public class DirectRecordAccess<KEY extends Comparable<KEY>,RECORD extends Abstr
             {
                 prepareChange();
             }
+            this.created = created;
         }
 
         @Override
@@ -203,6 +205,12 @@ public class DirectRecordAccess<KEY extends Comparable<KEY>,RECORD extends Abstr
         public boolean isChanged()
         {
             return changed;
+        }
+
+        @Override
+        public boolean isCreated()
+        {
+            return created;
         }
     }
 

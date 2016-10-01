@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,22 +21,20 @@ package org.neo4j.kernel.impl.factory;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
-import org.neo4j.function.Consumer;
-import org.neo4j.function.Supplier;
 import org.neo4j.graphdb.DependencyResolver;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
+import org.neo4j.graphdb.security.URLAccessRule;
 import org.neo4j.helpers.Clock;
 import org.neo4j.helpers.collection.Iterables;
+import org.neo4j.io.fs.DefaultFileSystemAbstraction;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.kernel.AvailabilityGuard;
-import org.neo4j.kernel.DefaultFileSystemAbstraction;
-import org.neo4j.kernel.StoreLocker;
-import org.neo4j.kernel.StoreLockerLifecycleAdapter;
-import org.neo4j.kernel.Version;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.extension.KernelExtensionFactory;
 import org.neo4j.kernel.extension.KernelExtensions;
@@ -46,18 +44,20 @@ import org.neo4j.kernel.impl.logging.StoreLogService;
 import org.neo4j.kernel.impl.pagecache.ConfiguringPageCacheFactory;
 import org.neo4j.kernel.impl.pagecache.PageCacheLifecycle;
 import org.neo4j.kernel.impl.security.URLAccessRules;
-import org.neo4j.kernel.impl.spi.KernelContext;
-import org.neo4j.kernel.impl.transaction.TransactionCounters;
+import org.neo4j.kernel.impl.spi.SimpleKernelContext;
+import org.neo4j.kernel.impl.transaction.TransactionStats;
 import org.neo4j.kernel.impl.transaction.state.DataSourceManager;
 import org.neo4j.kernel.impl.util.JobScheduler;
 import org.neo4j.kernel.impl.util.Neo4jJobScheduler;
 import org.neo4j.kernel.info.DiagnosticsManager;
 import org.neo4j.kernel.info.JvmChecker;
 import org.neo4j.kernel.info.JvmMetadataRepository;
+import org.neo4j.kernel.internal.StoreLocker;
+import org.neo4j.kernel.internal.StoreLockerLifecycleAdapter;
+import org.neo4j.kernel.internal.Version;
 import org.neo4j.kernel.lifecycle.LifeSupport;
 import org.neo4j.kernel.monitoring.Monitors;
 import org.neo4j.kernel.monitoring.tracing.Tracers;
-import org.neo4j.graphdb.security.URLAccessRule;
 import org.neo4j.logging.Level;
 import org.neo4j.logging.Log;
 import org.neo4j.logging.LogProvider;
@@ -84,6 +84,8 @@ public class PlatformModule
 
     public final File storeDir;
 
+    public final DatabaseInfo databaseInfo;
+
     public final DiagnosticsManager diagnosticsManager;
 
     public final Tracers tracers;
@@ -102,11 +104,12 @@ public class PlatformModule
 
     public final AvailabilityGuard availabilityGuard;
 
-    public final TransactionCounters transactionMonitor;
+    public final TransactionStats transactionMonitor;
 
-    public PlatformModule( File storeDir, Map<String, String> params, final GraphDatabaseFacadeFactory.Dependencies externalDependencies,
-                                                  final GraphDatabaseFacade graphDatabaseFacade)
+    public PlatformModule( File providedStoreDir, Map<String, String> params, DatabaseInfo databaseInfo,
+            GraphDatabaseFacadeFactory.Dependencies externalDependencies, GraphDatabaseFacade graphDatabaseFacade )
     {
+        this.databaseInfo = databaseInfo;
         dependencies = new org.neo4j.kernel.impl.util.Dependencies( new Supplier<DependencyResolver>()
         {
             @Override
@@ -118,14 +121,18 @@ public class PlatformModule
         life = dependencies.satisfyDependency( createLife() );
         this.graphDatabaseFacade = dependencies.satisfyDependency( graphDatabaseFacade );
 
+        if ( !params.containsKey( GraphDatabaseSettings.neo4j_home.name() ) )
+        {
+            params = new HashMap<>( params );
+            params.put( GraphDatabaseSettings.neo4j_home.name(), providedStoreDir.getAbsolutePath() );
+        }
+
         // SPI - provided services
         config = dependencies.satisfyDependency( new Config( params, getSettingsClasses(
                 externalDependencies.settingsClasses(), externalDependencies.kernelExtensions() ) ) );
 
-        this.storeDir = storeDir.getAbsoluteFile();
+        this.storeDir = providedStoreDir.getAbsoluteFile();
 
-        // Database system information, used by UDC
-        dependencies.satisfyDependency( new UsageData() );
 
         fileSystem = dependencies.satisfyDependency( createFileSystemAbstraction() );
 
@@ -134,6 +141,9 @@ public class PlatformModule
         dependencies.satisfyDependency( monitors );
 
         jobScheduler = life.add( dependencies.satisfyDependency( createJobScheduler() ) );
+
+        // Database system information, used by UDC
+        dependencies.satisfyDependency( life.add( new UsageData( jobScheduler ) ) );
 
         // If no logging was passed in from the outside then create logging and register
         // with this life
@@ -147,9 +157,11 @@ public class PlatformModule
                 new JvmMetadataRepository() ).checkJvmCompatibilityAndIssueWarning();
 
         String desiredImplementationName = config.get( GraphDatabaseFacadeFactory.Configuration.tracer );
-        tracers = dependencies.satisfyDependency(
-                new Tracers( desiredImplementationName, logging.getInternalLog( Tracers.class ) ) );
+        tracers = dependencies.satisfyDependency( new Tracers( desiredImplementationName,
+                logging.getInternalLog( Tracers.class ), monitors, jobScheduler ) );
         dependencies.satisfyDependency( tracers.pageCacheTracer );
+        dependencies.satisfyDependency( tracers.transactionTracer );
+        dependencies.satisfyDependency( tracers.checkPointTracer );
 
         pageCache = dependencies.satisfyDependency( createPageCache( fileSystem, config, logging, tracers ) );
         life.add( new PageCacheLifecycle( pageCache ) );
@@ -161,30 +173,15 @@ public class PlatformModule
         // this was the place of the XaDataSourceManager. NeoStoreXaDataSource is create further down than
         // (specifically) KernelExtensions, which creates an interesting out-of-order issue with #doAfterRecovery().
         // Anyways please fix this.
-        dataSourceManager = life.add( dependencies.satisfyDependency( new DataSourceManager() ) );
+        dataSourceManager = dependencies.satisfyDependency( new DataSourceManager() );
 
         availabilityGuard = new AvailabilityGuard( Clock.SYSTEM_CLOCK, logging.getInternalLog(
                 AvailabilityGuard.class ) );
 
-        transactionMonitor = dependencies.satisfyDependency( createTransactionCounters() );
-
-        KernelContext kernelContext = new KernelContext()
-        {
-            @Override
-            public FileSystemAbstraction fileSystem()
-            {
-                return PlatformModule.this.fileSystem;
-            }
-
-            @Override
-            public File storeDir()
-            {
-                return PlatformModule.this.storeDir;
-            }
-        };
+        transactionMonitor = dependencies.satisfyDependency( createTransactionStats() );
 
         kernelExtensions = dependencies.satisfyDependency( new KernelExtensions(
-                kernelContext,
+                new SimpleKernelContext( fileSystem, storeDir, databaseInfo, dependencies ),
                 externalDependencies.kernelExtensions(),
                 dependencies,
                 UnsatisfiedDependencyStrategies.fail() ) );
@@ -196,9 +193,8 @@ public class PlatformModule
 
     private void publishPlatformInfo( UsageData sysInfo )
     {
-        sysInfo.set( UsageDataKeys.version, Version.getKernel().getReleaseVersion() );
-        sysInfo.set( UsageDataKeys.revision, Version.getKernel().getVersion() );
-        sysInfo.set( UsageDataKeys.operationalMode, UsageDataKeys.OperationalMode.ha );
+        sysInfo.set( UsageDataKeys.version, Version.getNeo4jVersion() );
+        sysInfo.set( UsageDataKeys.revision, Version.getKernelVersion() );
     }
 
     public LifeSupport createLife()
@@ -214,7 +210,7 @@ public class PlatformModule
     protected LogService createLogService( LogProvider userLogProvider )
     {
         long internalLogRotationThreshold = config.get( GraphDatabaseSettings.store_internal_log_rotation_threshold );
-        int internalLogRotationDelay = config.get( GraphDatabaseSettings.store_internal_log_rotation_delay );
+        long internalLogRotationDelay = config.get( GraphDatabaseSettings.store_internal_log_rotation_delay );
         int internalLogMaxArchives = config.get( GraphDatabaseSettings.store_internal_log_max_archives );
 
         final StoreLogService.Builder builder =
@@ -226,14 +222,8 @@ public class PlatformModule
             builder.withUserLogProvider( userLogProvider );
         }
 
-        builder.withRotationListener( new Consumer<LogProvider>()
-        {
-            @Override
-            public void accept( LogProvider logProvider )
-            {
-                diagnosticsManager.dumpAll( logProvider.getLog( DiagnosticsManager.class ) );
-            }
-        } );
+        builder.withRotationListener(
+                logProvider -> diagnosticsManager.dumpAll( logProvider.getLog( DiagnosticsManager.class ) ) );
 
         for ( String debugContext : config.get( GraphDatabaseSettings.store_internal_debug_contexts ) )
         {
@@ -241,18 +231,11 @@ public class PlatformModule
         }
         builder.withDefaultLevel( config.get( GraphDatabaseSettings.store_internal_log_level ) );
 
-        File internalLog = config.get( GraphDatabaseSettings.store_internal_log_location );
+        File logsDir = config.get( GraphDatabaseSettings.logs_directory );
         StoreLogService logService;
         try
         {
-            if ( internalLog == null )
-            {
-                logService = builder.inStoreDirectory( fileSystem, storeDir );
-            }
-            else
-            {
-                logService = builder.toFile( fileSystem, internalLog );
-            }
+            logService = builder.inLogsDirectory( fileSystem, logsDir );
         }
         catch ( IOException ex )
         {
@@ -283,22 +266,23 @@ public class PlatformModule
         return pageCache;
     }
 
-    protected TransactionCounters createTransactionCounters()
+    protected TransactionStats createTransactionStats()
     {
-        return new TransactionCounters();
+        return new TransactionStats();
     }
 
     private Iterable<Class<?>> getSettingsClasses( Iterable<Class<?>> settingsClasses,
             Iterable<KernelExtensionFactory<?>> kernelExtensions )
     {
-        List<Class<?>> totalSettingsClasses = Iterables.toList( settingsClasses );
+        List<Class<?>> totalSettingsClasses = Iterables.asList( settingsClasses );
 
         // Get the list of settings classes for extensions
         for ( KernelExtensionFactory<?> kernelExtension : kernelExtensions )
         {
-            if ( kernelExtension.getSettingsClass() != null )
+            Class<?> settingsClass = kernelExtension.getSettingsClass();
+            if ( settingsClass != null )
             {
-                totalSettingsClasses.add( kernelExtension.getSettingsClass() );
+                totalSettingsClasses.add( settingsClass );
             }
         }
 

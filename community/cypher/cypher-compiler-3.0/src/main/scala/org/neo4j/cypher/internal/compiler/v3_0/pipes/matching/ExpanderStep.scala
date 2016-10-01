@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,9 +24,8 @@ import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.Expression
 import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates.{Predicate, True}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.{MutableMaps, QueryState}
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
-import org.neo4j.cypher.internal.frontend.v3_0.{SemanticDirection, EntityNotFoundException}
+import org.neo4j.cypher.internal.frontend.v3_0.{EntityNotFoundException, SemanticDirection}
 import org.neo4j.graphdb._
-import org.neo4j.helpers.ThisShouldNotHappenError
 
 import scala.collection.mutable
 import scala.collection.mutable.{Map => MutableMap}
@@ -72,7 +71,7 @@ trait ExpanderStep {
 
     reversed match {
       case (Some(result), _) => result
-      case _                 => throw new ThisShouldNotHappenError("Andres", "Reverse should always succeed")
+      case _                 => throw new IllegalStateException("Reverse should always succeed")
     }
   }
 
@@ -111,7 +110,7 @@ abstract class MiniMapProperty(originalName: String, propertyKeyName: String) ex
           }
         } catch {
           case x: NotFoundException =>
-            throw new EntityNotFoundException("The property '%s' does not exist on %s, which was found with the identifier: %s".format(propertyKeyName, pc, originalName), x)
+            throw new EntityNotFoundException("The property '%s' does not exist on %s, which was found with the variable: %s".format(propertyKeyName, pc, originalName), x)
         }
       }
       case _          => fail()
@@ -119,12 +118,12 @@ abstract class MiniMapProperty(originalName: String, propertyKeyName: String) ex
   }
 
 
-  protected def fail() = throw new ThisShouldNotHappenError("Andres", "This predicate should never be used outside of the traversal matcher")
+  protected def fail() = throw new IllegalStateException("This predicate should never be used outside of the traversal matcher")
 
   protected def extract(m: MiniMap): PropertyContainer
 }
 
-abstract class MiniMapIdentifier() extends Expression {
+abstract class MiniMapVariable() extends Expression {
   protected def calculateType(symbols: SymbolTable) = fail()
 
   def arguments = Nil
@@ -140,23 +139,23 @@ abstract class MiniMapIdentifier() extends Expression {
 
   protected def extract(m: MiniMap): PropertyContainer
 
-  def fail() = throw new ThisShouldNotHappenError("Andres", "This predicate should never be used outside of the traversal matcher")
+  def fail() = throw new IllegalStateException("This predicate should never be used outside of the traversal matcher")
 }
 
-case class NodeIdentifier() extends MiniMapIdentifier() {
+case class NodeVariable() extends MiniMapVariable() {
   protected def extract(m: MiniMap) = m.node
 }
 
-case class RelationshipIdentifier() extends MiniMapIdentifier() {
+case class RelationshipVariable() extends MiniMapVariable() {
   protected def extract(m: MiniMap) = m.relationship
 }
 
 class MiniMap(var relationship: Relationship, var node: Node, myMap: MutableMap[String, Any] = MutableMaps.empty)
   extends ExecutionContext(m = myMap) {
 
-  override def iterator = throw new ThisShouldNotHappenError("Andres", "This method should never be used")
+  override def iterator = throw new UnsupportedOperationException("This method should never be used")
 
-  override def -(key: String) = throw new ThisShouldNotHappenError("Andres", "This method should never be used")
+  override def -(key: String) = throw new UnsupportedOperationException("This method should never be used")
 
   override protected def createWithNewMap(newMap: mutable.Map[String, Any]) = new MiniMap(relationship, node, newMap)
 }

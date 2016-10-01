@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -43,7 +43,7 @@ trait QueryGraphProducer extends MockitoSugar {
     val (firstRewriteStep, _, postConditions) = astRewriter.rewrite(query, cleanedStatement, semanticState)
     val semanticTable = SemanticTable(types = semanticState.typeTable, recordedScopes = semanticState.recordedScopes)
     val (rewrittenAst, rewrittenTable) = CostBasedExecutablePlanBuilder.rewriteStatement(firstRewriteStep, semanticState.scopeTree, semanticTable, rewriterSequencer, semanticChecker, postConditions, mock[AstRewritingMonitor])
-    (rewrittenAst.asInstanceOf[Query].asUnionQuery.queries.head, rewrittenTable)
+    (toUnionQuery(rewrittenAst.asInstanceOf[Query], semanticTable).queries.head, rewrittenTable)
   }
 
   def produceQueryGraphForPattern(query: String): (QueryGraph, SemanticTable) = {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,11 +25,13 @@ import org.neo4j.consistency.checking.CheckDecorator;
 import org.neo4j.consistency.checking.RecordCheck;
 import org.neo4j.consistency.checking.SchemaRecordCheck;
 import org.neo4j.consistency.checking.cache.CacheAccess;
+import org.neo4j.consistency.checking.full.QueueDistribution.QueueDistributor;
 import org.neo4j.consistency.report.ConsistencyReport;
 import org.neo4j.consistency.report.ConsistencyReport.DynamicLabelConsistencyReport;
 import org.neo4j.consistency.report.ConsistencyReport.RelationshipGroupConsistencyReport;
 import org.neo4j.consistency.statistics.Counts;
-import org.neo4j.function.Predicate;
+import org.neo4j.graphdb.ResourceIterable;
+import org.neo4j.graphdb.ResourceIterator;
 import org.neo4j.helpers.progress.ProgressListener;
 import org.neo4j.kernel.impl.store.RecordStore;
 import org.neo4j.kernel.impl.store.record.AbstractBaseRecord;
@@ -43,8 +45,9 @@ import org.neo4j.kernel.impl.store.record.RelationshipRecord;
 import org.neo4j.kernel.impl.store.record.RelationshipTypeTokenRecord;
 
 import static org.neo4j.consistency.checking.cache.DefaultCacheAccess.DEFAULT_QUEUE_SIZE;
+import static org.neo4j.consistency.checking.full.CloningRecordIterator.cloned;
 import static org.neo4j.consistency.checking.full.RecordDistributor.distributeRecords;
-import static org.neo4j.kernel.impl.store.RecordStore.Scanner.scan;
+import static org.neo4j.kernel.impl.store.Scanner.scan;
 
 /**
  * Full check works by spawning StoreProcessorTasks that call StoreProcessor. StoreProcessor.applyFiltered()
@@ -205,24 +208,32 @@ public class StoreProcessor extends AbstractStoreProcessor
 
     public <R extends AbstractBaseRecord> void applyFilteredParallel( final RecordStore<R> store,
             final ProgressListener progressListener, int numberOfThreads, long recordsPerCpu,
-            Predicate<? super R>... filters )
+            final QueueDistributor<R> distributor )
             throws Exception
     {
         cacheAccess.prepareForProcessingOfSingleStore( recordsPerCpu );
-        RecordProcessor<R> processor = new RecordProcessor<R>()
+        RecordProcessor<R> processor = new RecordProcessor.Adapter<R>()
         {
+            @Override
+            public void init( int id )
+            {
+                // Thread id assignment happens here, so do this before processing. Calles to this init
+                // method is ordered externally.
+                cacheAccess.client();
+            }
+
             @Override
             public void process( R record )
             {
                 store.accept( StoreProcessor.this, record );
             }
-
-            @Override
-            public void close()
-            {
-            }
         };
-        distributeRecords( numberOfThreads, getClass().getSimpleName(), qSize,
-                scan( store, stage.isForward(), filters ), progressListener, processor );
+
+        ResourceIterable<R> scan = scan( store, stage.isForward() );
+        try ( ResourceIterator<R> records = scan.iterator() )
+        {
+            distributeRecords( numberOfThreads, getClass().getSimpleName(), qSize,
+                    cloned( records ), progressListener, processor, distributor );
+        }
     }
 }

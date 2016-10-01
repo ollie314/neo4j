@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,25 +19,30 @@
  */
 package org.neo4j.kernel.ha.cluster.member;
 
+import org.junit.Test;
+import org.mockito.ArgumentCaptor;
+
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import org.junit.Test;
-import org.mockito.ArgumentCaptor;
-
 import org.neo4j.cluster.InstanceId;
 import org.neo4j.cluster.protocol.cluster.Cluster;
 import org.neo4j.cluster.protocol.cluster.ClusterConfiguration;
 import org.neo4j.cluster.protocol.cluster.ClusterListener;
+import org.neo4j.function.Suppliers;
+import org.neo4j.helpers.HostnamePort;
 import org.neo4j.helpers.collection.Iterables;
-import org.neo4j.kernel.ha.cluster.HighAvailabilityModeSwitcher;
+import org.neo4j.kernel.ha.cluster.modeswitch.HighAvailabilityModeSwitcher;
 import org.neo4j.kernel.ha.com.master.DefaultSlaveFactory;
 import org.neo4j.kernel.ha.com.master.Slave;
 import org.neo4j.kernel.ha.com.master.SlaveFactory;
 import org.neo4j.kernel.impl.store.StoreId;
+import org.neo4j.kernel.impl.transaction.log.ReadableClosablePositionAwareChannel;
+import org.neo4j.kernel.impl.transaction.log.entry.LogEntryReader;
+import org.neo4j.kernel.impl.transaction.log.entry.VersionAwareLogEntryReader;
 import org.neo4j.kernel.lifecycle.LifeSupport;
 import org.neo4j.kernel.lifecycle.Lifecycle;
 import org.neo4j.kernel.monitoring.Monitors;
@@ -58,7 +63,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.neo4j.helpers.collection.Iterables.count;
-import static org.neo4j.kernel.ha.cluster.HighAvailabilityModeSwitcher.SLAVE;
+import static org.neo4j.kernel.ha.cluster.modeswitch.HighAvailabilityModeSwitcher.SLAVE;
 
 public class HighAvailabilitySlavesTest
 {
@@ -75,7 +80,7 @@ public class HighAvailabilitySlavesTest
         SlaveFactory slaveFactory = mock( SlaveFactory.class );
 
         // when
-        new HighAvailabilitySlaves( clusterMembers, cluster, slaveFactory ).init();
+        new HighAvailabilitySlaves( clusterMembers, cluster, slaveFactory, new HostnamePort( null, 0 ) ).init();
 
         // then
         verify( cluster ).addClusterListener( any( ClusterListener.class ) );
@@ -87,32 +92,12 @@ public class HighAvailabilitySlavesTest
         // given
         Cluster cluster = mock( Cluster.class );
         ClusterMembers clusterMembers = mock( ClusterMembers.class );
-        when( clusterMembers.getMembers() ).thenReturn( Iterables.option( new ClusterMember( INSTANCE_ID ) ) );
+        when( clusterMembers.getAliveMembers() ).thenReturn( Iterables.option( new ClusterMember( INSTANCE_ID ) ) );
 
         SlaveFactory slaveFactory = mock( SlaveFactory.class );
 
-        HighAvailabilitySlaves slaves = new HighAvailabilitySlaves( clusterMembers, cluster, slaveFactory );
-        slaves.init();
-
-        // when
-        Iterable<Slave> memberSlaves = slaves.getSlaves();
-
-        // then
-        assertThat( count( memberSlaves ), equalTo( 0L ) );
-    }
-
-    @Test
-    public void shouldNotReturnAvailableButFailedSlaves()
-    {
-        // given
-        Cluster cluster = mock( Cluster.class );
-        ClusterMembers clusterMembers = mock( ClusterMembers.class );
-        when( clusterMembers.getMembers() ).thenReturn( Iterables.option(
-                new ClusterMember( INSTANCE_ID ).availableAs( SLAVE, HA_URI, StoreId.DEFAULT ).failed() ) );
-
-        SlaveFactory slaveFactory = mock( SlaveFactory.class );
-
-        HighAvailabilitySlaves slaves = new HighAvailabilitySlaves( clusterMembers, cluster, slaveFactory );
+        HighAvailabilitySlaves slaves = new HighAvailabilitySlaves( clusterMembers, cluster, slaveFactory,
+                new HostnamePort( null, 0 ) );
         slaves.init();
 
         // when
@@ -128,14 +113,15 @@ public class HighAvailabilitySlavesTest
         // given
         Cluster cluster = mock( Cluster.class );
         ClusterMembers clusterMembers = mock( ClusterMembers.class );
-        when( clusterMembers.getMembers() ).thenReturn( Iterables.option(
+        when( clusterMembers.getAliveMembers() ).thenReturn( Iterables.option(
                 new ClusterMember( INSTANCE_ID ).availableAs( SLAVE, HA_URI, StoreId.DEFAULT ) ) );
 
         SlaveFactory slaveFactory = mock( SlaveFactory.class );
-        when( slaveFactory.newSlave( any( LifeSupport.class ), any( ClusterMember.class ) ) )
-                .thenReturn( mock( Slave.class ) );
+        when( slaveFactory.newSlave( any( LifeSupport.class ), any( ClusterMember.class ), any( String.class ),
+                any( Integer.class ) ) ).thenReturn( mock( Slave.class ) );
 
-        HighAvailabilitySlaves slaves = new HighAvailabilitySlaves( clusterMembers, cluster, slaveFactory );
+        HighAvailabilitySlaves slaves = new HighAvailabilitySlaves( clusterMembers, cluster, slaveFactory,
+                new HostnamePort( null, 0 ) );
         slaves.init();
 
         // when
@@ -151,14 +137,15 @@ public class HighAvailabilitySlavesTest
         // given
         Cluster cluster = mock( Cluster.class );
         ClusterMembers clusterMembers = mock( ClusterMembers.class );
-        when( clusterMembers.getMembers() ).thenReturn( Iterables.option(
+        when( clusterMembers.getAliveMembers() ).thenReturn( Iterables.option(
                 new ClusterMember( INSTANCE_ID ).availableAs( SLAVE, HA_URI, StoreId.DEFAULT ) ) );
 
         SlaveFactory slaveFactory = mock( SlaveFactory.class );
-        when( slaveFactory.newSlave( any( LifeSupport.class ), any( ClusterMember.class ) ) )
-                .thenReturn( mock( Slave.class ), mock( Slave.class ) );
+        when( slaveFactory.newSlave( any( LifeSupport.class ), any( ClusterMember.class ), any( String.class ),
+                any( Integer.class ) ) ).thenReturn( mock( Slave.class ), mock( Slave.class ) );
 
-        HighAvailabilitySlaves slaves = new HighAvailabilitySlaves( clusterMembers, cluster, slaveFactory );
+        HighAvailabilitySlaves slaves = new HighAvailabilitySlaves( clusterMembers, cluster, slaveFactory, new
+                HostnamePort( null, 0 ) );
         slaves.init();
 
         ArgumentCaptor<ClusterListener> listener = ArgumentCaptor.forClass( ClusterListener.class );
@@ -179,8 +166,10 @@ public class HighAvailabilitySlavesTest
     public void shouldSupportConcurrentConsumptionOfSlaves() throws Exception
     {
         // Given
+        LogEntryReader<ReadableClosablePositionAwareChannel> logEntryReader = new VersionAwareLogEntryReader<>();
         HighAvailabilitySlaves haSlaves = new HighAvailabilitySlaves( clusterMembersOfSize( 1000 ),
-                mock( Cluster.class ), new DefaultSlaveFactory( NullLogProvider.getInstance(), new Monitors(), 42 ) );
+                mock( Cluster.class ), new DefaultSlaveFactory( NullLogProvider.getInstance(), new Monitors(), 42,
+                        Suppliers.singleton( logEntryReader  ) ), new HostnamePort( null, 0 ) );
 
         // When
         ExecutorService executor = Executors.newFixedThreadPool( 5 );
@@ -214,7 +203,7 @@ public class HighAvailabilitySlavesTest
         }
 
         ClusterMembers clusterMembers = mock( ClusterMembers.class );
-        when( clusterMembers.getMembers() ).thenReturn( members );
+        when( clusterMembers.getAliveMembers() ).thenReturn( members );
 
         return clusterMembers;
     }

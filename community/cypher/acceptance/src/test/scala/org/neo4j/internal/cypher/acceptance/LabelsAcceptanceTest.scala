@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,14 +19,16 @@
  */
 package org.neo4j.internal.cypher.acceptance
 
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.CollectionSupport
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.ListSupport
 import org.neo4j.cypher.{CypherException, ExecutionEngineFunSuite, QueryStatisticsTestSupport}
 import org.neo4j.graphdb.Node
+import org.neo4j.kernel.impl.storageengine.impl.recordstorage.RecordStorageEngine
+import org.neo4j.kernel.impl.store.NeoStores
 import org.scalatest.Assertions
 import org.scalautils.LegacyTripleEquals
 
 class LabelsAcceptanceTest extends ExecutionEngineFunSuite
-  with QueryStatisticsTestSupport with Assertions with CollectionSupport with LegacyTripleEquals {
+  with QueryStatisticsTestSupport with Assertions with ListSupport with LegacyTripleEquals {
 
   test("Adding_single_literal_label") {
     assertThat("create (n {}) set n:FOO", List("FOO"))
@@ -81,6 +83,17 @@ class LabelsAcceptanceTest extends ExecutionEngineFunSuite
       returnsLabels("FOO")
   }
 
+  test("should not create labels id when trying to delete non-existing labels") {
+    createNode()
+    val resultRule = execute("Cypher planner=rule MATCH (n) REMOVE n:BAR RETURN id(n) as id").toList
+    resultRule should equal(List(Map("id" -> 0)))
+    val resultCost = execute("MATCH (n) REMOVE n:BAR RETURN id(n) as id").toList
+    resultCost should equal(List(Map("id" -> 0)))
+
+    graph.inTx {
+      graph.getDependencyResolver.resolveDependency(classOf[RecordStorageEngine]).testAccessNeoStores().getLabelTokenStore.getHighId should equal(0)
+    }
+  }
 
   private class AssertThat(labels: Seq[String], query:String) {
     def returnsLabels(expected:String*):AssertThat = {

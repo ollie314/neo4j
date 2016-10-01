@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -36,7 +36,7 @@ class ExamplesTest extends RefcardTest with QueryStatisticsTestSupport {
         assertStats(result, nodesCreated = 0)
         assert(result.toList.size === 0)
       case "create" =>
-        assertStats(result, nodesCreated = 1, nodesDeleted = 1, propertiesSet = 3, labelsAdded = 1)
+        assertStats(result, nodesCreated = 1, nodesDeleted = 1, propertiesWritten = 3, labelsAdded = 1)
         assert(result.toList.size === 0)
     }
   }
@@ -44,7 +44,7 @@ class ExamplesTest extends RefcardTest with QueryStatisticsTestSupport {
   override def parameters(name: String): Map[String, Any] =
     name match {
       case "parameters=name" =>
-        Map("name" -> "Andreas", "city" -> "Malmö", "skip_number" -> 10)
+        Map("name" -> "Andreas", "city" -> "Malmö", "skipNumber" -> 10)
       case _ => Map()
     }
 
@@ -59,11 +59,11 @@ class ExamplesTest extends RefcardTest with QueryStatisticsTestSupport {
 
 MATCH (user:Person)-[:FRIEND]-(friend)
 WHERE user.city = {city}
-WITH user, count(friend) as friendCount
+WITH user, count(friend) AS friendCount
 WHERE friendCount > 10
 RETURN user.name
 ORDER BY friendCount DESC
-SKIP {skip_number}
+SKIP {skipNumber}
 LIMIT 10
 
 ###

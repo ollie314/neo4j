@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,9 +26,8 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.index.Index;
-import org.neo4j.kernel.GraphDatabaseAPI;
-import org.neo4j.kernel.impl.store.NeoStores;
-import org.neo4j.kernel.impl.transaction.state.NeoStoresSupplier;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
+import org.neo4j.kernel.impl.transaction.log.TransactionIdStore;
 import org.neo4j.test.DatabaseRule;
 import org.neo4j.test.ImpermanentDatabaseRule;
 import org.neo4j.test.TestLabels;
@@ -46,8 +45,8 @@ public class NoChangeWriteTransactionTest
         // GIVEN a transaction that has seen some changes, where all those changes result in a net 0 change set
         // a good way of producing such state is to add a label to an existing node, and then remove it.
         GraphDatabaseAPI db = dbr.getGraphDatabaseAPI();
-        NeoStores neoStores = db.getDependencyResolver().resolveDependency( NeoStoresSupplier.class ).get();
-        long startTxId = neoStores.getMetaDataStore().getLastCommittedTransactionId();
+        TransactionIdStore txIdStore = db.getDependencyResolver().resolveDependency( TransactionIdStore.class );
+        long startTxId = txIdStore.getLastCommittedTransactionId();
         Node node = createEmptyNode( db );
         try ( Transaction tx = db.beginTx() )
         {
@@ -58,7 +57,7 @@ public class NoChangeWriteTransactionTest
 
         // THEN it should not have been committed
         assertEquals( "Expected last txId to be what it started at + 2 (1 for the empty node, and one for the label)",
-                startTxId + 2, neoStores.getMetaDataStore().getLastCommittedTransactionId() );
+                startTxId + 2, txIdStore.getLastCommittedTransactionId() );
     }
 
     @Test
@@ -67,8 +66,8 @@ public class NoChangeWriteTransactionTest
         // GIVEN a transaction that has seen some changes, where all those changes result in a net 0 change set
         // a good way of producing such state is to add a label to an existing node, and then remove it.
         GraphDatabaseAPI db = dbr.getGraphDatabaseAPI();
-        NeoStores neoStores = db.getDependencyResolver().resolveDependency( NeoStoresSupplier.class ).get();
-        long startTxId = neoStores.getMetaDataStore().getLastCommittedTransactionId();
+        TransactionIdStore txIdStore = db.getDependencyResolver().resolveDependency( TransactionIdStore.class );
+        long startTxId = txIdStore.getLastCommittedTransactionId();
         Node node = createEmptyNode( db );
         Index<Node> index = createNodeIndex( db );
         try ( Transaction tx = db.beginTx() )
@@ -83,7 +82,7 @@ public class NoChangeWriteTransactionTest
         // THEN it should not have been committed
         assertEquals( "Expected last txId to be what it started at + 3 " +
                       "(1 for the empty node, 1 for index, and one for the label)",
-                startTxId + 3, neoStores.getMetaDataStore().getLastCommittedTransactionId() );
+                startTxId + 3, txIdStore.getLastCommittedTransactionId() );
     }
 
     private Index<Node> createNodeIndex( GraphDatabaseAPI db )

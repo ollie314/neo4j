@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -41,5 +41,5 @@ public enum InternalIndexState
      *
      * Dropping a failed index should be possible, as long as the failure is not caused by eg. out of memory.
      */
-    FAILED;
+    FAILED
 }

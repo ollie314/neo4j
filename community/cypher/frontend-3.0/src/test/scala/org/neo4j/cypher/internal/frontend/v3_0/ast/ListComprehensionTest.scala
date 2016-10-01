@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,25 +27,25 @@ import org.neo4j.cypher.internal.frontend.v3_0.{DummyPosition, SemanticCheckResu
 class ListComprehensionTest extends CypherFunSuite {
 
   val dummyExpression = DummyExpression(
-    CTCollection(CTNode) | CTBoolean | CTCollection(CTString))
+    CTList(CTNode) | CTBoolean | CTList(CTString))
 
   test("withoutExtractExpressionShouldHaveCollectionTypesOfInnerExpression") {
-    val filter = ListComprehension(Identifier("x")(DummyPosition(5)), dummyExpression, None, None)(DummyPosition(0))
+    val filter = ListComprehension(Variable("x")(DummyPosition(5)), dummyExpression, None, None)(DummyPosition(0))
     val result = filter.semanticCheck(Expression.SemanticContext.Simple)(SemanticState.clean)
     result.errors shouldBe empty
-    filter.types(result.state) should equal(CTCollection(CTNode) | CTCollection(CTString))
+    filter.types(result.state) should equal(CTList(CTNode) | CTList(CTString))
   }
 
   test("shouldHaveCollectionWithInnerTypesOfExtractExpression") {
     val extractExpression = DummyExpression(CTNode | CTNumber, DummyPosition(2))
 
-    val filter = ListComprehension(Identifier("x")(DummyPosition(5)), dummyExpression, None, Some(extractExpression))(DummyPosition(0))
+    val filter = ListComprehension(Variable("x")(DummyPosition(5)), dummyExpression, None, Some(extractExpression))(DummyPosition(0))
     val result = filter.semanticCheck(Expression.SemanticContext.Simple)(SemanticState.clean)
     result.errors shouldBe empty
-    filter.types(result.state) should equal(CTCollection(CTNode) | CTCollection(CTNumber))
+    filter.types(result.state) should equal(CTList(CTNode) | CTList(CTNumber))
   }
 
-  test("shouldSemanticCheckPredicateInStateContainingTypedIdentifier") {
+  test("shouldSemanticCheckPredicateInStateContainingTypedVariable") {
     val error = SemanticError("dummy error", DummyPosition(8))
     val predicate = new DummyExpression(CTAny, DummyPosition(7)) {
       override def semanticCheck(ctx: SemanticContext) = s => {
@@ -54,7 +54,7 @@ class ListComprehensionTest extends CypherFunSuite {
       }
     }
 
-    val filter = ListComprehension(Identifier("x")(DummyPosition(2)), dummyExpression, Some(predicate), None)(DummyPosition(0))
+    val filter = ListComprehension(Variable("x")(DummyPosition(2)), dummyExpression, Some(predicate), None)(DummyPosition(0))
     val result = filter.semanticCheck(Expression.SemanticContext.Simple)(SemanticState.clean)
     result.errors should equal(Seq(error))
     result.state.symbol("x") should equal(None)

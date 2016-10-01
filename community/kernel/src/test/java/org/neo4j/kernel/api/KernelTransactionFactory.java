@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,11 +19,11 @@
  */
 package org.neo4j.kernel.api;
 
+import java.time.Clock;
+import java.util.function.Supplier;
+
 import org.neo4j.collection.pool.Pool;
-import org.neo4j.helpers.Clock;
-import org.neo4j.kernel.impl.api.store.ProcedureCache;
-import org.neo4j.kernel.impl.constraints.ConstraintSemantics;
-import org.neo4j.kernel.api.txstate.LegacyIndexTransactionState;
+import org.neo4j.kernel.api.security.AccessMode;
 import org.neo4j.kernel.impl.api.KernelTransactionImplementation;
 import org.neo4j.kernel.impl.api.SchemaWriteGuard;
 import org.neo4j.kernel.impl.api.StatementOperationParts;
@@ -31,36 +31,72 @@ import org.neo4j.kernel.impl.api.TransactionHeaderInformation;
 import org.neo4j.kernel.impl.api.TransactionHooks;
 import org.neo4j.kernel.impl.api.TransactionRepresentationCommitProcess;
 import org.neo4j.kernel.impl.api.state.ConstraintIndexCreator;
-import org.neo4j.kernel.impl.api.store.StoreReadLayer;
 import org.neo4j.kernel.impl.locking.NoOpClient;
-import org.neo4j.kernel.impl.store.NeoStores;
+import org.neo4j.kernel.impl.locking.SimpleStatementLocks;
+import org.neo4j.kernel.impl.locking.StatementLocks;
+import org.neo4j.kernel.impl.proc.Procedures;
 import org.neo4j.kernel.impl.transaction.TransactionHeaderInformationFactory;
 import org.neo4j.kernel.impl.transaction.TransactionMonitor;
-import org.neo4j.kernel.impl.transaction.state.TransactionRecordState;
 import org.neo4j.kernel.impl.transaction.tracing.TransactionTracer;
+import org.neo4j.storageengine.api.StorageEngine;
+import org.neo4j.storageengine.api.StorageStatement;
+import org.neo4j.storageengine.api.StoreReadLayer;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 public class KernelTransactionFactory
 {
-    static KernelTransaction kernelTransaction()
+    public static class Instances
+    {
+        public KernelTransactionImplementation transaction;
+        public StorageEngine storageEngine;
+        public StoreReadLayer storeReadLayer;
+        public StorageStatement storageStatement;
+
+        public Instances( KernelTransactionImplementation transaction, StorageEngine storageEngine,
+                StoreReadLayer storeReadLayer, StorageStatement storageStatement )
+        {
+            this.transaction = transaction;
+            this.storageEngine = storageEngine;
+            this.storeReadLayer = storeReadLayer;
+            this.storageStatement = storageStatement;
+        }
+    }
+
+    static Instances kernelTransactionWithInternals( AccessMode accessMode )
     {
         TransactionHeaderInformation headerInformation = new TransactionHeaderInformation( -1, -1, new byte[0] );
         TransactionHeaderInformationFactory headerInformationFactory = mock( TransactionHeaderInformationFactory.class );
         when( headerInformationFactory.create() ).thenReturn( headerInformation );
 
-        return new KernelTransactionImplementation( mock( StatementOperationParts.class ),
-                mock( SchemaWriteGuard.class ), null, null,
-                null, mock( TransactionRecordState.class ),
-                null, mock( NeoStores.class ), new NoOpClient(), new TransactionHooks(),
-                mock( ConstraintIndexCreator.class ), headerInformationFactory,
+        StorageEngine storageEngine = mock( StorageEngine.class );
+        StoreReadLayer storeReadLayer = mock( StoreReadLayer.class );
+        StorageStatement storageStatement = mock( StorageStatement.class );
+        when( storeReadLayer.newStatement() ).thenReturn( storageStatement );
+        when( storageEngine.storeReadLayer() ).thenReturn( storeReadLayer );
+
+        KernelTransactionImplementation transaction = new KernelTransactionImplementation(
+                mock( StatementOperationParts.class ),
+                mock( SchemaWriteGuard.class ),
+                new TransactionHooks(),
+                mock( ConstraintIndexCreator.class ), new Procedures(), headerInformationFactory,
                 mock( TransactionRepresentationCommitProcess.class ), mock( TransactionMonitor.class ),
-                mock( StoreReadLayer.class ),
-                mock( LegacyIndexTransactionState.class ),
-                mock(Pool.class),
-                mock( ConstraintSemantics.class ),
-                Clock.SYSTEM_CLOCK,
-                TransactionTracer.NULL, new ProcedureCache() );
+                mock( Supplier.class ),
+                mock( Pool.class ),
+                Clock.systemUTC(),
+                TransactionTracer.NULL,
+                storageEngine, false );
+
+        StatementLocks statementLocks = new SimpleStatementLocks( new NoOpClient() );
+
+        transaction.initialize( 0, 0, statementLocks, KernelTransaction.Type.implicit, accessMode, 0L );
+
+        return new Instances( transaction, storageEngine, storeReadLayer, storageStatement );
+    }
+
+    static KernelTransaction kernelTransaction( AccessMode accessMode )
+    {
+        return kernelTransactionWithInternals( accessMode ).transaction;
     }
 }

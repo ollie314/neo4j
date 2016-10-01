@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -43,7 +43,9 @@ public class PackStreamMessageFormatV1 implements MessageFormat
     public interface MessageTypes
     {
         byte MSG_INIT = 0x01;
-        byte MSG_ACK_FAILURE = 0x0F;
+        byte MSG_ACK_FAILURE = 0x0E;
+        byte MSG_RESET = 0x0F;
+
         byte MSG_RUN = 0x10;
         byte MSG_DISCARD_ALL = 0x2F;
         byte MSG_PULL_ALL = 0x3F;
@@ -58,7 +60,9 @@ public class PackStreamMessageFormatV1 implements MessageFormat
     {
         switch( type )
         {
+        case MessageTypes.MSG_INIT:        return "MSG_INIT";
         case MessageTypes.MSG_ACK_FAILURE: return "MSG_ACK_FAILURE";
+        case MessageTypes.MSG_RESET:       return "MSG_RESET";
         case MessageTypes.MSG_RUN:         return "MSG_RUN";
         case MessageTypes.MSG_DISCARD_ALL: return "MSG_DISCARD_ALL";
         case MessageTypes.MSG_PULL_ALL:    return "MSG_PULL_ALL";
@@ -72,14 +76,7 @@ public class PackStreamMessageFormatV1 implements MessageFormat
 
     public static class Writer implements MessageFormat.Writer
     {
-        public static final MessageBoundaryHook NO_OP = new MessageBoundaryHook()
-        {
-            @Override
-            public void onMessageComplete() throws IOException
-            {
-
-            }
-        };
+        public static final MessageBoundaryHook NO_OP = () -> { };
 
         private final Neo4jPack.Packer packer;
         private final MessageBoundaryHook onMessageComplete;
@@ -128,13 +125,6 @@ public class PackStreamMessageFormatV1 implements MessageFormat
         }
 
         @Override
-        public void handleAckFailureMessage() throws IOException
-        {
-            packer.packStructHeader( 0, MessageTypes.MSG_ACK_FAILURE );
-            onMessageComplete.onMessageComplete();
-        }
-
-        @Override
         public void handleRecordMessage( Record item )
                 throws IOException
         {
@@ -146,6 +136,11 @@ public class PackStreamMessageFormatV1 implements MessageFormat
                 packer.pack( field );
             }
             onMessageComplete.onMessageComplete();
+
+            //The record might contain unpackable values,
+            //hence we must consume any errors that might
+            //have occurred.
+            packer.consumeError();
         }
 
         @Override
@@ -169,7 +164,7 @@ public class PackStreamMessageFormatV1 implements MessageFormat
 
             packer.pack( "message" );
             packer.pack( message );
-            
+
             onMessageComplete.onMessageComplete();
         }
 
@@ -181,10 +176,25 @@ public class PackStreamMessageFormatV1 implements MessageFormat
         }
 
         @Override
-        public void handleInitMessage( String clientName ) throws IOException
+        public void handleInitMessage( String clientName, Map<String,Object> credentials ) throws IOException
         {
             packer.packStructHeader( 1, MessageTypes.MSG_INIT );
             packer.pack( clientName );
+            packer.packRawMap( credentials );
+            onMessageComplete.onMessageComplete();
+        }
+
+        @Override
+        public void handleResetMessage() throws IOException
+        {
+            packer.packStructHeader( 0, MessageTypes.MSG_RESET );
+            onMessageComplete.onMessageComplete();
+        }
+
+        @Override
+        public void handleAckFailureMessage() throws IOException
+        {
+            packer.packStructHeader( 0, MessageTypes.MSG_ACK_FAILURE );
             onMessageComplete.onMessageComplete();
         }
 
@@ -244,14 +254,17 @@ public class PackStreamMessageFormatV1 implements MessageFormat
                     case MessageTypes.MSG_FAILURE:
                         unpackFailureMessage( output );
                         break;
-                    case MessageTypes.MSG_ACK_FAILURE:
-                        unpackAckFailureMessage( output );
-                        break;
                     case MessageTypes.MSG_IGNORED:
                         unpackIgnoredMessage( output );
                         break;
                     case MessageTypes.MSG_INIT:
                         unpackInitMessage( output );
+                        break;
+                    case MessageTypes.MSG_RESET:
+                        output.handleResetMessage();
+                        break;
+                    case MessageTypes.MSG_ACK_FAILURE:
+                        output.handleAckFailureMessage();
                         break;
                     default:
                         throw new BoltIOException( Status.Request.Invalid,
@@ -272,12 +285,6 @@ public class PackStreamMessageFormatV1 implements MessageFormat
             }
         }
 
-        private <E extends Exception> void unpackAckFailureMessage( MessageHandler<E> output )
-                throws E
-        {
-            output.handleAckFailureMessage();
-        }
-
         private <E extends Exception> void unpackSuccessMessage( MessageHandler<E> output )
                 throws E, IOException
         {
@@ -292,7 +299,7 @@ public class PackStreamMessageFormatV1 implements MessageFormat
 
             String codeStr = map.containsKey( "code" ) ?
                     (String) map.get( "code" ) :
-                    Status.General.UnknownFailure.name();
+                    Status.General.UnknownError.name();
 
             String msg = map.containsKey( "message" ) ?
                     (String) map.get( "message" ) :
@@ -322,7 +329,7 @@ public class PackStreamMessageFormatV1 implements MessageFormat
         private <E extends Exception> void unpackRunMessage( MessageHandler<E> output )
                 throws E, IOException
         {
-            String statement = unpacker.unpackText();
+            String statement = unpacker.unpackString();
             Map<String,Object> params = unpacker.unpackMap();
             output.handleRunMessage( statement, params );
         }
@@ -341,8 +348,9 @@ public class PackStreamMessageFormatV1 implements MessageFormat
 
         private <E extends Exception> void unpackInitMessage( MessageHandler<E> output ) throws IOException, E
         {
-            String clientName = unpacker.unpackText();
-            output.handleInitMessage( clientName );
+            String clientName = unpacker.unpackString();
+            Map<String,Object> credentials = unpacker.unpackMap();
+            output.handleInitMessage( clientName, credentials );
         }
 
     }

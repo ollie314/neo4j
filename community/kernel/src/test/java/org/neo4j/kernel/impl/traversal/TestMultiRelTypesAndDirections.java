@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -29,8 +29,7 @@ import org.neo4j.graphdb.traversal.TraversalDescription;
 
 import static org.junit.Assert.*;
 import static org.neo4j.graphdb.Direction.OUTGOING;
-import static org.neo4j.graphdb.DynamicRelationshipType.withName;
-import static org.neo4j.kernel.Traversal.traversal;
+import static org.neo4j.graphdb.RelationshipType.withName;
 
 public class TestMultiRelTypesAndDirections extends TraversalTestBase
 {
@@ -45,13 +44,13 @@ public class TestMultiRelTypesAndDirections extends TraversalTestBase
     @Test
     public void testCIsReturnedOnDepthTwoDepthFirst()
     {
-        testCIsReturnedOnDepthTwo( traversal().depthFirst() );
+        testCIsReturnedOnDepthTwo( getGraphDb().traversalDescription().depthFirst() );
     }
 
     @Test
     public void testCIsReturnedOnDepthTwoBreadthFirst()
     {
-        testCIsReturnedOnDepthTwo( traversal().breadthFirst() );
+        testCIsReturnedOnDepthTwo( getGraphDb().traversalDescription().breadthFirst() );
     }
 
     private void testCIsReturnedOnDepthTwo( TraversalDescription description )

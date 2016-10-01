@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -29,7 +29,7 @@ object aggregation {
 
     val groupingExpressions: Map[String, Expression] = aggregation.groupingKeys
 
-    val identifiersToKeep: Map[String, Expression] = aggregation.aggregationExpressions.flatMap {
+    val variablesToKeep: Map[String, Expression] = aggregation.aggregationExpressions.flatMap {
       case (_, exp) => exp.dependencies
     }.toList.distinct.map {
       case id => id.name -> id
@@ -37,7 +37,10 @@ object aggregation {
 
     //  TODO: we need to project here since the pipe does not do that,
     //  when moving to the new runtime the aggregation pipe MUST do the projection itself
-    val projectedPlan = projection(plan, groupingExpressions ++ identifiersToKeep)
-    context.logicalPlanProducer.planAggregation(projectedPlan, groupingExpressions, aggregation.aggregationExpressions)
+    val projectedPlan = projection(plan, groupingExpressions ++ variablesToKeep)
+
+    val (rewrittenPlan, aggregations) = PatternExpressionSolver()(projectedPlan, aggregation.aggregationExpressions)
+
+    context.logicalPlanProducer.planAggregation(rewrittenPlan, groupingExpressions, aggregations, aggregation.aggregationExpressions)
   }
 }

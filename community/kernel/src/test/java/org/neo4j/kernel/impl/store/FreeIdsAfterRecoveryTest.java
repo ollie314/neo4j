@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -38,9 +38,6 @@ import org.neo4j.test.TargetDirectory;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-
-import static org.neo4j.kernel.impl.store.StoreFactory.SF_CREATE;
-import static org.neo4j.kernel.impl.store.StoreFactory.SF_LAZY;
 import static org.neo4j.kernel.impl.store.id.IdGeneratorImpl.HEADER_SIZE;
 import static org.neo4j.kernel.impl.store.id.IdGeneratorImpl.markAsSticky;
 
@@ -56,10 +53,10 @@ public class FreeIdsAfterRecoveryTest
     public void shouldCompletelyRebuildIdGeneratorsAfterCrash() throws Exception
     {
         // GIVEN
-        StoreFactory storeFactory = new StoreFactory( fs, directory.directory(), pageCacheRule.getPageCache( fs ),
+        StoreFactory storeFactory = new StoreFactory( directory.directory(), pageCacheRule.getPageCache( fs ), fs,
                 NullLogProvider.getInstance() );
         long highId;
-        try ( NeoStores stores = storeFactory.openNeoStores( SF_LAZY | SF_CREATE ) )
+        try ( NeoStores stores = storeFactory.openAllNeoStores( true ) )
         {
             // a node store with a "high" node
             NodeStore nodeStore = stores.getNodeStore();
@@ -83,7 +80,7 @@ public class FreeIdsAfterRecoveryTest
         }
 
         // WHEN
-        try ( NeoStores stores = storeFactory.openNeoStores( SF_LAZY | SF_CREATE ) )
+        try ( NeoStores stores = storeFactory.openAllNeoStores( true ) )
         {
             NodeStore nodeStore = stores.getNodeStore();
             assertFalse( nodeStore.getStoreOk() );

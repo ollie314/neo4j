@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -38,7 +38,7 @@ public class RecordChangeSetTest
     public void shouldStartWithSetsInitializedAndEmpty() throws Exception
     {
         // GIVEN
-        RecordChangeSet changeSet = new RecordChangeSet( mock( NeoStores.class ) );
+        RecordChangeSet changeSet = new RecordChangeSet( mock( Loaders.class ) );
 
         // WHEN
         // nothing really
@@ -62,7 +62,7 @@ public class RecordChangeSetTest
         when( mockStore.getSchemaStore() ).thenReturn( mock( SchemaStore.class ) );
         when( mockStore.getRelationshipGroupStore() ).thenReturn( mock( RelationshipGroupStore.class ) );
 
-        RecordChangeSet changeSet = new RecordChangeSet( mockStore );
+        RecordChangeSet changeSet = new RecordChangeSet( new Loaders( mockStore ) );
 
         // WHEN
         /*

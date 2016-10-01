@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,13 +20,14 @@
 package org.neo4j.bolt.v1.messaging.infrastructure;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.Map;
 
 import org.neo4j.bolt.v1.messaging.BoltIOException;
 import org.neo4j.bolt.v1.messaging.Neo4jPack;
-import org.neo4j.graphdb.DynamicRelationshipType;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.NotFoundException;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.kernel.api.exceptions.Status;
@@ -43,7 +44,17 @@ public class ValueRelationship extends ValuePropertyContainer implements Relatio
         packer.pack( rel.getStartNode().getId() );
         packer.pack( rel.getEndNode().getId() );
         packer.pack( rel.getType().name() );
-        packer.packProperties( rel );
+        //TODO: We should mark deleted relationships properly but that requires updates
+        // to protocol and clients.
+        try{
+            Map<String,Object> properties = rel.getAllProperties();
+            packer.packRawMap( properties );
+        }
+        catch(NotFoundException e)
+        {
+            //relationship was deleted, just send empty property map back
+            packer.packRawMap( Collections.emptyMap() );
+        }
     }
 
     public static ValueRelationship unpack( Neo4jPack.Unpacker unpacker )
@@ -67,11 +78,11 @@ public class ValueRelationship extends ValuePropertyContainer implements Relatio
         long relId = unpacker.unpackLong();
         long startNodeId = unpacker.unpackLong();
         long endNodeId = unpacker.unpackLong();
-        String relTypeName = unpacker.unpackText();
+        String relTypeName = unpacker.unpackString();
 
         Map<String, Object> props = unpacker.unpackMap();
 
-        RelationshipType relType = DynamicRelationshipType.withName( relTypeName );
+        RelationshipType relType = RelationshipType.withName( relTypeName );
 
         return new ValueRelationship( relId, startNodeId, endNodeId, relType, props );
     }

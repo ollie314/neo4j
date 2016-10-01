@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,82 +20,123 @@
 package org.neo4j.server.configuration;
 
 import java.io.File;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.function.Function;
 
 import org.neo4j.bolt.BoltKernelExtension;
 import org.neo4j.graphdb.config.Setting;
 import org.neo4j.graphdb.factory.Description;
-import org.neo4j.helpers.Function;
+import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.helpers.HostnamePort;
-import org.neo4j.helpers.Settings;
-import org.neo4j.kernel.configuration.ConfigurationMigrator;
-import org.neo4j.kernel.configuration.Migrator;
-import org.neo4j.kernel.configuration.Obsoleted;
+import org.neo4j.kernel.configuration.Config;
+import org.neo4j.kernel.configuration.Internal;
+import org.neo4j.kernel.configuration.Settings;
+import org.neo4j.server.web.JettyThreadCalculator;
 
-import static org.neo4j.helpers.Settings.ANY;
-import static org.neo4j.helpers.Settings.BOOLEAN;
-import static org.neo4j.helpers.Settings.DURATION;
-import static org.neo4j.helpers.Settings.EMPTY;
-import static org.neo4j.helpers.Settings.FALSE;
-import static org.neo4j.helpers.Settings.INTEGER;
-import static org.neo4j.helpers.Settings.NO_DEFAULT;
-import static org.neo4j.helpers.Settings.PATH;
-import static org.neo4j.helpers.Settings.STRING;
-import static org.neo4j.helpers.Settings.STRING_LIST;
-import static org.neo4j.helpers.Settings.TRUE;
-import static org.neo4j.helpers.Settings.illegalValueMessage;
-import static org.neo4j.helpers.Settings.matches;
-import static org.neo4j.helpers.Settings.min;
-import static org.neo4j.helpers.Settings.port;
-import static org.neo4j.helpers.Settings.setting;
+import static org.neo4j.graphdb.factory.GraphDatabaseSettings.Connector.ConnectorType.HTTP;
+import static org.neo4j.kernel.configuration.GroupSettingSupport.enumerate;
+import static org.neo4j.kernel.configuration.Settings.BOOLEAN;
+import static org.neo4j.kernel.configuration.Settings.BYTES;
+import static org.neo4j.kernel.configuration.Settings.DURATION;
+import static org.neo4j.kernel.configuration.Settings.EMPTY;
+import static org.neo4j.kernel.configuration.Settings.FALSE;
+import static org.neo4j.kernel.configuration.Settings.HOSTNAME_PORT;
+import static org.neo4j.kernel.configuration.Settings.INTEGER;
+import static org.neo4j.kernel.configuration.Settings.NORMALIZED_RELATIVE_URI;
+import static org.neo4j.kernel.configuration.Settings.NO_DEFAULT;
+import static org.neo4j.kernel.configuration.Settings.STRING;
+import static org.neo4j.kernel.configuration.Settings.STRING_LIST;
+import static org.neo4j.kernel.configuration.Settings.TRUE;
+import static org.neo4j.kernel.configuration.Settings.max;
+import static org.neo4j.kernel.configuration.Settings.min;
+import static org.neo4j.kernel.configuration.Settings.options;
+import static org.neo4j.kernel.configuration.Settings.pathSetting;
+import static org.neo4j.kernel.configuration.Settings.range;
+import static org.neo4j.kernel.configuration.Settings.setting;
 
 @Description("Settings used by the server configuration")
 public interface ServerSettings
 {
-    @Migrator
-    ConfigurationMigrator migrator = new ServerConfigurationMigrator();
-
-    @Description( "Maximum request header size" )
+    @Description("Maximum request header size")
+    @Internal
     Setting<Integer> maximum_request_header_size =
-            setting( "org.neo4j.server.webserver.max.request.header", INTEGER, "20480" );
+            setting( "unsupported.dbms.max_http_request_header_size", INTEGER, "20480" );
 
-    @Description( "Maximum response header size" )
+    @Description("Maximum response header size")
+    @Internal
     Setting<Integer> maximum_response_header_size =
-            setting( "org.neo4j.server.webserver.max.response.header", INTEGER, "20480" );
+            setting( "unsupported.dbms.max_http_response_header_size", INTEGER, "20480" );
 
-    @Description( "Comma-seperated list of custom security rules for Neo4j to use." )
-    Setting<List<String>> security_rules = setting( "org.neo4j.server.rest.security_rules",
-            STRING_LIST, EMPTY );
+    @Description("Comma-seperated list of custom security rules for Neo4j to use.")
+    Setting<List<String>> security_rules = setting( "dbms.security.http_authorization_classes", STRING_LIST, EMPTY );
 
-    // webserver configuration
-    @Description( "Http port for the Neo4j REST API." )
-    Setting<Integer> webserver_port = setting( "org.neo4j.server.webserver.port", INTEGER, "7474",
-            port );
+    @Description("Configuration options for HTTP connectors. " +
+                 "\"(http-connector-key)\" is a placeholder for a unique name for the connector, for instance " +
+                 "\"http-public\" or some other name that describes what the connector is for.")
+    class HttpConnector extends GraphDatabaseSettings.Connector
+    {
+        @Description("Enable TLS for this connector")
+        public final Setting<Encryption> encryption;
 
-    @Description( "Hostname for the Neo4j REST API" )
-    Setting<String> webserver_address = setting( "org.neo4j.server.webserver.address", STRING,
-            "localhost", illegalValueMessage( "Must be a valid hostname", matches( ANY ) ) );
+        @Description("Address the connector should bind to")
+        public final Setting<HostnamePort> address;
 
-    @Description( "Number of Neo4j worker threads." )
-    Setting<Integer> webserver_max_threads = setting( "org.neo4j.server.webserver.maxthreads",
-            INTEGER, ""+Math.min(Runtime.getRuntime().availableProcessors(),500), min( 1 ) );
+        public HttpConnector()
+        {
+            this( "(http-connector-key)" );
+        }
 
-    @Description( "If execution time limiting is enabled in the database, this configures the maximum request execution time." )
-    Setting<Long> webserver_limit_execution_time = setting(
-            "org.neo4j.server.webserver.limit.executiontime", DURATION, NO_DEFAULT );
+        public HttpConnector( String key )
+        {
+            super( key, ConnectorType.HTTP.name() );
+            address = group.scope( setting( "address", HOSTNAME_PORT, "localhost:7474" ) );
+            encryption = group.scope( setting( "encryption", options( Encryption.class ), Encryption.NONE.name() ) );
+        }
 
+        public enum Encryption
+        {
+            NONE, TLS
+        }
+    }
+
+    static HttpConnector httpConnector( String key )
+    {
+        return new HttpConnector( key );
+    }
+
+    static Optional<HttpConnector> httpConnector( Config config, HttpConnector.Encryption encryption )
+    {
+        return config
+                .view( enumerate( GraphDatabaseSettings.Connector.class ) )
+                .map( HttpConnector::new )
+                .filter( ( connConfig ) -> {
+                    return config.get( connConfig.type ) == HTTP
+                            && config.get( connConfig.enabled )
+                            && config.get( connConfig.encryption ) == encryption;
+                } )
+                .findFirst();
+    }
+
+    @Description( "Number of Neo4j worker threads, your OS might enforce a lower limit than the maximum value " +
+            "specified here." )
+    Setting<Integer> webserver_max_threads = setting( "dbms.threads.worker_count", INTEGER,
+            "" + Math.min( Runtime.getRuntime().availableProcessors(), 500 ),
+            range( 1, JettyThreadCalculator.MAX_THREADS ) );
+
+    @Description("If execution time limiting is enabled in the database, this configures the maximum request execution time.")
+    @Internal
     @Deprecated
-    @Obsoleted( "RRDB was removed in 3.0" )
-    @Description( "Path to the statistics database file. RRDB has been deprecate, please use the Metrics plugin instead." )
-    Setting<File> rrdb_location = setting( "org.neo4j.server.webadmin.rrdb.location", PATH, NO_DEFAULT );
+    Setting<Long> webserver_limit_execution_time = setting( "unsupported.dbms.executiontime_limit.time", DURATION, NO_DEFAULT );
 
-    @Description( "Console engines for the legacy webadmin administration" )
-    Setting<List<String>> management_console_engines = setting(
-            "org.neo4j.server.manage.console_engines", STRING_LIST, "SHELL" );
+    @Internal
+    Setting<List<String>> console_module_engines = setting(
+            "unsupported.dbms.console_module.engines", STRING_LIST, "SHELL" );
 
-    @Description( "Comma-separated list of <classname>=<mount point> for unmanaged extensions." )
-    Setting<List<ThirdPartyJaxRsPackage>> third_party_packages = setting( "org.neo4j.server.thirdparty_jaxrs_classes",
+    @Description("Comma-separated list of <classname>=<mount point> for unmanaged extensions.")
+    Setting<List<ThirdPartyJaxRsPackage>> third_party_packages = setting( "dbms.unmanaged_extension_classes",
             new Function<String, List<ThirdPartyJaxRsPackage>>()
             {
                 @Override
@@ -135,59 +176,73 @@ public interface ServerSettings
             },
             EMPTY );
 
-    @Description( "Enable HTTPS for the REST API." )
-    Setting<Boolean> webserver_https_enabled = setting( "org.neo4j.server.webserver.https.enabled", BOOLEAN, FALSE );
+    @Description( "Directory for storing certificates to be used by Neo4j for TLS connections" )
+    Setting<File> certificates_directory = BoltKernelExtension.Settings.certificates_directory;
 
-    @Description( "HTTPS port for the REST API." )
-    Setting<Integer> webserver_https_port = setting( "org.neo4j.server.webserver.https.port", INTEGER, "7473", port );
+    @Internal
+    @Description("Path to the X.509 public certificate to be used by Neo4j for TLS connections")
+    Setting<File> tls_certificate_file = BoltKernelExtension.Settings.tls_certificate_file;
 
-    @Description( "Path to the X.509 public certificate to be used by Neo4j for TLS connections" )
-    Setting<File> tls_certificate_file = setting(
-            "dbms.security.tls_certificate_file", PATH, "neo4j-home/ssl/snakeoil.cert" );
+    @Internal
+    @Description("Path to the X.509 private key to be used by Neo4j for TLS connections")
+    Setting<File> tls_key_file = BoltKernelExtension.Settings.tls_key_file;
 
-    @Description( "Path to the X.509 private key to be used by Neo4j for TLS connections" )
-    Setting<File> tls_key_file = setting(
-            "dbms.security.tls_key_file", PATH, "neo4j-home/ssl/snakeoil.key" );
+    @Description("Enable HTTP request logging.")
+    Setting<Boolean> http_logging_enabled = setting( "dbms.logs.http.enabled", BOOLEAN, FALSE );
 
-    @Deprecated
-    @Description( "Path to the SSL certificate used for HTTPS connections. This is deprecated, please use " +
-                  "'dbms.security.tls_certificate_file' instead." )
-    Setting<File> webserver_https_cert_path = setting(
-            "org.neo4j.server.webserver.https.cert.location", PATH, "neo4j-home/ssl/snakeoil.cert" );
+    @Description("Number of HTTP logs to keep.")
+    Setting<Integer> http_logging_rotation_keep_number = setting("dbms.logs.http.rotation.keep_number", INTEGER, "5");
 
-    @Deprecated
-    @Description( "Path to the SSL key used for HTTPS connections. This is deprecated, please use " +
-                  "'dbms.security.tls_key_file'" )
-    Setting<File> webserver_https_key_path = setting(
-            "org.neo4j.server.webserver.https.key.location", PATH, "neo4j-home/ssl/snakeoil.key" );
+    @Description("Size of each HTTP log that is kept.")
+    Setting<Long> http_logging_rotation_size = setting("dbms.logs.http.rotation.size", BYTES, "20m", min(0L), max( Long.MAX_VALUE ) );
 
+    @SuppressWarnings("unused") // used only in the startup scripts
+    @Description("Enable GC Logging")
+    Setting<Boolean> gc_logging_enabled = setting("dbms.logs.gc.enabled", BOOLEAN, FALSE);
 
-    @Description( "Enable HTTP request logging." )
-    Setting<Boolean> http_logging_enabled = setting( "org.neo4j.server.http.log.enabled", BOOLEAN, FALSE );
+    @SuppressWarnings("unused") // used only in the startup scripts
+    @Description("GC Logging Options")
+    Setting<String> gc_logging_options = setting("dbms.logs.gc.options", STRING, "" +
+            "-XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCApplicationStoppedTime " +
+            "-XX:+PrintPromotionFailure -XX:+PrintTenuringDistribution");
 
-    @Description( "Enable HTTP content logging." )
-    Setting<Boolean> http_content_logging_enabled = setting( "org.neo4j.server.http.unsafe.content_log.enabled",
-            BOOLEAN, FALSE );
+    @SuppressWarnings("unused") // used only in the startup scripts
+    @Description("Number of GC logs to keep.")
+    Setting<Integer> gc_logging_rotation_keep_number = setting("dbms.logs.gc.rotation.keep_number", INTEGER, "5");
 
-    @Description( "Path to a logback configuration file for HTTP request logging." )
-    Setting<File> http_log_config_file = setting( "org.neo4j.server.http.log.config", new HttpLogSetting(), NO_DEFAULT );
+    @SuppressWarnings("unused") // used only in the startup scripts
+    @Description("Size of each GC log that is kept.")
+    Setting<Long> gc_logging_rotation_size = setting("dbms.logs.gc.rotation.size", BYTES, "20m", min(0L), max( Long.MAX_VALUE ) );
 
-    @Description( "Timeout for idle transactions." )
-    Setting<Long> transaction_timeout = setting( "org.neo4j.server.transaction.timeout", DURATION, "60s" );
+    @SuppressWarnings("unused") // used only in the startup scripts
+    @Description("Path of the run directory")
+    Setting<File> run_directory = pathSetting( "dbms.directories.run", "run" );
 
-    @Description( "Enable auth requirement to access Neo4j." )
-    Setting<Boolean> auth_enabled = setting("dbms.security.auth_enabled", BOOLEAN, TRUE);
+    @SuppressWarnings("unused") // used only in the startup scripts
+    @Description("Path of the lib directory")
+    Setting<File> lib_directory = pathSetting( "dbms.directories.lib", "lib" );
 
-    @Description("Enable the Bolt protocol")
-    Setting<Boolean> bolt_enabled = BoltKernelExtension.Settings.enabled;
+    @Description("Timeout for idle transactions in the REST endpoint.")
+    Setting<Long> transaction_timeout = setting( "dbms.transaction_timeout", DURATION, "60s" );
 
-    @Description("Enable TLS for Bolt")
-    Setting<Boolean> bolt_tls_enabled = BoltKernelExtension.Settings.tls_enabled;
+    @Internal
+    Setting<URI> rest_api_path = setting( "unsupported.dbms.uris.rest", NORMALIZED_RELATIVE_URI, "/db/data" );
 
-    @Description("Host and port for Bolt TCP transport")
-    Setting<HostnamePort> bolt_socket_address = BoltKernelExtension.Settings.socket_address;
+    @Internal
+    Setting<URI> management_api_path = setting( "unsupported.dbms.uris.management",
+            NORMALIZED_RELATIVE_URI, "/db/manage" );
 
-    @Description("Host and port for the Bolt Websocket transport")
-    Setting<HostnamePort> bolt_ws_address = BoltKernelExtension.Settings.websocket_address;
+    @Internal
+    Setting<URI> browser_path = setting( "unsupported.dbms.uris.browser", Settings.URI, "/browser/" );
 
+    @Internal
+    Setting<Boolean> script_sandboxing_enabled = setting("unsupported.dbms.security.script_sandboxing_enabled",
+            BOOLEAN, TRUE );
+
+    @Internal
+    Setting<Boolean> wadl_enabled = setting( "unsupported.dbms.wadl_generation_enabled", BOOLEAN,
+            FALSE );
+
+    @Internal
+    Setting<Boolean> console_module_enabled = setting( "unsupported.dbms.console_module.enabled", BOOLEAN, TRUE );
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,13 +28,13 @@ class CheckForEagerLoadCsvTest extends CypherFunSuite {
   implicit val monitor = mock[PipeMonitor]
 
   test("should notify for EagerPipe on top of LoadCsvPipe") {
-    val pipe = EagerPipe(LoadCSVPipe(AllNodesScanPipe("a")(), HasHeaders, Literal("foo"), "bar", None))()
+    val pipe = EagerPipe(LoadCSVPipe(AllNodesScanPipe("a")(), HasHeaders, Literal("foo"), "bar", None)())()
 
     checkForEagerLoadCsv(pipe) should equal(Some(EagerLoadCsvNotification))
   }
 
   test("should not notify for LoadCsv on top of eager pipe") {
-    val pipe = LoadCSVPipe(EagerPipe(AllNodesScanPipe("a")())(), HasHeaders, Literal("foo"), "bar", None)
+    val pipe = LoadCSVPipe(EagerPipe(AllNodesScanPipe("a")())(), HasHeaders, Literal("foo"), "bar", None)()
 
     checkForEagerLoadCsv(pipe) should equal(None)
   }

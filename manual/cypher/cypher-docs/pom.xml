@@ -3,20 +3,22 @@
   <parent>
     <groupId>org.neo4j.doc</groupId>
     <artifactId>neo4j-cypher-docs-parent</artifactId>
-    <version>3.0.0-SNAPSHOT</version>
+    <version>3.0.7-SNAPSHOT</version>
     <relativePath>..</relativePath>
   </parent>
 
   <modelVersion>4.0.0</modelVersion>
   <artifactId>neo4j-cypher-docs</artifactId>
   <packaging>jar</packaging>
-  <version>3.0.0-SNAPSHOT</version>
+  <version>3.0.7-SNAPSHOT</version>
   <name>Neo4j - Cypher Documentation</name>
   <description>Neo4j query language documentation</description>
   <url>http://components.neo4j.org/${project.artifactId}/${project.version}</url>
 
   <scm>
-	  <url>https://github.com/neo4j/neo4j/tree/master/community/cypher/cypher-docs</url>
+    <connection>scm:git:git://github.com/neo4j/neo4j.git</connection>
+    <developerConnection>scm:git:git@github.com:neo4j/neo4j.git</developerConnection>
+    <url>https://github.com/neo4j/neo4j</url>
   </scm>
 
   <licenses>
@@ -44,7 +46,7 @@
     <docs-plugin.skip>false</docs-plugin.skip>
     <attach-docs-phase>verify</attach-docs-phase>
     <remote-csv-upload>http://neo4j.com/docs/${project.version}/csv</remote-csv-upload>
-    <scala.version>2.11.7</scala.version>
+    <scala.version>2.11.8</scala.version>
     <scala.binary.version>2.11</scala.binary.version>
   </properties>
 
@@ -76,6 +78,10 @@
 
     <!-- neo4j -->
 
+    <dependency>
+      <groupId>org.neo4j</groupId>
+      <artifactId>neo4j-kernel</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.neo4j</groupId>
       <artifactId>neo4j-kernel</artifactId>
@@ -141,6 +147,14 @@
       <groupId>org.codehaus.jackson</groupId>
       <artifactId>jackson-mapper-asl</artifactId>
       <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.neo4j.doc</groupId>
+      <artifactId>neo4j-doc-tools</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+      <type>test-jar</type>
     </dependency>
 
   </dependencies>

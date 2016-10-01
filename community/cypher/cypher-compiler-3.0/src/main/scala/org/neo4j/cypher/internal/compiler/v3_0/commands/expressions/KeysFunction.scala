@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -46,6 +46,6 @@ case class KeysFunction(expr: Expression) extends NullInNullOutExpression(expr) 
   protected def calculateType(symbols: SymbolTable) = expr match {
     case node: Node => expr.evaluateType(CTNode, symbols)
     case rel: Relationship => expr.evaluateType(CTRelationship, symbols)
-    case _ => CTCollection(CTString)
+    case _ => CTList(CTString)
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,8 +27,8 @@ class NoDuplicatesInReturnItemsTest extends CypherFunSuite with AstConstructionT
   private val condition: (Any => Seq[String]) = noDuplicatesInReturnItems
 
   test("happy if the return items do not contain duplicates") {
-    val return1: ReturnItem = AliasedReturnItem(UnsignedDecimalIntegerLiteral("42")_, ident("a"))_
-    val return2: ReturnItem = AliasedReturnItem(UnsignedDecimalIntegerLiteral("42")_, ident("b"))_
+    val return1: ReturnItem = AliasedReturnItem(UnsignedDecimalIntegerLiteral("42")_, varFor("a"))_
+    val return2: ReturnItem = AliasedReturnItem(UnsignedDecimalIntegerLiteral("42")_, varFor("b"))_
     val return3: ReturnItem = UnaliasedReturnItem(UnsignedDecimalIntegerLiteral("42")_, "42")_
     val ast: ReturnItems = ReturnItems(false, Seq(return1, return2, return3))_
 
@@ -36,8 +36,8 @@ class NoDuplicatesInReturnItemsTest extends CypherFunSuite with AstConstructionT
   }
 
   test("unhappy if the return items contains aliased duplicates") {
-    val return1: ReturnItem = AliasedReturnItem(UnsignedDecimalIntegerLiteral("42")_, ident("a"))_
-    val return2: ReturnItem = AliasedReturnItem(UnsignedDecimalIntegerLiteral("42")_, ident("a"))_
+    val return1: ReturnItem = AliasedReturnItem(UnsignedDecimalIntegerLiteral("42")_, varFor("a"))_
+    val return2: ReturnItem = AliasedReturnItem(UnsignedDecimalIntegerLiteral("42")_, varFor("a"))_
     val return3: ReturnItem = UnaliasedReturnItem(UnsignedDecimalIntegerLiteral("42")_, "42")_
     val ast: ReturnItems = ReturnItems(false, Seq(return1, return2, return3))_
 
@@ -45,7 +45,7 @@ class NoDuplicatesInReturnItemsTest extends CypherFunSuite with AstConstructionT
   }
 
   test("unhappy if the return items contains unaliased duplicates") {
-    val return1: ReturnItem = AliasedReturnItem(UnsignedDecimalIntegerLiteral("42")_, ident("a"))_
+    val return1: ReturnItem = AliasedReturnItem(UnsignedDecimalIntegerLiteral("42")_, varFor("a"))_
     val return2: ReturnItem = UnaliasedReturnItem(UnsignedDecimalIntegerLiteral("42")_, "42")_
     val return3: ReturnItem = UnaliasedReturnItem(UnsignedDecimalIntegerLiteral("42")_, "42")_
     val ast: ReturnItems = ReturnItems(false, Seq(return1, return2, return3))_

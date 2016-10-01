@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -40,7 +40,7 @@ class LabelScanLeafPlannerTest extends CypherFunSuite with LogicalPlanningTestSu
   test("simple label scan without compile-time label id") {
     // given
     val idName = IdName("n")
-    val hasLabels = HasLabels(Identifier("n")_, Seq(LabelName("Awesome")_))_
+    val hasLabels = HasLabels(Variable("n")_, Seq(LabelName("Awesome")_))_
     val qg = QueryGraph(
       selections = Selections(Set(Predicate(Set(idName), hasLabels))),
       patternNodes = Set(idName))
@@ -65,7 +65,7 @@ class LabelScanLeafPlannerTest extends CypherFunSuite with LogicalPlanningTestSu
 
     // then
     resultPlans should equal(Seq(
-      NodeByLabelScan(idName, LazyLabel("Awesome"), Set.empty)(solved))
+      NodeByLabelScan(idName, lblName("Awesome"), Set.empty)(solved))
     )
   }
 
@@ -73,7 +73,7 @@ class LabelScanLeafPlannerTest extends CypherFunSuite with LogicalPlanningTestSu
     // given
     val idName = IdName("n")
     val labelId = LabelId(12)
-    val hasLabels = HasLabels(Identifier("n")_, Seq(LabelName("Awesome")_))_
+    val hasLabels = HasLabels(Variable("n")_, Seq(LabelName("Awesome")_))_
     val qg = QueryGraph(
       selections = Selections(Set(Predicate(Set(idName), hasLabels))),
       patternNodes = Set(idName))
@@ -98,6 +98,6 @@ class LabelScanLeafPlannerTest extends CypherFunSuite with LogicalPlanningTestSu
 
     // then
     resultPlans should equal(
-      Seq(NodeByLabelScan(idName, LazyLabel(LabelName("Awesome")_), Set.empty)(solved)))
+      Seq(NodeByLabelScan(idName, lblName("Awesome"), Set.empty)(solved)))
   }
 }

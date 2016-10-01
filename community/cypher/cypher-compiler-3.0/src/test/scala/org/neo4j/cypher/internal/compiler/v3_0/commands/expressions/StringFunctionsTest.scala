@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -136,14 +136,6 @@ class StringFunctionsTest extends CypherFunSuite {
     trim("  hello") should equal("hello")
     trim(null) should equal(expectedNull)
     intercept[CypherTypeException](trim(1042))
-  }
-
-  test("stringTests") {
-    def str(x: Any) = StrFunction(Literal(x)).apply(ExecutionContext.empty)(QueryStateHelper.empty)
-
-    str(1234) should equal("1234")
-    str(List(1, 2, 3, 4)) should equal("[1,2,3,4]")
-    str(null) should equal(expectedNull)
   }
 
   test("reverse function test") {

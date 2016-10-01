@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -57,7 +57,7 @@ public interface MasterClient extends Master
             result.writeByte( responseObject.getStatus().ordinal() );
             if ( responseObject.getStatus().hasMessage() )
             {
-                writeString( result, responseObject.getDeadlockMessage() );
+                writeString( result, responseObject.getMessage() );
             }
         }
     };
@@ -79,7 +79,7 @@ public interface MasterClient extends Master
                 throw Exceptions.withMessage( e, format( "%s | read invalid ordinal %d. First %db of this channel buffer is:%n%s",
                         e.getMessage(), statusOrdinal, maxBytesToPrint, beginningOfBufferAsHexString( buffer, maxBytesToPrint ) ) );
             }
-            return status.hasMessage() ? new LockResult( readString( buffer ) ) : new LockResult( status );
+            return status.hasMessage() ? new LockResult( LockStatus.DEAD_LOCKED, readString( buffer ) ) : new LockResult( status );
         }
 
         private String beginningOfBufferAsHexString( ChannelBuffer buffer, int maxBytesToPrint )

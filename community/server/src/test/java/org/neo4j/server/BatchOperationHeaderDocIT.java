@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -51,7 +51,7 @@ public class BatchOperationHeaderDocIT extends ExclusiveServerTestBase
     public void cleanTheDatabase() throws IOException
     {
         server = server().withThirdPartyJaxRsPackage( "org.dummy.web.service",
-                DUMMY_WEB_SERVICE_MOUNT_POINT ).usingDatabaseDir( folder.getRoot().getAbsolutePath() ).build();
+                DUMMY_WEB_SERVICE_MOUNT_POINT ).usingDataDir( folder.getRoot().getAbsolutePath() ).build();
         server.start();
     }
 

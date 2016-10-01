@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,8 +23,8 @@ import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Predicate;
 
-import org.neo4j.function.Predicate;
 import org.neo4j.kernel.api.index.IndexDescriptor;
 import org.neo4j.kernel.api.index.InternalIndexState;
 import org.neo4j.kernel.impl.api.index.IndexMap;
@@ -207,14 +207,7 @@ public class IndexSamplingController
     {
         if ( backgroundSampling )
         {
-            Runnable samplingRunner = new Runnable()
-            {
-                @Override
-                public void run()
-                {
-                    sampleIndexes( BACKGROUND_REBUILD_UPDATED );
-                }
-            };
+            Runnable samplingRunner = () -> sampleIndexes( BACKGROUND_REBUILD_UPDATED );
             backgroundSamplingHandle = scheduler.scheduleRecurring( indexSamplingController, samplingRunner, 10, SECONDS );
         }
     }

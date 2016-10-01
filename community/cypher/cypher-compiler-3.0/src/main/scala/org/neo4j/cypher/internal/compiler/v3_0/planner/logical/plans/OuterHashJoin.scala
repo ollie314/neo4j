@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,7 @@ import org.neo4j.cypher.internal.compiler.v3_0.planner.{CardinalityEstimation, P
 
 case class OuterHashJoin(nodes: Set[IdName], left: LogicalPlan, right: LogicalPlan)
                         (val solved: PlannerQuery with CardinalityEstimation)
-  extends LogicalPlan with LogicalPlanWithoutExpressions with EagerLogicalPlan {
+  extends LogicalPlan with EagerLogicalPlan {
 
   val lhs = Some(left)
   val rhs = Some(right)

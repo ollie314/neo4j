@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,31 +19,38 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner.execution
 
+import java.time.Clock
+
+import org.mockito.Mockito.{atLeastOnce, verify, when}
 import org.neo4j.cypher.internal.compiler.v3_0.ast.convert.commands.ExpressionConverters._
-import org.neo4j.cypher.internal.frontend.v3_0.SemanticDirection
-import org.neo4j.cypher.internal.frontend.v3_0.ast.{Collection, Expression, SignedDecimalIntegerLiteral}
 import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.Literal
 import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates.True
+import org.neo4j.cypher.internal.compiler.v3_0.commands.values.KeyToken.Resolved
+import org.neo4j.cypher.internal.compiler.v3_0.commands.values.TokenType
 import org.neo4j.cypher.internal.compiler.v3_0.commands.{expressions => legacy}
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.PipeInfo
 import org.neo4j.cypher.internal.compiler.v3_0.pipes._
 import org.neo4j.cypher.internal.compiler.v3_0.planner._
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans._
+import org.neo4j.cypher.internal.compiler.v3_0.spi.PlanContext
+import org.neo4j.cypher.internal.frontend.v3_0.SemanticDirection
+import org.neo4j.cypher.internal.frontend.v3_0.ast._
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
-import org.neo4j.helpers.Clock
 
 class PipeExecutionPlanBuilderAcceptanceTest extends CypherFunSuite with LogicalPlanningTestSupport {
 
-  implicit val planContext = newMockedPlanContext
+  implicit val planContext: PlanContext = newMockedPlanContext
   implicit val pipeMonitor = mock[PipeMonitor]
   implicit val LogicalPlanningContext = newMockedLogicalPlanningContext(planContext)
   implicit val pipeBuildContext = newMockedPipeExecutionPlanBuilderContext
   val patternRel = PatternRelationship("r", ("a", "b"), SemanticDirection.OUTGOING, Seq.empty, SimplePatternLength)
 
-  val planBuilder = new PipeExecutionPlanBuilder(Clock.SYSTEM_CLOCK, monitors)
+  val planBuilder = new PipeExecutionPlanBuilder(Clock.systemUTC(), monitors)
 
-  def build(f: PlannerQuery with CardinalityEstimation => LogicalPlan): PipeInfo =
-    planBuilder.build(f(solved))
+  def build(f: PlannerQuery with CardinalityEstimation => LogicalPlan): PipeInfo = {
+    val logicalPlan = f(solved)
+    planBuilder.build(None, logicalPlan)
+  }
 
   test("projection only query") {
     val logicalPlan = Projection(
@@ -65,7 +72,7 @@ class PipeExecutionPlanBuilderAcceptanceTest extends CypherFunSuite with Logical
   }
 
   test("simple label scan query") {
-    val logicalPlan = NodeByLabelScan(IdName("n"), LazyLabel("Foo"), Set.empty)_
+    val logicalPlan = NodeByLabelScan(IdName("n"), lblName("Foo"), Set.empty)_
     val pipeInfo = build(logicalPlan)
 
     pipeInfo should not be 'updating
@@ -74,7 +81,7 @@ class PipeExecutionPlanBuilderAcceptanceTest extends CypherFunSuite with Logical
   }
 
   test("simple node by id seek query") {
-    val astLiteral: Expression = Collection(Seq(SignedDecimalIntegerLiteral("42")_))_
+    val astLiteral: Expression = ListLiteral(Seq(SignedDecimalIntegerLiteral("42")_))_
     val logicalPlan = NodeByIdSeek(IdName("n"), ManySeekableArgs(astLiteral), Set.empty)_
     val pipeInfo = build(logicalPlan)
 
@@ -84,7 +91,7 @@ class PipeExecutionPlanBuilderAcceptanceTest extends CypherFunSuite with Logical
   }
 
   test("simple node by id seek query with multiple values") {
-    val astCollection: Collection = Collection(
+    val astCollection: ListLiteral = ListLiteral(
       Seq(SignedDecimalIntegerLiteral("42")_, SignedDecimalIntegerLiteral("43")_, SignedDecimalIntegerLiteral("43")_)
     )_
     val logicalPlan = NodeByIdSeek(IdName("n"), ManySeekableArgs(astCollection), Set.empty)_
@@ -96,7 +103,7 @@ class PipeExecutionPlanBuilderAcceptanceTest extends CypherFunSuite with Logical
   }
 
   test("simple relationship by id seek query") {
-    val astLiteral: Expression = Collection(Seq(SignedDecimalIntegerLiteral("42")_))_
+    val astLiteral: Expression = ListLiteral(Seq(SignedDecimalIntegerLiteral("42")_))_
     val fromNode = "from"
     val toNode = "to"
     val logicalPlan = DirectedRelationshipByIdSeek(IdName("r"), ManySeekableArgs(astLiteral), IdName(fromNode), IdName(toNode), Set.empty)_
@@ -109,7 +116,7 @@ class PipeExecutionPlanBuilderAcceptanceTest extends CypherFunSuite with Logical
 
   test("simple relationship by id seek query with multiple values") {
     val astCollection: Expression =
-      Collection(Seq(SignedDecimalIntegerLiteral("42")_, SignedDecimalIntegerLiteral("43")_, SignedDecimalIntegerLiteral("43")_))_
+      ListLiteral(Seq(SignedDecimalIntegerLiteral("42")_, SignedDecimalIntegerLiteral("43")_, SignedDecimalIntegerLiteral("43")_))_
 
     val fromNode = "from"
     val toNode = "to"
@@ -123,7 +130,7 @@ class PipeExecutionPlanBuilderAcceptanceTest extends CypherFunSuite with Logical
 
   test("simple undirected relationship by id seek query with multiple values") {
     val astCollection: Expression =
-      Collection(Seq(SignedDecimalIntegerLiteral("42")_, SignedDecimalIntegerLiteral("43")_, SignedDecimalIntegerLiteral("43")_))_
+      ListLiteral(Seq(SignedDecimalIntegerLiteral("42")_, SignedDecimalIntegerLiteral("43")_, SignedDecimalIntegerLiteral("43")_))_
 
     val fromNode = "from"
     val toNode = "to"
@@ -151,7 +158,7 @@ class PipeExecutionPlanBuilderAcceptanceTest extends CypherFunSuite with Logical
     pipeInfo.pipe should equal(ExpandAllPipe( AllNodesScanPipe("a")(), "a", "r1", "b", SemanticDirection.INCOMING, LazyTypes.empty)())
   }
 
-  test("simple expand into existing identifier MATCH a-[r]->a ") {
+  test("simple expand into existing variable MATCH a-[r]->a ") {
     val logicalPlan = Expand(
       AllNodesScan("a", Set.empty)(solved), "a", SemanticDirection.INCOMING, Seq(), "a", "r", ExpandInto)_
     val pipeInfo = build(logicalPlan)
@@ -161,7 +168,7 @@ class PipeExecutionPlanBuilderAcceptanceTest extends CypherFunSuite with Logical
     pipeInfo.pipe should equal(inner)
   }
 
-  test("optional expand into existing identifier MATCH a OPTIONAL MATCH a-[r]->a ") {
+  test("optional expand into existing variable MATCH a OPTIONAL MATCH a-[r]->a ") {
     val logicalPlan = OptionalExpand(
       AllNodesScan("a", Set.empty)(solved), "a", SemanticDirection.INCOMING, Seq(), "a", "r", ExpandInto)_
     val pipeInfo = build(logicalPlan)
@@ -184,5 +191,26 @@ class PipeExecutionPlanBuilderAcceptanceTest extends CypherFunSuite with Logical
       ExpandAllPipe( AllNodesScanPipe("a")(), "a", "r1", "b", SemanticDirection.INCOMING, LazyTypes.empty)(),
       ExpandAllPipe( AllNodesScanPipe("c")(), "c", "r2", "b", SemanticDirection.INCOMING, LazyTypes.empty)()
     )())
+  }
+
+  test("Aggregation on top of Projection => DistinctPipe with resolved expressions") {
+    // GIVEN
+    val token = 42
+    when(planContext.getOptPropertyKeyId("prop")).thenReturn(Some(token))
+    val allNodesScan = AllNodesScan("n", Set.empty)(solved)
+    val expressions = Map("n.prop" -> Property(Variable("n")(pos), PropertyKeyName("prop")(pos))(pos))
+    val projection = Projection(allNodesScan, expressions)(solved)
+    val aggregation = Aggregation(projection, expressions, Map.empty) _
+
+    // WHEN
+    val pipe = build(aggregation).pipe
+
+    // THEN
+    verify(planContext, atLeastOnce()).getOptPropertyKeyId("prop")
+    pipe should equal(
+      DistinctPipe(
+        AllNodesScanPipe("n")(),
+        Map("n.prop" -> legacy.Property(legacy.Variable("n"),
+          Resolved("prop", token, TokenType.PropertyKey))))())
   }
 }

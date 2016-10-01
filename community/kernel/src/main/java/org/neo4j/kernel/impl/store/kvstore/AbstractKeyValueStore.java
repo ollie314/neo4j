@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,15 +21,14 @@ package org.neo4j.kernel.impl.store.kvstore;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Optional;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import org.neo4j.function.Consumer;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.kernel.impl.locking.LockWrapper;
 import org.neo4j.kernel.impl.store.UnderlyingStorageException;
-import org.neo4j.kernel.impl.util.function.Optional;
 import org.neo4j.kernel.lifecycle.LifecycleAdapter;
 
 import static org.neo4j.kernel.impl.locking.LockWrapper.readLock;
@@ -49,7 +48,7 @@ public abstract class AbstractKeyValueStore<Key> extends LifecycleAdapter
     private final Format format;
     final RotationStrategy rotationStrategy;
     private RotationTimerFactory rotationTimerFactory;
-    private volatile ProgressiveState<Key> state;
+    volatile ProgressiveState<Key> state;
     private DataInitializer<EntryUpdater<Key>> stateInitializer;
     final int keySize;
     final int valueSize;
@@ -84,7 +83,21 @@ public abstract class AbstractKeyValueStore<Key> extends LifecycleAdapter
     protected final <Value> Value lookup( Key key, Reader<Value> reader ) throws IOException
     {
         ValueLookup<Value> lookup = new ValueLookup<>( reader );
-        return lookup.value( !state.lookup( key, lookup ) );
+        while ( true )
+        {
+            ProgressiveState<Key> originalState = this.state;
+            try
+            {
+                return lookup.value( !originalState.lookup( key, lookup ) );
+            }
+            catch ( IllegalStateException e )
+            {
+                if ( originalState == this.state )
+                {
+                    throw e;
+                }
+            }
+        }
     }
 
     /** Introspective feature, not thread safe. */
@@ -276,14 +289,7 @@ public abstract class AbstractKeyValueStore<Key> extends LifecycleAdapter
         {
             final long version = rotation.rotationVersion();
             ProgressiveState<Key> next = rotation.rotate( force, rotationStrategy, rotationTimerFactory,
-                    new Consumer<Headers.Builder>()
-                    {
-                        @Override
-                        public void accept( Headers.Builder value )
-                        {
-                            updateHeaders( value, version );
-                        }
-                    } );
+                    value -> updateHeaders( value, version ) );
             try ( LockWrapper ignored = writeLock( updateLock ) )
             {
                 state = next;

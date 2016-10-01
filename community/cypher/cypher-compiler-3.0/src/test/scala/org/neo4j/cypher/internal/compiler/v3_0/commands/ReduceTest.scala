@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,8 +30,8 @@ class ReduceTest extends CypherFunSuite {
 
   test("canReturnSomethingFromAnIterable") {
     val l = Seq("x", "xxx", "xx")
-    val expression = Add(Identifier("acc"), LengthFunction(Identifier("n")))
-    val collection = Identifier("l")
+    val expression = Add(Variable("acc"), LengthFunction(Variable("n")))
+    val collection = Variable("l")
     val m = ExecutionContext.from("l" -> l)
     val s = QueryStateHelper.empty
 
@@ -41,7 +41,7 @@ class ReduceTest extends CypherFunSuite {
   }
 
   test("returns_null_from_null_collection") {
-    val expression = Add(Identifier("acc"), LengthFunction(Identifier("n")))
+    val expression = Add(Variable("acc"), LengthFunction(Variable("n")))
     val collection = Literal(null)
     val m = ExecutionContext.empty
     val s = QueryStateHelper.empty
@@ -52,7 +52,7 @@ class ReduceTest extends CypherFunSuite {
   }
 
   test("reduce_has_the_expected_type_string") {
-    val expression = Add(Identifier("acc"), Identifier("n"))
+    val expression = Add(Variable("acc"), Variable("n"))
     val collection = Literal(Seq("a", "b", "c"))
 
     val reduce = ReduceFunction(collection, "n", expression, "acc", Literal(""))
@@ -62,7 +62,7 @@ class ReduceTest extends CypherFunSuite {
   }
 
   test("reduce_has_the_expected_type_number") {
-    val expression = Add(Identifier("acc"), Identifier("n"))
+    val expression = Add(Variable("acc"), Variable("n"))
     val collection = Literal(Seq(1,2,3))
 
     val reduce = ReduceFunction(collection, "n", expression, "acc", Literal(0))
@@ -72,12 +72,12 @@ class ReduceTest extends CypherFunSuite {
   }
 
   test("reduce_has_the_expected_type_array") {
-    val expression = Add(Identifier("acc"), Identifier("n"))
+    val expression = Add(Variable("acc"), Variable("n"))
     val collection = Literal(Seq(1,2,3))
 
     val reduce = ReduceFunction(collection, "n", expression, "acc", Literal(Seq(1,2)))
     val typ = reduce.calculateType(new SymbolTable())
 
-    typ should equal(CTCollection(CTInteger))
+    typ should equal(CTList(CTInteger))
   }
 }

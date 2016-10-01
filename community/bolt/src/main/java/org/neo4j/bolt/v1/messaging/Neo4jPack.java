@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,18 +25,18 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.neo4j.bolt.v1.messaging.infrastructure.ValueNode;
 import org.neo4j.bolt.v1.messaging.infrastructure.ValueRelationship;
-import org.neo4j.bolt.v1.messaging.infrastructure.ValueUnboundRelationship;
 import org.neo4j.bolt.v1.packstream.PackInput;
 import org.neo4j.bolt.v1.packstream.PackOutput;
 import org.neo4j.bolt.v1.packstream.PackStream;
 import org.neo4j.bolt.v1.packstream.PackType;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Path;
-import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.spatial.Point;
 import org.neo4j.kernel.api.exceptions.Status;
 
 import static org.neo4j.bolt.v1.packstream.PackStream.UNKNOWN_SIZE;
@@ -58,12 +58,14 @@ public class Neo4jPack
     public static class Packer extends PackStream.Packer
     {
         private PathPack.Packer pathPacker = new PathPack.Packer();
+        private Optional<Error> error = Optional.empty();
 
         public Packer( PackOutput output )
         {
             super( output );
         }
 
+        @SuppressWarnings( "unchecked" )
         public void pack( Object obj ) throws IOException
         {
             // Note: below uses instanceof for quick implementation, this should be swapped over
@@ -92,6 +94,10 @@ public class Neo4jPack
             {
                 pack( (String) obj );
             }
+            else if (obj instanceof Character )
+            {
+                pack( (char) obj );
+            }
             else if ( obj instanceof Map )
             {
                 Map<Object, Object> map = (Map<Object, Object>) obj;
@@ -114,8 +120,18 @@ public class Neo4jPack
             }
             else if ( obj instanceof byte[] )
             {
-                // Pending decision
-                throw new UnsupportedOperationException( "Binary values cannot be packed." );
+                error = Optional.of(new Error( Status.Request.Invalid,
+                        "Byte array is not yet supported in Bolt"));
+                packNull();
+            }
+            else if ( obj instanceof char[] )
+            {
+                char[] array = (char[]) obj;
+                packListHeader( array.length );
+                for ( char item : array )
+                {
+                    pack( item );
+                }
             }
             else if ( obj instanceof short[] )
             {
@@ -192,38 +208,46 @@ public class Neo4jPack
             {
                 pathPacker.pack( this, (Path) obj );
             }
+            else if ( obj instanceof Point)
+            {
+                error = Optional.of(new Error( Status.Request.Invalid,
+                        "Point is not yet supported as a return type in Bolt"));
+                packNull();
+
+            }
             else
             {
-                throw new BoltIOException( Status.General.UnknownFailure,
-                        "Unpackable value " + obj + " of type " + obj.getClass().getName() );
+                error = Optional.of(new Error( Status.Request.Invalid,
+                        "Unpackable value " + obj + " of type " + obj.getClass().getName() ));
+                packNull();
             }
         }
 
-        public void packRawMap( Map<String, Object> map ) throws IOException
+        public void packRawMap( Map<String,Object> map ) throws IOException
         {
             packMapHeader( map.size() );
-            if ( map.size() > 0 )
+            for ( Map.Entry<String,Object> entry : map.entrySet() )
             {
-                for ( Map.Entry<String, Object> entry : map.entrySet() )
-                {
-                    pack( entry.getKey() );
-                    pack( entry.getValue() );
-                }
+                pack( entry.getKey() );
+                pack( entry.getValue() );
             }
         }
-        // TODO: combine these
-        public void packProperties( PropertyContainer entity ) throws IOException
+
+        public void consumeError( ) throws BoltIOException
         {
-            Map<String, Object> props = entity.getAllProperties();
-            packMapHeader( props.size() );
-            for ( Map.Entry<String, Object> property : props.entrySet() )
+            if (error.isPresent())
             {
-                pack( property.getKey() );
-                pack( property.getValue() );
+                Error e = error.get();
+                error = Optional.empty();
+                throw new BoltIOException( e.status(), e.msg() );
             }
+        }
+
+        public boolean hasErrors()
+        {
+            return error.isPresent();
         }
     }
-
 
     public static class Unpacker extends PackStream.Unpacker
     {
@@ -239,8 +263,8 @@ public class Neo4jPack
             PackType valType = peekNextType();
             switch ( valType )
             {
-                case TEXT:
-                    return unpackText();
+                case STRING:
+                    return unpackString();
                 case INTEGER:
                     return unpackLong();
                 case FLOAT:
@@ -265,25 +289,25 @@ public class Neo4jPack
                     char signature = unpackStructSignature();
                     switch ( signature )
                     {
-                        case NODE:
-                        {
-                            return ValueNode.unpackFields( this );
-                        }
-                        case RELATIONSHIP:
-                        {
-                            return ValueRelationship.unpackFields( this );
-                        }
-                        case UNBOUND_RELATIONSHIP:
-                        {
-                            return ValueUnboundRelationship.unpackFields( this );
-                        }
-                        case PATH:
-                        {
-                            return pathUnpacker.unpackFields( this );
-                        }
-                        default:
-                            throw new BoltIOException( Status.Request.InvalidFormat,
-                                    "Unknown struct type: " + Integer.toHexString(signature) );
+                    case NODE:
+                    {
+                        throw new BoltIOException( Status.Request.Invalid, "Nodes cannot be unpacked." );
+                    }
+                    case RELATIONSHIP:
+                    {
+                        throw new BoltIOException( Status.Request.Invalid, "Relationships cannot be unpacked." );
+                    }
+                    case UNBOUND_RELATIONSHIP:
+                    {
+                        throw new BoltIOException( Status.Request.Invalid, "Relationships cannot be unpacked." );
+                    }
+                    case PATH:
+                    {
+                        throw new BoltIOException( Status.Request.Invalid, "Paths cannot be unpacked." );
+                    }
+                    default:
+                        throw new BoltIOException( Status.Request.InvalidFormat,
+                                "Unknown struct type: " + Integer.toHexString( signature ) );
                     }
                 }
                 case END_OF_STREAM:
@@ -354,10 +378,13 @@ public class Neo4jPack
                             unpack();
                             more = false;
                             break;
-                        case TEXT:
-                            String key = unpackText();
+                        case STRING:
+                            String key = unpackString();
                             Object val = unpack();
-                            map.put( key, val );
+                            if( map.put( key, val ) != null )
+                            {
+                                throw new BoltIOException( Status.Request.Invalid, "Duplicate map key `" + key + "`." );
+                            }
                             break;
                         default:
                             throw new PackStream.PackStreamException( "Bad key type" );
@@ -369,12 +396,37 @@ public class Neo4jPack
                 map = new HashMap<>( size, 1 );
                 for ( int i = 0; i < size; i++ )
                 {
-                    String key = unpackText();
+                    String key = unpackString();
                     Object val = unpack();
-                    map.put( key, val );
+                    if( map.put( key, val ) != null )
+                    {
+                        throw new BoltIOException( Status.Request.Invalid, "Duplicate map key `" + key + "`." );
+                    }
                 }
             }
             return map;
+        }
+    }
+
+    private static class Error
+    {
+        private final Status status;
+        private final String msg;
+
+        private Error( Status status, String msg )
+        {
+            this.status = status;
+            this.msg = msg;
+        }
+
+        Status status()
+        {
+            return status;
+        }
+
+        String msg()
+        {
+            return msg;
         }
     }
 }

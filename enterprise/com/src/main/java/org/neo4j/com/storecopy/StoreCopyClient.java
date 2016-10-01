@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,28 +28,26 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.neo4j.com.Response;
 import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.factory.GraphDatabaseFactory;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.helpers.CancellationRequest;
-import org.neo4j.helpers.Settings;
 import org.neo4j.helpers.collection.Visitor;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.fs.FileUtils;
 import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.kernel.configuration.Config;
+import org.neo4j.kernel.configuration.Settings;
 import org.neo4j.kernel.extension.KernelExtensionFactory;
 import org.neo4j.kernel.impl.store.MetaDataStore;
 import org.neo4j.kernel.impl.transaction.CommittedTransactionRepresentation;
-import org.neo4j.kernel.impl.transaction.log.CommandWriter;
+import org.neo4j.kernel.impl.transaction.log.FlushableChannel;
 import org.neo4j.kernel.impl.transaction.log.LogFile;
+import org.neo4j.kernel.impl.transaction.log.LogHeaderCache;
 import org.neo4j.kernel.impl.transaction.log.LogPosition;
 import org.neo4j.kernel.impl.transaction.log.PhysicalLogFile;
 import org.neo4j.kernel.impl.transaction.log.PhysicalLogFiles;
 import org.neo4j.kernel.impl.transaction.log.ReadOnlyLogVersionRepository;
 import org.neo4j.kernel.impl.transaction.log.ReadOnlyTransactionIdStore;
 import org.neo4j.kernel.impl.transaction.log.TransactionLogWriter;
-import org.neo4j.kernel.impl.transaction.log.TransactionMetadataCache;
-import org.neo4j.kernel.impl.transaction.log.WritableLogChannel;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntryWriter;
 import org.neo4j.kernel.lifecycle.LifeSupport;
 import org.neo4j.kernel.monitoring.Monitors;
@@ -154,7 +152,7 @@ public class StoreCopyClient
         {
             // Skip log files and tx files from temporary database
             return !file.getName().startsWith( "metrics" )
-                   && !file.getName().startsWith( "messages." );
+                   && !file.getName().startsWith( "debug." );
         }
     };
     private final File storeDir;
@@ -181,9 +179,9 @@ public class StoreCopyClient
     }
 
     public void copyStore( StoreCopyRequester requester, CancellationRequest cancellationRequest )
-            throws IOException
+            throws Exception
     {
-        // Clear up the current temp directory if there
+        // Create a temp directory (or clean if present)
         File tempStore = new File( storeDir, TEMP_COPY_DIRECTORY_NAME );
         cleanDirectory( tempStore );
 
@@ -216,30 +214,34 @@ public class StoreCopyClient
         {
             FileUtils.moveFileToDirectory( candidate, storeDir );
         }
+
+        // All done, delete temp directory
+        FileUtils.deleteRecursively( tempStore );
     }
 
-    private void writeTransactionsToActiveLogFile( File tempStoreDir, Response<?> response ) throws IOException
+    private void writeTransactionsToActiveLogFile( File tempStoreDir, Response<?> response ) throws Exception
     {
         LifeSupport life = new LifeSupport();
         try
         {
             // Start the log and appender
             PhysicalLogFiles logFiles = new PhysicalLogFiles( tempStoreDir, fs );
-            TransactionMetadataCache transactionMetadataCache = new TransactionMetadataCache( 10, 100 );
+            LogHeaderCache logHeaderCache = new LogHeaderCache( 10 );
             ReadOnlyLogVersionRepository logVersionRepository = new ReadOnlyLogVersionRepository( pageCache, tempStoreDir );
+            ReadOnlyTransactionIdStore readOnlyTransactionIdStore = new ReadOnlyTransactionIdStore(
+                    pageCache, tempStoreDir );
             LogFile logFile = life.add( new PhysicalLogFile( fs, logFiles, Long.MAX_VALUE /*don't rotate*/,
-                    new ReadOnlyTransactionIdStore( pageCache, tempStoreDir ), logVersionRepository,
-                    new Monitors().newMonitor( PhysicalLogFile.Monitor.class ),
-                    transactionMetadataCache ) );
+                    readOnlyTransactionIdStore::getLastCommittedTransactionId, logVersionRepository,
+                    new Monitors().newMonitor( PhysicalLogFile.Monitor.class ), logHeaderCache ) );
             life.start();
 
             // Just write all transactions to the active log version. Remember that this is after a store copy
             // where there are no logs, and the transaction stream we're about to write will probably contain
             // transactions that goes some time back, before the last committed transaction id. So we cannot
             // use a TransactionAppender, since it has checks for which transactions one can append.
-            WritableLogChannel channel = logFile.getWriter();
+            FlushableChannel channel = logFile.getWriter();
             final TransactionLogWriter writer = new TransactionLogWriter(
-                    new LogEntryWriter( channel, new CommandWriter( channel ) ) );
+                    new LogEntryWriter( channel ) );
             final AtomicLong firstTxId = new AtomicLong( BASE_TX_ID );
 
             response.accept( new Response.Handler()
@@ -251,9 +253,9 @@ public class StoreCopyClient
                 }
 
                 @Override
-                public Visitor<CommittedTransactionRepresentation,IOException> transactions()
+                public Visitor<CommittedTransactionRepresentation,Exception> transactions()
                 {
-                    return new Visitor<CommittedTransactionRepresentation,IOException>()
+                    return new Visitor<CommittedTransactionRepresentation,Exception>()
                     {
                         @Override
                         public boolean visit( CommittedTransactionRepresentation transaction ) throws IOException
@@ -298,7 +300,7 @@ public class StoreCopyClient
                         pageCache,
                         neoStore,
                         MetaDataStore.Position.LAST_CLOSED_TRANSACTION_LOG_BYTE_OFFSET,
-                        (long) LOG_HEADER_SIZE );
+                        LOG_HEADER_SIZE );
             }
         }
         finally
@@ -309,12 +311,14 @@ public class StoreCopyClient
 
     private GraphDatabaseService newTempDatabase( File tempStore )
     {
-        GraphDatabaseFactory factory = ExternallyManagedPageCache.graphDatabaseFactoryWithPageCache( pageCache );
+        ExternallyManagedPageCache.GraphDatabaseFactoryWithPageCacheFactory factory =
+                ExternallyManagedPageCache.graphDatabaseFactoryWithPageCache( pageCache );
         return factory
-                .setUserLogProvider( NullLogProvider.getInstance() )
                 .setKernelExtensions( kernelExtensions )
-                .newEmbeddedDatabaseBuilder( tempStore.getAbsolutePath() )
-                .setConfig( "online_backup_enabled", Settings.FALSE )
+                .setUserLogProvider( NullLogProvider.getInstance() )
+                .newEmbeddedDatabaseBuilder( tempStore.getAbsoluteFile() )
+                .setConfig( "dbms.backup.enabled", Settings.FALSE )
+                .setConfig( GraphDatabaseSettings.logs_directory, tempStore.getAbsolutePath() )
                 .setConfig( GraphDatabaseSettings.keep_logical_logs, Settings.TRUE )
                 .setConfig( GraphDatabaseSettings.allow_store_upgrade,
                         config.get( GraphDatabaseSettings.allow_store_upgrade ).toString() )

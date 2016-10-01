@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -45,6 +45,11 @@ public class Neo4jError
     public Neo4jError( Status status, String message )
     {
         this(status, message, null);
+    }
+
+    public Neo4jError( Status status, Throwable cause )
+    {
+        this(status, status.code().description(), cause);
     }
 
     public Status status()
@@ -113,7 +118,7 @@ public class Neo4jError
         String[] parts = codeStr.split( "\\." );
         if ( parts.length != 4 )
         {
-            return Status.General.UnknownFailure;
+            return Status.General.UnknownError;
         }
 
         String category = parts[2];
@@ -136,8 +141,10 @@ public class Neo4jError
             return Status.Request.valueOf( error );
         case "Network":
             return Status.Network.valueOf( error );
+        case "Security":
+            return Status.Security.valueOf( error );
         default:
-            return Status.General.UnknownFailure;
+            return Status.General.UnknownError;
         }
     }
 
@@ -149,13 +156,22 @@ public class Neo4jError
             {
                 return new Neo4jError( ((Status.HasStatus) cause).status(), any.getMessage(), any );
             }
+
+            if (cause instanceof OutOfMemoryError)
+            {
+                return new Neo4jError( Status.General.OutOfMemoryError, cause );
+            }
+            if (cause instanceof StackOverflowError)
+            {
+                return new Neo4jError( Status.General.StackOverFlowError, cause );
+            }
         }
 
         // In this case, an error has "slipped out", and we don't have a good way to handle it. This indicates
         // a buggy code path, and we need to try to convince whoever ends up here to tell us about it.
 
 
-        return new Neo4jError( Status.General.UnknownFailure, any.getMessage(), any );
+        return new Neo4jError( Status.General.UnknownError, any.getMessage(), any );
     }
 
 }

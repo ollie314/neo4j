@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -31,26 +31,42 @@ import java.util.Collection;
 import org.neo4j.bolt.v1.transport.socket.client.Connection;
 import org.neo4j.bolt.v1.transport.socket.client.SecureSocketConnection;
 import org.neo4j.bolt.v1.transport.socket.client.SecureWebSocketConnection;
+import org.neo4j.bolt.v1.transport.socket.client.SocketConnection;
+import org.neo4j.bolt.v1.transport.socket.client.WebSocketConnection;
 import org.neo4j.function.Factory;
+import org.neo4j.graphdb.GraphDatabaseService;
+import org.neo4j.graphdb.InputPosition;
+import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.SeverityLevel;
+import org.neo4j.graphdb.Transaction;
+import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.helpers.HostnamePort;
+import org.neo4j.kernel.api.exceptions.Status;
 
 import static java.util.Arrays.asList;
+import static java.util.Collections.emptyMap;
+import static java.util.Collections.singletonList;
 import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.neo4j.bolt.v1.messaging.message.Messages.init;
 import static org.neo4j.bolt.v1.messaging.message.Messages.pullAll;
 import static org.neo4j.bolt.v1.messaging.message.Messages.run;
+import static org.neo4j.bolt.v1.messaging.util.MessageMatchers.hasNotification;
+import static org.neo4j.bolt.v1.messaging.util.MessageMatchers.msgFailure;
 import static org.neo4j.bolt.v1.messaging.util.MessageMatchers.msgRecord;
 import static org.neo4j.bolt.v1.messaging.util.MessageMatchers.msgSuccess;
 import static org.neo4j.bolt.v1.runtime.spi.StreamMatchers.eqRecord;
 import static org.neo4j.bolt.v1.transport.integration.TransportTestUtil.eventuallyRecieves;
 import static org.neo4j.helpers.collection.MapUtil.map;
 
+@SuppressWarnings( "unchecked" )
 @RunWith(Parameterized.class)
 public class TransportSessionIT
 {
     @Rule
-    public Neo4jWithSocket server = new Neo4jWithSocket();
+    public Neo4jWithSocket server = new Neo4jWithSocket(settings ->
+            settings.put( GraphDatabaseSettings.auth_enabled, "false"  ));
 
     @Parameterized.Parameter(0)
     public Factory<Connection> cf;
@@ -65,26 +81,20 @@ public class TransportSessionIT
     {
         return asList(
                 new Object[]{
-                        new Factory<Connection>()
-                        {
-                            @Override
-                            public Connection newInstance()
-                            {
-                                return new SecureSocketConnection();
-                            }
-                        },
+                        (Factory<Connection>) SocketConnection::new,
                         new HostnamePort( "localhost:7687" )
                 },
                 new Object[]{
-                        new Factory<Connection>()
-                        {
-                            @Override
-                            public Connection newInstance()
-                            {
-                                return new SecureWebSocketConnection();
-                            }
-                        },
-                        new HostnamePort( "localhost:7688" )
+                        (Factory<Connection>) WebSocketConnection::new,
+                        new HostnamePort( "localhost:7687" )
+                },
+                new Object[]{
+                        (Factory<Connection>) SecureSocketConnection::new,
+                        new HostnamePort( "localhost:7687" )
+                },
+                new Object[]{
+                        (Factory<Connection>) SecureWebSocketConnection::new,
+                        new HostnamePort( "localhost:7687" )
                 } );
     }
 
@@ -117,7 +127,7 @@ public class TransportSessionIT
         client.connect( address )
                 .send( TransportTestUtil.acceptedVersions( 1, 0, 0, 0 ) )
                 .send( TransportTestUtil.chunk(
-                        init( "TestClient/1.1" ),
+                        init( "TestClient/1.1", emptyMap() ),
                         run( "UNWIND [1,2,3] AS a RETURN a, a * a AS a_squared" ),
                         pullAll() ) );
 
@@ -126,11 +136,84 @@ public class TransportSessionIT
         assertThat( client, eventuallyRecieves(
                 msgSuccess(),
                 msgSuccess( map( "fields", asList( "a", "a_squared" ) ) ),
-                msgRecord( eqRecord( equalTo( 1l ), equalTo( 1l ) ) ),
-                msgRecord( eqRecord( equalTo( 2l ), equalTo( 4l ) ) ),
-                msgRecord( eqRecord( equalTo( 3l ), equalTo( 9l ) ) ),
+                msgRecord( eqRecord( equalTo( 1L ), equalTo( 1L ) ) ),
+                msgRecord( eqRecord( equalTo( 2L ), equalTo( 4L ) ) ),
+                msgRecord( eqRecord( equalTo( 3L ), equalTo( 9L ) ) ),
                 msgSuccess() ) );
     }
+
+    @Test
+    public void shouldHandleDeletedNodes() throws Throwable
+    {
+        // When
+        client.connect( address )
+                .send( TransportTestUtil.acceptedVersions( 1, 0, 0, 0 ) )
+                .send( TransportTestUtil.chunk(
+                        init( "TestClient/1.1", emptyMap() ),
+                        run( "CREATE (n:Test) DELETE n RETURN n" ),
+                        pullAll() ) );
+
+        // Then
+        assertThat( client, eventuallyRecieves( new byte[]{0, 0, 0, 1} ) );
+        assertThat( client, eventuallyRecieves(
+                msgSuccess(),
+                msgSuccess( map("fields", singletonList( "n" )))));
+
+        //
+        //Record(0x71) {
+        //    fields: [ Node(0x4E) {
+        //                 id: 00
+        //                 labels: [] (90)
+        //                  props: {} (A)]
+        //}
+        assertThat( client,
+                eventuallyRecieves(bytes(0x00, 0x08, 0xB1, 0x71,  0x91,
+                        0xB3, 0x4E,  0x00, 0x90, 0xA0, 0x00, 0x00) ));
+        assertThat(client, eventuallyRecieves( msgSuccess()));
+    }
+
+    @Test
+    public void shouldHandleDeletedRelationships() throws Throwable
+    {
+        // When
+        client.connect( address )
+                .send( TransportTestUtil.acceptedVersions( 1, 0, 0, 0 ) )
+                .send( TransportTestUtil.chunk(
+                        init( "TestClient/1.1", emptyMap() ),
+                        run( "CREATE ()-[r:T {prop: 42}]->() DELETE r RETURN r" ),
+                        pullAll() ) );
+
+        // Then
+        assertThat( client, eventuallyRecieves( new byte[]{0, 0, 0, 1} ) );
+        assertThat( client, eventuallyRecieves(
+                msgSuccess(),
+                msgSuccess( map( "fields", singletonList( "r" ) ) ) ) );
+
+        //
+        //Record(0x71) {
+        //    fields: [ Relationship(0x52) {
+        //                 relId: 00
+        //                 startId: 00
+        //                 endId: 01
+        //                 type: "T" (81 54)
+        //                 props: {} (A0)]
+        //}
+        assertThat( client,
+                eventuallyRecieves( bytes( 0x00, 0x0B, 0xB1, 0x71, 0x91,
+                        0xB5, 0x52, 0x00, 0x00, 0x01, 0x81, 0x54, 0xA0, 0x00,0x00  ) ) );
+        assertThat( client, eventuallyRecieves( msgSuccess() ) );
+    }
+
+    private byte[] bytes( int...ints )
+    {
+        byte[] bytes = new byte[ints.length];
+        for ( int i = 0; i < ints.length; i++ )
+        {
+            bytes[i] = (byte) ints[i];
+        }
+        return bytes;
+    }
+
 
     @Test
     public void shouldNotLeakStatsToNextStatement() throws Throwable
@@ -139,7 +222,7 @@ public class TransportSessionIT
         client.connect( address )
                 .send( TransportTestUtil.acceptedVersions( 1, 0, 0, 0 ) )
                 .send( TransportTestUtil.chunk(
-                        init( "TestClient/1.1" ),
+                        init( "TestClient/1.1", emptyMap() ),
                         run( "CREATE (n)" ),
                         pullAll() ) );
         assertThat( client, eventuallyRecieves( new byte[]{0, 0, 0, 1} ) );
@@ -157,8 +240,85 @@ public class TransportSessionIT
         // Then
         assertThat( client, eventuallyRecieves(
                 msgSuccess(),
-                msgRecord( eqRecord( equalTo( 1l ) ) ),
+                msgRecord( eqRecord( equalTo( 1L ) ) ),
                 msgSuccess( map( "type", "r" ) ) ) );
+    }
+
+    @Test
+    public void shouldSendNotifications() throws Throwable
+    {
+        // When
+        client.connect( address )
+                .send( TransportTestUtil.acceptedVersions( 1, 0, 0, 0 ) )
+                .send( TransportTestUtil.chunk(
+                        init( "TestClient/1.1", emptyMap() ),
+                        run( "EXPLAIN MATCH (a:THIS_IS_NOT_A_LABEL) RETURN count(*)" ),
+                        pullAll() ) );
+
+
+        // Then
+        assertThat( client, eventuallyRecieves( new byte[]{0, 0, 0, 1} ) );
+        assertThat( client, eventuallyRecieves(
+                msgSuccess(),
+                msgSuccess(),
+                hasNotification(
+                        new TestNotification( "Neo.ClientNotification.Statement.UnknownLabelWarning",
+                                "The provided label is not in the database.",
+                                "One of the labels in your query is not available in the database, " +
+                                "make sure you didn't misspell it or that the label is available when " +
+                                "you run this statement in your application (the missing label name is is: " +
+                                "THIS_IS_NOT_A_LABEL)",
+                                SeverityLevel.WARNING, new InputPosition( 9, 1, 10 ) ) ) ) );
+
+    }
+
+    @Test
+    public void shouldFailNicelyOnPoints() throws Throwable
+    {
+        // When
+        client.connect( address )
+                .send( TransportTestUtil.acceptedVersions( 1, 0, 0, 0 ) )
+                .send( TransportTestUtil.chunk(
+                        init( "TestClient/1.1", emptyMap() ),
+                        run( "RETURN point({x:13, y:37, crs:'cartesian'}) as p" ),
+                        pullAll() ) );
+
+        // Then
+        assertThat( client, eventuallyRecieves( new byte[]{0, 0, 0, 1} ) );
+        assertThat( client, eventuallyRecieves(
+                msgSuccess(),
+                msgSuccess( map( "fields", singletonList( "p") ) ),
+                msgRecord(eqRecord( nullValue() )),
+                msgFailure( Status.Request.Invalid, "Point is not yet supported as a return type in Bolt")) );
+    }
+
+    @Test
+    public void shouldFailNicelyOnBinary() throws Throwable
+    {
+        //Given
+        GraphDatabaseService db = server.graphDatabaseService();
+        try ( Transaction tx = db.beginTx())
+        {
+            Node node = db.createNode();
+            node.setProperty( "binary", new byte[]{(byte)0xB0, 0x17} );
+            tx.success();
+        }
+
+        // When
+        client.connect( address )
+                .send( TransportTestUtil.acceptedVersions( 1, 0, 0, 0 ) )
+                .send( TransportTestUtil.chunk(
+                        init( "TestClient/1.1", emptyMap() ),
+                        run( "MATCH (n) RETURN n.binary" ),
+                        pullAll() ) );
+
+        // Then
+        assertThat( client, eventuallyRecieves( new byte[]{0, 0, 0, 1} ) );
+        assertThat( client, eventuallyRecieves(
+                msgSuccess(),
+                msgSuccess( map( "fields", singletonList( "n.binary") ) ),
+                msgRecord(eqRecord( nullValue() )),
+                msgFailure( Status.Request.Invalid, "Byte array is not yet supported in Bolt")) );
     }
 
     @Before
@@ -170,7 +330,9 @@ public class TransportSessionIT
     @After
     public void teardown() throws Exception
     {
-        if(client != null) client.disconnect();
+        if ( client != null )
+        {
+            client.disconnect();
+        }
     }
-
 }

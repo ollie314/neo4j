@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -147,6 +147,10 @@ class PrettifierTest extends CypherFunSuite {
     actual("match (a:A)-->(b:B) USING join ON b return a.prop") should equal(
       expected("MATCH (a:A)-->(b:B)%nUSING JOIN ON b%nRETURN a.prop")
     )
+  }
+
+  test("should handle call yield") {
+    actual("match (n) call db.indexes yield state RETURN *") should equal(expected("MATCH (n)%nCALL db.indexes YIELD state%nRETURN *"))
   }
 
   private def actual(text: String) = Prettifier(text)

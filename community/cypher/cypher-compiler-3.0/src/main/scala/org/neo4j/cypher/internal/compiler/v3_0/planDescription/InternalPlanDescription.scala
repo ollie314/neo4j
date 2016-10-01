@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,6 +22,8 @@ package org.neo4j.cypher.internal.compiler.v3_0.planDescription
 import org.neo4j.cypher.internal.compiler.v3_0.commands
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.{LazyLabel, LazyTypes, SeekArgs => PipeEntityByIdRhs}
 import org.neo4j.cypher.internal.compiler.v3_0.planDescription.InternalPlanDescription.Arguments._
+import org.neo4j.cypher.internal.compiler.v3_0.spi.QualifiedProcedureName
+import org.neo4j.cypher.internal.frontend.v3_0.symbols.CypherType
 import org.neo4j.cypher.internal.frontend.v3_0.{SemanticDirection, ast}
 
 /**
@@ -34,7 +36,7 @@ sealed trait InternalPlanDescription {
   def id: Id
   def name: String
   def children: Children
-  def identifiers: Set[String]
+  def variables: Set[String]
 
   def cd(name: String): InternalPlanDescription = children.find(name).head
   def map(f: InternalPlanDescription => InternalPlanDescription): InternalPlanDescription
@@ -50,10 +52,10 @@ sealed trait InternalPlanDescription {
     flattenAcc(Seq.empty, this)
   }
 
-  def andThen(id: Id, name: String, identifiers: Set[String], arguments: Argument*) =
-    PlanDescriptionImpl(id, name, SingleChild(this), arguments, identifiers)
+  def andThen(id: Id, name: String, variables: Set[String], arguments: Argument*) =
+    PlanDescriptionImpl(id, name, SingleChild(this), arguments, variables)
 
-  def orderedIdentifiers: Seq[String] = identifiers.toSeq.sorted
+  def orderedVariables: Seq[String] = variables.toSeq.sorted
 
   def totalDbHits: Option[Long] = {
     val allMaybeDbHits: Seq[Option[Long]] = flatten.map {
@@ -91,6 +93,9 @@ object InternalPlanDescription {
     case class KeyExpressions(expressions: Seq[commands.expressions.Expression]) extends Argument
     case class EntityByIdRhs(value: PipeEntityByIdRhs) extends Argument
     case class EstimatedRows(value: Double) extends Argument
+    case class Signature(procedureName: QualifiedProcedureName,
+                         args: Seq[commands.expressions.Expression],
+                         results: Seq[(String, CypherType)]) extends Argument
     case class Version(value: String) extends Argument {
       override def name = "version"
     }
@@ -110,8 +115,7 @@ object InternalPlanDescription {
                                 direction: SemanticDirection, varLength: Boolean = false) extends Argument
     case class CountNodesExpression(ident: String, label: Option[LazyLabel]) extends Argument
     case class CountRelationshipsExpression(ident: String, startLabel: Option[LazyLabel],
-                                            typeNames: LazyTypes, endLabel: Option[LazyLabel],
-                                            bothDirections: Boolean) extends Argument
+                                            typeNames: LazyTypes, endLabel: Option[LazyLabel]) extends Argument
     case class SourceCode(className: String, sourceCode: String) extends Argument {
       override def name = className
     }
@@ -149,7 +153,7 @@ final case class PlanDescriptionImpl(id: Id,
                                      name: String,
                                      children: Children,
                                      arguments: Seq[Argument],
-                                     identifiers: Set[String]) extends InternalPlanDescription {
+                                     variables: Set[String]) extends InternalPlanDescription {
   def find(name: String): Seq[InternalPlanDescription] =
     children.find(name) ++ (if (this.name == name)
       Some(this)
@@ -181,15 +185,58 @@ final case class PlanDescriptionImpl(id: Id,
   }
 }
 
-final case class SingleRowPlanDescription(id: Id, arguments: Seq[Argument] = Seq.empty, identifiers: Set[String]) extends InternalPlanDescription {
-  override def andThen(id: Id, name: String, identifiers: Set[String], newArguments: Argument*) =
-    new PlanDescriptionImpl(id, name, NoChildren, newArguments, identifiers)
+object CompactedPlanDescription {
+  def create(similar: Seq[InternalPlanDescription]): InternalPlanDescription =
+    if (similar.size == 1) similar.head else CompactedPlanDescription(similar)
+}
+
+final case class CompactedPlanDescription(similar: Seq[InternalPlanDescription]) extends InternalPlanDescription {
+
+  override def name: String = s"${similar.head.name}(${similar.size})"
+
+  override def variables: Set[String] = similar.foldLeft(Set.empty[String]){ (acc, plan) =>
+    acc ++ plan.variables
+  }
+
+  override def children: Children = similar.last.children
+
+  override val arguments: Seq[Argument] = {
+    var dbHits: Option[Long] = None
+    var time: Option[Long] = None
+    var rows: Option[Long] = None
+
+    similar.foldLeft(Set.empty[Argument]) {
+      (acc, plan) =>
+        val args = plan.arguments.filter {
+          case DbHits(v) => dbHits = Some(dbHits.map(_ + v).getOrElse(v)); false
+          case Time(v) => time = Some(time.map(_ + v).getOrElse(v)); false
+          case Rows(v) => rows = Some(rows.map(o => Math.max(o, v)).getOrElse(v)); false
+          case _ => true
+        }
+        acc ++ args
+    }.toSeq ++ dbHits.map(DbHits.apply) ++ time.map(Time.apply) ++ rows.map(Rows.apply)
+  }
+
+  override def find(name: String): Seq[InternalPlanDescription] = similar.last.find(name)
+
+  override def id: Id = similar.last.id
+
+  override def addArgument(argument: Argument): InternalPlanDescription = ???
+
+  override def map(f: InternalPlanDescription => InternalPlanDescription): InternalPlanDescription = f(copy
+  (similar = similar.map(f)))
+
+}
+
+final case class SingleRowPlanDescription(id: Id, arguments: Seq[Argument] = Seq.empty, variables: Set[String]) extends InternalPlanDescription {
+  override def andThen(id: Id, name: String, variables: Set[String], newArguments: Argument*) =
+    new PlanDescriptionImpl(id, name, NoChildren, newArguments, variables)
 
   def children = NoChildren
 
   def find(searchedName: String) = if (searchedName == name) Seq(this) else Seq.empty
 
-  def name = "Argument"
+  def name = "EmptyRow"
 
   def render(builder: StringBuilder) {}
 

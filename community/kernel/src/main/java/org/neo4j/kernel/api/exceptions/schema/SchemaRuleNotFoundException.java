@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,10 +26,9 @@ public abstract class SchemaRuleNotFoundException extends SchemaRuleException
     protected static final String UNIQUE_CONSTRAINT_PREFIX = "Uniqueness constraint";
     protected static final String CONSTRAINT_PREFIX = "Constraint";
 
-    protected SchemaRuleNotFoundException( String messageTemplate, int ruleEntityId, int propertyKeyId, String messagePrefix)
+    protected SchemaRuleNotFoundException( String messageTemplate, int ruleEntityId, int propertyKeyId,
+            String messagePrefix )
     {
-        super( Status.Schema.NoSuchSchemaRule, messageTemplate, ruleEntityId, propertyKeyId, messagePrefix );
-
+        super( Status.Schema.SchemaRuleAccessFailed, messageTemplate, ruleEntityId, propertyKeyId, messagePrefix );
     }
-
 }

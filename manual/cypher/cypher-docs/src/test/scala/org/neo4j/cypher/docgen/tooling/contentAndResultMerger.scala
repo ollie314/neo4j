@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -49,7 +49,7 @@ object contentAndResultMerger {
   private class ContentReplacer(rewrites: Map[QueryResultPlaceHolder, Content]) extends Rewriter {
     override def apply(value: AnyRef): AnyRef = instance(value)
 
-    val instance: Rewriter = bottomUp(Rewriter.lift {
+    private val instance: Rewriter = bottomUp(Rewriter.lift {
       case q: QueryResultPlaceHolder => rewrites(q)
     })
   }

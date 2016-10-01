@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -34,7 +34,7 @@ class PlanRewritingPlanningIntegrationTest  extends CypherFunSuite with LogicalP
     result should equal(
       Projection(
         AllNodesScan("n", Set.empty)(solved),
-        Map("deg" -> GetDegree(ident("n"), None, OUTGOING)_)
+        Map("deg" -> GetDegree(varFor("n"), None, OUTGOING)_)
       )(result.solved)
     )
   }

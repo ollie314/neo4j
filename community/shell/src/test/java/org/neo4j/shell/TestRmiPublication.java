@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -39,16 +39,16 @@ import static org.junit.Assert.assertEquals;
 
 public class TestRmiPublication
 {
-    public static File createDefaultPropertiesFile( String path ) throws IOException
+    public static File createDefaultConfigFile( File path ) throws IOException
     {
-        File propsFile = new File( path, "neo4j.properties" );
+        File configFile = new File( path, "neo4j.conf" );
         Properties config = new Properties();
         config.setProperty( GraphDatabaseSettings.pagecache_memory.name(), "8m" );
-        try ( Writer writer = new FileWriter( propsFile ) )
+        try ( Writer writer = new FileWriter( configFile ) )
         {
             config.store( writer, "" );
         }
-        return propsFile;
+        return configFile;
     }
 
     @Test

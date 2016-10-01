@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,25 +26,25 @@ import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionRe
 class CreateTest extends RefcardTest with QueryStatisticsTestSupport {
   val graphDescription = List("ROOT LINK A", "A LINK B", "B LINK C", "C LINK ROOT")
   val title = "CREATE"
-  val css = "write c4-4 c5-5 c6-3"
+  val css = "write c4-3 c5-4 c6-1"
   override val linkId = "query-create"
 
   override def assert(name: String, result: InternalExecutionResult) {
     name match {
       case "create-node" =>
-        assertStats(result, nodesCreated = 1, propertiesSet = 1)
+        assertStats(result, nodesCreated = 1, propertiesWritten = 1)
         assert(result.toList.size === 1)
       case "create-node-from-map" =>
-        assertStats(result, nodesCreated = 1, propertiesSet = 1)
+        assertStats(result, nodesCreated = 1, propertiesWritten = 1)
         assert(result.toList.size === 1)
       case "create-nodes-from-maps" =>
-        assertStats(result, nodesCreated = 2, propertiesSet = 2)
+        assertStats(result, nodesCreated = 2, propertiesWritten = 2)
         assert(result.toList.size === 2)
       case "create-rel" =>
         assertStats(result, relationshipsCreated = 1)
         assert(result.dumpToString.contains("KNOWS"))
       case "create-rel-prop" =>
-        assertStats(result, relationshipsCreated = 1, propertiesSet = 1)
+        assertStats(result, relationshipsCreated = 1, propertiesWritten = 1)
         assert(result.toList.size === 1)
     }
   }
@@ -56,7 +56,7 @@ class CreateTest extends RefcardTest with QueryStatisticsTestSupport {
       case "parameters=map" =>
         Map("map" -> Map("name" -> "Bob"))
       case "parameters=maps" =>
-        Map("collectionOfMaps" -> List(Map("name" -> "Bob"), Map("name" -> "Carl")))
+        Map("listOfMaps" -> List(Map("name" -> "Bob"), Map("name" -> "Carl")))
       case "parameters=ayear" =>
         Map("value" -> 2007)
       case "" =>
@@ -90,7 +90,7 @@ Create a node with the given properties.
 ###assertion=create-nodes-from-maps parameters=maps
 //
 
-UNWIND {collectionOfMaps} AS properties CREATE (n) SET n = properties
+UNWIND {listOfMaps} AS properties CREATE (n) SET n = properties
 
 RETURN n###
 
@@ -104,7 +104,7 @@ CREATE (n)-[r:KNOWS]->(m)
 
 RETURN r###
 
-Create a relationship with the given type and direction; bind an identifier to it.
+Create a relationship with the given type and direction; bind a variable to it.
 
 ###assertion=create-rel-prop parameters=ayear
 MATCH (n), (m)

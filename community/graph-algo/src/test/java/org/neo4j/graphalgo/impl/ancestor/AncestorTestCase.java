@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -31,10 +31,10 @@ import org.junit.Test;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
-import org.neo4j.graphdb.RelationshipExpander;
+import org.neo4j.graphdb.PathExpander;
+import org.neo4j.graphdb.PathExpanders;
 import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.kernel.Traversal;
 import org.neo4j.test.GraphDescription;
 import org.neo4j.test.GraphDescription.Graph;
 import org.neo4j.test.GraphHolder;
@@ -53,12 +53,12 @@ public class AncestorTestCase implements GraphHolder
 
     @Test
     @Graph( { "root contains child1", "child1 contains child11",
-            "child1 contains child12", "root contains child2", 
-            "child12 contains child121", "child1 contains child13" } )    
+            "child1 contains child12", "root contains child2",
+            "child12 contains child121", "child1 contains child13" } )
     public void test()
     {
-        RelationshipExpander expander = Traversal.expanderForTypes(Rels.contains, Direction.INCOMING);
-        
+        PathExpander expander = PathExpanders.forTypeAndDirection( Rels.contains, Direction.INCOMING );
+
         List<Node> nodeSet = new ArrayList<Node>();
         Map<String, Node> graph = data.get();
         nodeSet.add( graph.get( "child1" ) );

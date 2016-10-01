@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,7 @@ import org.neo4j.cypher.internal.compiler.v3_0._
 import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.Expression
 import org.neo4j.cypher.internal.compiler.v3_0.commands.values.KeyToken
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.{SetLabel, Effect, Effects}
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.{CastSupport, CollectionSupport}
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.{CastSupport, ListSupport}
 import org.neo4j.cypher.internal.compiler.v3_0.mutation.SetAction
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
@@ -36,7 +36,7 @@ case object LabelRemoveOp extends LabelOp
 
 //TODO: Should take single label
 case class LabelAction(entity: Expression, labelOp: LabelOp, labels: Seq[KeyToken])
-  extends SetAction with CollectionSupport {
+  extends SetAction with ListSupport {
 
   def localEffects(ignored: SymbolTable) = Effects(labels.map(l => SetLabel(l.name)).toSet[Effect])
 
@@ -46,19 +46,25 @@ case class LabelAction(entity: Expression, labelOp: LabelOp, labels: Seq[KeyToke
     LabelAction(entity.rewrite(f), labelOp, labels.map(_.typedRewrite[KeyToken](f)))
 
   def exec(context: ExecutionContext, state: QueryState) = {
-    val node      = CastSupport.castOrFail[Node](entity(context)(state))
-    val queryCtx  = state.query
-    val labelIds  = labels.map(_.getOrCreateId(state.query))
+    val value = entity(context)(state)
+    if (value != null) {
+      val node = CastSupport.castOrFail[Node](value)
+      val queryCtx = state.query
 
-    labelOp match {
-      case LabelSetOp => queryCtx.setLabelsOnNode(node.getId, labelIds.iterator)
-      case LabelRemoveOp => queryCtx.removeLabelsFromNode(node.getId, labelIds.iterator)
+      labelOp match {
+        case LabelSetOp =>
+          val labelIds = labels.map(_.getOrCreateId(state.query))
+          queryCtx.setLabelsOnNode(node.getId, labelIds.iterator)
+        case LabelRemoveOp =>
+          val labelIds = labels.flatMap(_.getOptId(state.query))
+          queryCtx.removeLabelsFromNode(node.getId, labelIds.iterator)
+      }
     }
 
     Iterator(context)
   }
 
-  def identifiers = Seq.empty
+  def variables = Seq.empty
 
   def symbolTableDependencies = entity.symbolTableDependencies ++ labels.flatMap(_.symbolTableDependencies)
 }

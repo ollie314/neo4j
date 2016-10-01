@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,82 +25,81 @@ import org.neo4j.cypher.internal.frontend.v3_0.notification._
 class NotificationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerTestSupport {
 
   test("Warn for cartesian product") {
-    val result = executeWithAllPlannersAndRuntimes("explain match (a)-->(b), (c)-->(d) return *")
+    val result = executeWithAllPlannersAndCompatibilityMode("explain match (a)-->(b), (c)-->(d) return *")
 
     result.notifications.toList should equal(List(CartesianProductNotification(InputPosition(0, 1, 1), Set("c", "d"))))
   }
 
-  test("Warn for cartesian product with runtime=compiled") {
-    val result = innerExecute("explain cypher runtime=compiled match (a)-->(b), (c)-->(d) return count(*)")
-
-    result.notifications.toList should equal(List(CartesianProductNotification(InputPosition(0, 1, 1), Set("c", "d")),
-                                                  RuntimeUnsupportedNotification))
-  }
 
   test("Warn for cartesian product with runtime=interpreted") {
-    val result = executeWithAllPlanners("explain cypher runtime=interpreted match (a)-->(b), (c)-->(d) return *")
+    val result = executeWithAllPlannersAndCompatibilityMode("explain cypher runtime=interpreted match (a)-->(b), (c)-->(d) return *")
 
     result.notifications.toList should equal(List(CartesianProductNotification(InputPosition(0, 1, 1), Set("c", "d"))))
   }
 
   test("Don't warn for cartesian product when not using explain") {
-    val result = executeWithAllPlannersAndRuntimes("match (a)-->(b), (c)-->(d) return *")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a)-->(b), (c)-->(d) return *")
 
     result.notifications shouldBe empty
   }
 
   test("warn when using length on collection") {
-    val result = executeWithAllPlanners("explain return length([1, 2, 3])")
+    val result = executeWithAllPlannersAndCompatibilityMode("explain return length([1, 2, 3])")
 
     result.notifications should equal(Set(LengthOnNonPathNotification(InputPosition(14, 1, 15))))
   }
 
   test("do not warn when using length on a path") {
-    val result = executeWithAllPlanners("explain match p=(a)-[*]->(b) return length(p)")
+    val result = executeWithAllPlannersAndCompatibilityMode("explain match p=(a)-[*]->(b) return length(p)")
 
     result.notifications shouldBe empty
   }
 
   test("do warn when using length on a pattern expression") {
-    val result = executeWithAllPlanners("explain match (a) where a.name='Alice' return length((a)-->()-->())")
+    val result = executeWithAllPlannersAndCompatibilityMode("explain match (a) where a.name='Alice' return length((a)-->()-->())")
 
     result.notifications should contain(LengthOnNonPathNotification(InputPosition(45, 1, 46)))
   }
 
   test("do warn when using length on a string") {
-    val result = executeWithAllPlanners("explain return length('a string')")
+    val result = executeWithAllPlannersAndCompatibilityMode("explain return length('a string')")
 
     result.notifications should equal(Set(LengthOnNonPathNotification(InputPosition(14, 1, 15))))
   }
 
   test("do not warn when using size on a collection") {
-    val result = executeWithAllPlanners("explain return size([1, 2, 3])")
+    val result = executeWithAllPlannersAndCompatibilityMode("explain return size([1, 2, 3])")
     result.notifications shouldBe empty
   }
 
   test("do not warn when using size on a string") {
-    val result = executeWithAllPlanners("explain return size('a string')")
+    val result = executeWithAllPlannersAndCompatibilityMode("explain return size('a string')")
     result.notifications shouldBe empty
   }
 
   test("do not warn for cost unsupported on update query if planner not explicitly requested") {
     val result = innerExecute("EXPLAIN MATCH (n:Movie) SET n.title = 'The Movie'")
-    result.notifications shouldBe empty
+    result.notifications should not contain PlannerUnsupportedNotification
   }
 
-  test("warn when requesting COST on an update query") {
-    val result = innerExecute("EXPLAIN CYPHER planner=COST MATCH (n:Movie) SET n.title = 'The Movie'")
-    result.notifications should equal(Set(PlannerUnsupportedNotification))
+  test("do not warn for cost unsupported when requesting COST on a supported update query") {
+    val result = innerExecute("EXPLAIN CYPHER planner=cost MATCH (n:Movie) SET n:Seen")
+    result.notifications should not contain PlannerUnsupportedNotification
+  }
+
+  test("do not warn for cost unsupported when requesting IDP on a supported update query") {
+    val result = innerExecute("EXPLAIN CYPHER planner=idp MATCH (n:Movie) SET n:Seen")
+    result.notifications should not contain PlannerUnsupportedNotification
+  }
+
+  test("do not warn for cost unsupported when requesting DP on a supported update query") {
+    val result = innerExecute("EXPLAIN CYPHER planner=dp MATCH (n:Movie) SET n:Seen")
+    result.notifications should not contain PlannerUnsupportedNotification
   }
 
   test("do not warn when requesting RULE on an update query") {
     val result = innerExecute("EXPLAIN CYPHER planner=RULE MATCH (n:Movie) SET n.title = 'The Movie'")
     result.notifications shouldBe empty
-  }
-
-  test("warn when requesting runtime=compiled on an unsupported query") {
-    val result = innerExecute("EXPLAIN CYPHER runtime=compiled MATCH (a)-->(b), (c)-->(d) RETURN count(*)")
-    result.notifications should contain(RuntimeUnsupportedNotification)
   }
 
   test("warn once when a single index hint cannot be fulfilled") {
@@ -128,6 +127,18 @@ class NotificationAcceptanceTest extends ExecutionEngineFunSuite with NewPlanner
     result.notifications should equal(Set(JoinHintUnsupportedNotification(Seq("b"))))
   }
 
+  test("should warn when join hint is unfulfilled") {
+    val result = innerExecute( """CYPHER planner=cost EXPLAIN MATCH (a)-->(b) USING JOIN ON b RETURN a, b""")
+
+    result.notifications should equal(Set(JoinHintUnfulfillableNotification(Seq("b"))))
+  }
+
+  test("should not warn when join hint is used with COST planner with EXPLAIN") {
+    val result = innerExecute( """CYPHER planner=cost EXPLAIN MATCH (a)-->(x)<--(b) USING JOIN ON x RETURN a, b""")
+
+    result.notifications should not contain(JoinHintUnsupportedNotification(Seq("x")))
+  }
+
   test("should not warn when join hint is used with RULE planner without EXPLAIN") {
     val result = innerExecute( """CYPHER planner=rule MATCH (a)-->(b) USING JOIN ON b RETURN a, b""")
 
@@ -135,8 +146,8 @@ class NotificationAcceptanceTest extends ExecutionEngineFunSuite with NewPlanner
   }
 
   test("Warnings should work on potentially cached queries") {
-    val resultWithoutExplain = executeWithAllPlannersAndRuntimes("match (a)-->(b), (c)-->(d) return *")
-    val resultWithExplain = executeWithAllPlannersAndRuntimes("explain match (a)-->(b), (c)-->(d) return *")
+    val resultWithoutExplain = executeWithAllPlannersAndCompatibilityMode("match (a)-->(b), (c)-->(d) return *")
+    val resultWithExplain = executeWithAllPlannersAndCompatibilityMode("explain match (a)-->(b), (c)-->(d) return *")
 
     resultWithoutExplain shouldBe empty
     resultWithExplain.notifications.toList should equal(List(CartesianProductNotification(InputPosition(0, 1, 1), Set("c", "d"))))
@@ -186,14 +197,6 @@ class NotificationAcceptanceTest extends ExecutionEngineFunSuite with NewPlanner
     graph.createIndex("Person", "name")
 
     val result = innerExecute("EXPLAIN MATCH (n:Person) WHERE exists(n['na' + 'me']) RETURN n")
-
-    result.notifications should equal(Set(IndexLookupUnfulfillableNotification(Set("Person"))))
-  }
-
-  test("warn for unfulfillable index seek when using dynamic property lookup with a single label and property existence check with has") {
-    graph.createIndex("Person", "name")
-
-    val result = innerExecute("EXPLAIN MATCH (n:Person) WHERE has(n['na' + 'me']) RETURN n")
 
     result.notifications should equal(Set(IndexLookupUnfulfillableNotification(Set("Person"))))
   }
@@ -264,8 +267,15 @@ class NotificationAcceptanceTest extends ExecutionEngineFunSuite with NewPlanner
     result.notifications shouldBe empty
   }
 
-  test("should warn for load csv + eager") {
-    val result = innerExecute("EXPLAIN LOAD CSV FROM 'file:///ignore/ignore.csv' AS line MATCH () CREATE () RETURN line")
+  test("should not warn for eager before load csv") {
+    val result = innerExecute("EXPLAIN MATCH (n) DELETE n WITH * LOAD CSV FROM 'file:///ignore/ignore.csv' AS line MERGE () RETURN line")
+
+    result should use("LoadCSV", "Eager")
+    result.notifications should not contain EagerLoadCsvNotification
+  }
+
+  test("should warn for eager after load csv") {
+    val result = innerExecute("EXPLAIN MATCH (n) LOAD CSV FROM 'file:///ignore/ignore.csv' AS line WITH * DELETE n MERGE () RETURN line")
 
     result should use("LoadCSV", "Eager")
     result.notifications should contain(EagerLoadCsvNotification)
@@ -295,28 +305,28 @@ class NotificationAcceptanceTest extends ExecutionEngineFunSuite with NewPlanner
   test("should warn for large label scans combined with load csv") {
     1 to 11 foreach { _ => createLabeledNode("A") }
     val result = innerExecute("EXPLAIN LOAD CSV FROM 'file:///ignore/ignore.csv' AS line MATCH (a:A) RETURN *")
-    result should use("LoadCSV", "NodeByLabel")
+    result should use("LoadCSV", "NodeByLabelScan")
     result.notifications should contain(LargeLabelWithLoadCsvNotification)
   }
 
   test("should warn for large label scans with merge combined with load csv") {
     1 to 11 foreach { _ => createLabeledNode("A") }
     val result = innerExecute("EXPLAIN LOAD CSV FROM 'file:///ignore/ignore.csv' AS line MERGE (a:A) RETURN *")
-    result should use("LoadCSV", "UpdateGraph")
+    result should use("LoadCSV", "AntiConditionalApply")
     result.notifications should contain(LargeLabelWithLoadCsvNotification)
   }
 
   test("should not warn for small label scans combined with load csv") {
     createLabeledNode("A")
     val result = innerExecute("EXPLAIN LOAD CSV FROM 'file:///ignore/ignore.csv' AS line MATCH (a:A) RETURN *")
-    result should use("LoadCSV", "NodeByLabel")
+    result should use("LoadCSV", "NodeByLabelScan")
     result.notifications should not contain LargeLabelWithLoadCsvNotification
   }
 
   test("should not warn for small label scans with merge combined with load csv") {
     createLabeledNode("A")
     val result = innerExecute("EXPLAIN LOAD CSV FROM 'file:///ignore/ignore.csv' AS line MERGE (a:A) RETURN *")
-    result should use("LoadCSV", "UpdateGraph")
+    result should use("LoadCSV", "AntiConditionalApply")
     result.notifications should not contain LargeLabelWithLoadCsvNotification
   }
 
@@ -378,10 +388,63 @@ class NotificationAcceptanceTest extends ExecutionEngineFunSuite with NewPlanner
   }
 
   test("2.3 can warn about bare nodes") {
-    val res = eengine.execute("EXPLAIN CYPHER 2.3 MATCH n RETURN n")
+    val res = eengine.execute("EXPLAIN CYPHER 2.3 MATCH n RETURN n", Map.empty[String, Any], graph.session())
 
     res.notifications should not be empty
   }
 
+  test("should not warn about literal maps") {
+    val res = innerExecute("explain return { id: 42 } ")
 
+    res.notifications should be(empty)
+  }
+
+  test("do not warn when creating a node with non-existent label when using load csv") {
+    val result = executeWithAllPlannersAndCompatibilityMode(
+      "EXPLAIN LOAD CSV WITH HEADERS FROM 'file:///fake.csv' AS row CREATE (n:Category)")
+
+    result.notifications shouldBe empty
+  }
+
+  test("do not warn when merging a node with non-existent label when using load csv") {
+    val result = executeWithAllPlannersAndCompatibilityMode(
+      "EXPLAIN LOAD CSV WITH HEADERS FROM 'file:///fake.csv' AS row MERGE (n:Category)")
+
+    result.notifications shouldBe empty
+  }
+
+  test("do not warn when setting on a node a non-existent label when using load csv") {
+    val result = executeWithAllPlannersAndCompatibilityMode(
+      "EXPLAIN LOAD CSV WITH HEADERS FROM 'file:///fake.csv' AS row CREATE (n) SET n:Category")
+
+    result.notifications shouldBe empty
+  }
+
+  test("do not warn when creating a rel with non-existent type when using load csv") {
+    val result = executeWithAllPlannersAndCompatibilityMode(
+      "EXPLAIN LOAD CSV WITH HEADERS FROM 'file:///fake.csv' AS row CREATE ()-[:T]->()")
+
+    result.notifications shouldBe empty
+  }
+
+  test("do not warn when merging a rel with non-existent type when using load csv") {
+    val result = executeWithAllPlannersAndCompatibilityMode(
+      "EXPLAIN LOAD CSV WITH HEADERS FROM 'file:///fake.csv' AS row MERGE ()-[:T]->()")
+
+    result.notifications shouldBe empty
+  }
+
+  test("do not warn when creating a node with non-existent prop key id when using load csv") {
+    val result = executeWithAllPlannersAndCompatibilityMode(
+      "EXPLAIN LOAD CSV WITH HEADERS FROM 'file:///fake.csv' AS row CREATE (n) SET n.p = 'a'")
+
+    result.notifications shouldBe empty
+  }
+
+  test("do not warn when merging a node with non-existent prop key id when using load csv") {
+    val result = executeWithAllPlannersAndCompatibilityMode(
+      "EXPLAIN LOAD CSV WITH HEADERS FROM 'file:///fake.csv' AS row MERGE (n) ON CREATE SET n.p = 'a'")
+
+    result.notifications shouldBe empty
+  }
 }

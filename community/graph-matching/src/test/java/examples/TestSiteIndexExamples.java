@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -30,7 +30,6 @@ import org.junit.ClassRule;
 import org.junit.Test;
 
 import org.neo4j.graphdb.Direction;
-import org.neo4j.graphdb.DynamicRelationshipType;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.RelationshipType;
@@ -160,7 +159,7 @@ public class TestSiteIndexExamples
     public void verifyFunctionalityOfFindNodesWithRelationshipsTo()
             throws Exception
     {
-        final RelationshipType type = DynamicRelationshipType.withName( "RELATED" );
+        final RelationshipType type = RelationshipType.withName( "RELATED" );
         Node[] nodes = createGraph( new GraphDefinition<Node[]>()
         {
             @Override
@@ -182,7 +181,7 @@ public class TestSiteIndexExamples
                 return nodes;
             }
         } );
-        try ( Transaction tx = graphDb.getGraphDatabaseService().beginTx() )
+        try ( Transaction tx = graphDb.getGraphDatabaseAPI().beginTx() )
         {
             assertEquals( 3, count( findNodesWithRelationshipsTo( type, nodes ) ) );
             tx.success();
@@ -238,8 +237,8 @@ public class TestSiteIndexExamples
 
         Set<String> expected = new HashSet<>( Arrays.asList( "Andy", "Bob" ) );
         Iterable<Node> friends = findFriendsSinceSpecifiedTimeInSpecifiedPlace( root, "Stockholm", 3 );
-        
-        try ( Transaction transaction = graphDb.getGraphDatabaseService().beginTx() )
+
+        try ( Transaction transaction = graphDb.getGraphDatabaseAPI().beginTx() )
         {
             for ( Node friend : friends )
             {
@@ -268,9 +267,9 @@ public class TestSiteIndexExamples
 
     private <T> T createGraph( GraphDefinition<T> definition )
     {
-        try ( Transaction tx = graphDb.getGraphDatabaseService().beginTx() )
+        try ( Transaction tx = graphDb.getGraphDatabaseAPI().beginTx() )
         {
-            T result = definition.create( graphDb.getGraphDatabaseService() );
+            T result = definition.create( graphDb.getGraphDatabaseAPI() );
             tx.success();
             return result;
         }

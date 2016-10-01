@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,12 +20,19 @@
 package org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.rewriter
 
 import org.neo4j.cypher.internal.compiler.v3_0.tracing.rewriters.RewriterStepSequencer
-import org.neo4j.cypher.internal.frontend.v3_0.{Rewriter, repeat}
+import org.neo4j.cypher.internal.frontend.v3_0.Rewriter
+import org.neo4j.cypher.internal.frontend.v3_0.helpers.fixedPoint
 
+/*
+ * Rewriters that live here are required to adhere to the contract of
+ * receiving a valid plan and producing a valid plan. It should be possible
+ * to disable any and all of these rewriters, and still produce correct behavior.
+ */
 case class LogicalPlanRewriter(rewriterSequencer: String => RewriterStepSequencer) extends Rewriter {
-  val instance: Rewriter = repeat(rewriterSequencer("LogicalPlanRewriter")(
+  val instance = fixedPoint(rewriterSequencer("LogicalPlanRewriter")(
     fuseSelections,
     unnestApply,
+    cleanUpEager,
     simplifyEquality,
     unnestOptional,
     predicateRemovalThroughJoins,

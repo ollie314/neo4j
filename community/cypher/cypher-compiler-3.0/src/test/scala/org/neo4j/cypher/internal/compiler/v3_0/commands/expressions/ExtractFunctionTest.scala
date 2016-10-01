@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,13 +28,13 @@ class ExtractFunctionTest extends CypherFunSuite {
   test("function type") {
     //GIVEN
     val collection = Literal(List(1, 2, 3))
-    val func = new ExtractFunction(collection, "x", StrFunction(Identifier("x")))
+    val func = new ExtractFunction(collection, "x", ToStringFunction(Variable("x")))
     val symbols = SymbolTable()
 
     //WHEN
-    val typ = func.evaluateType(CTCollection(CTString), symbols)
+    val typ = func.evaluateType(CTList(CTString), symbols)
 
     //THEN
-    typ should equal(CTCollection(CTString))
+    typ should equal(CTList(CTString))
   }
 }

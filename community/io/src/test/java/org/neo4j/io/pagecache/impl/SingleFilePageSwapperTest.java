@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -47,6 +47,7 @@ import org.neo4j.io.fs.StoreFileChannel;
 import org.neo4j.io.pagecache.PageSwapper;
 import org.neo4j.io.pagecache.PageSwapperFactory;
 import org.neo4j.io.pagecache.PageSwapperTest;
+import org.neo4j.io.proc.ProcessUtil;
 
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
@@ -251,7 +252,8 @@ public class SingleFilePageSwapperTest extends PageSwapperTest
         fs.create( file ).close();
 
         ProcessBuilder pb = new ProcessBuilder(
-                "java", "-cp", ".",
+                ProcessUtil.getJavaExecutable().toString(),
+                "-cp", ProcessUtil.getClassPath(),
                 LockThisFileProgram.class.getCanonicalName(), file.getAbsolutePath() );
         File wd = new File( "target/test-classes" ).getAbsoluteFile();
         pb.directory( wd );

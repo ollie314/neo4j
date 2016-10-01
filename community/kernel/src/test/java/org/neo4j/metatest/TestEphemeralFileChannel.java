@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,22 +19,20 @@
  */
 package org.neo4j.metatest;
 
+import org.junit.Ignore;
+import org.junit.Test;
+
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
-import org.junit.Ignore;
-import org.junit.Test;
-
-import org.neo4j.io.fs.StoreChannel;
 import org.neo4j.graphdb.mockfs.EphemeralFileSystemAbstraction;
+import org.neo4j.io.fs.StoreChannel;
 
 import static java.nio.ByteBuffer.allocateDirect;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
-
-import static org.neo4j.helpers.collection.IteratorUtil.asSet;
+import static org.neo4j.helpers.collection.Iterators.asSet;
 
 public class TestEphemeralFileChannel
 {
@@ -137,7 +135,7 @@ public class TestEphemeralFileChannel
          *     file
          */
         EphemeralFileSystemAbstraction fs = new EphemeralFileSystemAbstraction();
-        File root = new File( "root" );
+        File root = new File( "/root" ).getCanonicalFile();
         File dir1 = new File( root, "dir1" );
         File dir2 = new File( root, "dir2" );
         File subdir1 = new File( dir1, "sub" );

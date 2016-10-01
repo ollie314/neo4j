@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -34,13 +34,13 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 import org.neo4j.adversaries.Adversary;
 import org.neo4j.adversaries.RandomAdversary;
 import org.neo4j.adversaries.fs.AdversarialFileSystemAbstraction;
 import org.neo4j.adversaries.fs.AdversarialOutputStream;
-import org.neo4j.function.LongSupplier;
-import org.neo4j.function.Supplier;
 import org.neo4j.function.Suppliers;
 import org.neo4j.graphdb.mockfs.DelegatingFileSystemAbstraction;
 import org.neo4j.graphdb.mockfs.EphemeralFileSystemAbstraction;
@@ -63,14 +63,7 @@ import static org.neo4j.logging.FormattedLog.OUTPUT_STREAM_CONVERTER;
 
 public class RotatingFileOutputStreamSupplierTest
 {
-    private static final java.util.concurrent.Executor DIRECT_EXECUTOR = new Executor()
-    {
-        @Override
-        public void execute( Runnable task )
-        {
-            task.run();
-        }
-    };
+    private static final java.util.concurrent.Executor DIRECT_EXECUTOR = Runnable::run;
 
     private FileSystemAbstraction fileSystem = new EphemeralFileSystemAbstraction();
     private File logFile = new File( "/tmp/logfile.log" );
@@ -169,7 +162,8 @@ public class RotatingFileOutputStreamSupplierTest
     public void shouldNotRotatesLogWhenSizeExceededByNotDelay() throws Exception
     {
         UpdatableLongSupplier clock = new UpdatableLongSupplier( System.currentTimeMillis() );
-        RotatingFileOutputStreamSupplier supplier = new RotatingFileOutputStreamSupplier( clock, fileSystem, logFile, 10, 60, 10, DIRECT_EXECUTOR, new RotationListener() );
+        RotatingFileOutputStreamSupplier supplier = new RotatingFileOutputStreamSupplier( clock, fileSystem, logFile,
+                10, SECONDS.toMillis( 60 ), 10, DIRECT_EXECUTOR, new RotationListener() );
         OutputStream outputStream = supplier.get();
         assertThat( fileSystem.fileExists( logFile ), is( true ) );
         assertThat( fileSystem.fileExists( archiveLogFile1 ), is( false ) );
@@ -530,6 +524,7 @@ public class RotatingFileOutputStreamSupplierTest
             };
         }
 
+        @Override
         public boolean fileExists( File fileName )
         {
             // Default adversarial might throw a java.lang.SecurityException here, which is an exception

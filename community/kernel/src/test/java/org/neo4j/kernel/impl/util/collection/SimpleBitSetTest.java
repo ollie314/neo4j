@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,8 +21,9 @@ package org.neo4j.kernel.impl.util.collection;
 
 import java.util.List;
 
+import org.neo4j.collection.primitive.PrimitiveIntCollections;
+
 import org.junit.Test;
-import org.neo4j.helpers.collection.IteratorUtil;
 
 import static java.util.Arrays.asList;
 import static junit.framework.Assert.assertTrue;
@@ -155,7 +156,7 @@ public class SimpleBitSetTest
         set.put( 78 );
 
         // When
-        List<Integer> found = IteratorUtil.asList( set.iterator() );
+        List<Integer> found = PrimitiveIntCollections.toList( set.iterator() );
 
         // Then
         assertThat( found, equalTo( asList( 4, 7, 63, 78 ) ));

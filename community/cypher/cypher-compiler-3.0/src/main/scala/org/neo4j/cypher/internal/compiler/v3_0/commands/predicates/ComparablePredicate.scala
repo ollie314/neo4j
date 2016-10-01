@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,11 +20,8 @@
 package org.neo4j.cypher.internal.compiler.v3_0.commands.predicates
 
 import org.neo4j.cypher.internal.compiler.v3_0._
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Identifier, Literal}
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.IsCollection
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Expression, Variable, Literal}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
-import org.neo4j.cypher.internal.frontend.v3_0.IncomparableValuesException
-import org.neo4j.graphdb.{Node, Relationship}
 
 abstract sealed class ComparablePredicate(val left: Expression, val right: Expression) extends Predicate with Comparer {
   def compare(comparisonResult: Int): Boolean
@@ -48,6 +45,13 @@ abstract sealed class ComparablePredicate(val left: Expression, val right: Expre
   def arguments = Seq(left, right)
 
   def symbolTableDependencies = left.symbolTableDependencies ++ right.symbolTableDependencies
+
+  def other(e: Expression): Expression = if (e != left) {
+    assert(e == right, "This expression is neither LHS nor RHS")
+    left
+  } else {
+    right
+  }
 }
 
 case class Equals(a: Expression, b: Expression) extends Predicate with Comparer {
@@ -62,24 +66,16 @@ case class Equals(a: Expression, b: Expression) extends Predicate with Comparer 
     val b1 = b(m)
 
     (a1, b1) match {
-      case (null, _)                                             => None
-      case (_, null)                                             => None
-      case (IsCollection(l), IsCollection(r))                    => Some(l == r)
-      case (l: Node, r) if !r.isInstanceOf[Node]                 => incomparable(l, r)
-      case (l, r: Node) if !l.isInstanceOf[Node]                 => incomparable(l, r)
-      case (l: Relationship, r) if !r.isInstanceOf[Relationship] => incomparable(l, r)
-      case (l, r: Relationship) if !l.isInstanceOf[Relationship] => incomparable(l, r)
-      case _                                                     => Some(a1 == b1)
+      case (null, _) => None
+      case (_, null) => None
+      case _         => Some(Equivalent(a1) == b1)
     }
   }
-
-  private def incomparable(lhs: Any, rhs: Any)(implicit state: QueryState): Nothing =
-    throw new IncomparableValuesException(textWithType(lhs), textWithType(rhs))
 
   override def toString = s"$a == $b"
 
   def containsIsNull = (a, b) match {
-    case (Identifier(_), Literal(null)) => true
+    case (Variable(_), Literal(null)) => true
     case _                              => false
   }
 

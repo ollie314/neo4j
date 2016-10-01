@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,17 +20,19 @@
 package org.neo4j.cypher.internal.compiler.v3_0.planner.logical
 
 import org.neo4j.cypher.internal.compiler.v3_0.helpers.MapSupport._
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.simpleExpressionEvaluator
 import org.neo4j.cypher.internal.compiler.v3_0.planner._
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.Metrics.{CardinalityModel, QueryGraphCardinalityModel, QueryGraphSolverInput}
 import org.neo4j.cypher.internal.compiler.v3_0.spi.GraphStatistics
 import org.neo4j.cypher.internal.frontend.v3_0.SemanticTable
 import org.neo4j.cypher.internal.frontend.v3_0.ast.IntegerLiteral
+import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.Cardinality.lift
 
 class StatisticsBackedCardinalityModel(queryGraphCardinalityModel: QueryGraphCardinalityModel) extends CardinalityModel {
 
   def apply(query: PlannerQuery, input0: QueryGraphSolverInput, semanticTable: SemanticTable): Cardinality = {
     val output = query.fold(input0) {
-      case (input, PlannerQuery(graph, _, horizon, _)) =>
+      case (input, RegularPlannerQuery(graph, horizon, _)) =>
         val QueryGraphSolverInput(newLabels, graphCardinality, lazyness) = calculateCardinalityForQueryGraph(graph, input, semanticTable)
 
         val horizonCardinality = calculateCardinalityForQueryHorizon(graphCardinality, horizon)
@@ -40,13 +42,27 @@ class StatisticsBackedCardinalityModel(queryGraphCardinalityModel: QueryGraphCar
   }
 
   private def calculateCardinalityForQueryHorizon(in: Cardinality, horizon: QueryHorizon): Cardinality = horizon match {
-    // Normal projection with LIMIT
-    case RegularQueryProjection(_, QueryShuffle(_, None, Some(limit: IntegerLiteral))) =>
+    // Normal projection with LIMIT integer literal
+    case RegularQueryProjection(_, QueryShuffle(_, _, Some(limit: IntegerLiteral))) =>
       Cardinality.min(in, limit.value.toDouble)
 
     // Normal projection with LIMIT
-    case RegularQueryProjection(_, QueryShuffle(_, None, Some(unknownLimit))) =>
-      Cardinality.min(in, GraphStatistics.DEFAULT_LIMIT_CARDINALITY)
+    case RegularQueryProjection(_, QueryShuffle(_, _, Some(limit))) =>
+      val cannotEvaluateStableValue =
+        simpleExpressionEvaluator.hasParameters(limit) ||
+          simpleExpressionEvaluator.isNonDeterministic(limit)
+
+      val limitCardinality =
+        if (cannotEvaluateStableValue) GraphStatistics.DEFAULT_LIMIT_CARDINALITY
+        else {
+          val evaluatedValue: Option[Any] = simpleExpressionEvaluator.evaluateExpression(limit)
+
+          if (evaluatedValue.isDefined && evaluatedValue.get.isInstanceOf[Number])
+            Cardinality(evaluatedValue.get.asInstanceOf[Number].doubleValue())
+          else GraphStatistics.DEFAULT_LIMIT_CARDINALITY
+        }
+
+      Cardinality.min(in, limitCardinality)
 
     // Distinct
     case projection: AggregatingQueryProjection if projection.aggregationExpressions.isEmpty =>
@@ -61,7 +77,15 @@ class StatisticsBackedCardinalityModel(queryGraphCardinalityModel: QueryGraphCar
     case _: UnwindProjection =>
       in * Multiplier(10)
 
-    case _: RegularQueryProjection =>
+    // ProcedureCall
+    case _: ProcedureCallProjection =>
+      in * Multiplier(10) min 1.0 max 10000.0
+
+    // Load CSV
+    case _: LoadCSVProjection =>
+      in
+
+    case _: RegularQueryProjection | _: PassthroughAllHorizon =>
       in
   }
 

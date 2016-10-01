@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -89,7 +89,7 @@ public class PhysicalLogFiles
         return readLogHeader( fileSystem, getLogFileForVersion( version ) );
     }
 
-    public boolean hasAnyTransaction( long version )
+    public boolean hasAnyEntries( long version )
     {
         return fileSystem.getFileSize( getLogFileForVersion( version ) ) > LOG_HEADER_SIZE;
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -86,7 +86,7 @@ public class MandatoryTransactionsForIndexHitsFacadeTests
 
     private Index<Node> createIndex()
     {
-        GraphDatabaseService graphDatabaseService = dbRule.getGraphDatabaseService();
+        GraphDatabaseService graphDatabaseService = dbRule.getGraphDatabaseAPI();
         try ( Transaction transaction = graphDatabaseService.beginTx() )
         {
             Index<Node> index = graphDatabaseService.index().forNodes( "foo" );
@@ -97,7 +97,7 @@ public class MandatoryTransactionsForIndexHitsFacadeTests
 
     private IndexHits<Node> queryIndex( Index<Node> index )
     {
-        GraphDatabaseService graphDatabaseService = dbRule.getGraphDatabaseService();
+        GraphDatabaseService graphDatabaseService = dbRule.getGraphDatabaseAPI();
         try ( Transaction transaction = graphDatabaseService.beginTx() )
         {
             return index.get( "foo", 42 );

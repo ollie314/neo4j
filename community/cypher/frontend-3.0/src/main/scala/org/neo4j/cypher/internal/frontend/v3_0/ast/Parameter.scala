@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,6 +22,9 @@ package org.neo4j.cypher.internal.frontend.v3_0.ast
 import org.neo4j.cypher.internal.frontend.v3_0.InputPosition
 import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 
-case class Parameter(name: String)(val position: InputPosition) extends Expression with SimpleTyping {
-  protected def possibleTypes = CTAny.covariant
+case class Parameter(name: String,
+                     parameterType: CypherType)(val position: InputPosition)
+  extends Expression with SimpleTyping {
+
+  protected def possibleTypes: TypeSpec = parameterType.covariant
 }

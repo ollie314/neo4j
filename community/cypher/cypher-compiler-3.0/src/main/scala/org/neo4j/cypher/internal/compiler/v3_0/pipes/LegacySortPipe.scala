@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -38,7 +38,7 @@ case class LegacySortPipe(source: Pipe, sortDescription: List[SortItem])
   }
 
   def planDescription =
-    source.planDescription.andThen(this.id, "Sort", identifiers, sortDescription.map(item => LegacyExpression(item.expression)):_*)
+    source.planDescription.andThen(this.id, "Sort", variables, sortDescription.map(item => LegacyExpression(item.expression)):_*)
 
   override def dup(sources: List[Pipe]): Pipe = {
     val (source :: Nil) = sources

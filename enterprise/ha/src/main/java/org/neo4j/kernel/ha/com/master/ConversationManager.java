@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,9 +21,9 @@ package org.neo4j.kernel.ha.com.master;
 
 import java.util.Collections;
 import java.util.Set;
+import java.util.function.Consumer;
 
 import org.neo4j.com.RequestContext;
-import org.neo4j.function.Consumer;
 import org.neo4j.function.Factory;
 import org.neo4j.helpers.Clock;
 import org.neo4j.kernel.configuration.Config;
@@ -158,14 +158,7 @@ public class ConversationManager extends LifecycleAdapter
 
     protected Consumer<Conversation> getConversationReaper()
     {
-        return new Consumer<Conversation>()
-        {
-            @Override
-            public void accept( Conversation conversation )
-            {
-                conversation.close();
-            }
-        };
+        return Conversation::close;
     }
 
     protected Factory<Conversation> getConversationFactory()

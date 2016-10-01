@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,7 +25,7 @@ import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 
 trait FilteringExpression extends Expression {
   def name: String
-  def identifier: Identifier
+  def variable: Variable
   def expression: Expression
   def innerPredicate: Option[Expression]
 
@@ -33,13 +33,13 @@ trait FilteringExpression extends Expression {
 
   def semanticCheck(ctx: SemanticContext) =
     expression.semanticCheck(ctx) chain
-    expression.expectType(CTCollection(CTAny).covariant) chain
+    expression.expectType(CTList(CTAny).covariant) chain
     checkInnerPredicate chain
     failIfAggregrating(innerPredicate)
 
   protected def failIfAggregrating(e: Expression): Option[SemanticError] =
     if(e.containsAggregate) {
-      val message = "Can't use aggregating expressions inside of expressions executing over collections"
+      val message = "Can't use aggregating expressions inside of expressions executing over lists"
       Some(SemanticError(message, expression.position))
     } else None
 
@@ -47,7 +47,7 @@ trait FilteringExpression extends Expression {
     in.flatMap(failIfAggregrating)
 
   protected def possibleInnerTypes: TypeGenerator = s =>
-    (expression.types(s) constrain CTCollection(CTAny)).unwrapCollections
+    (expression.types(s) constrain CTList(CTAny)).unwrapLists
 
   protected def checkPredicateDefined =
     when (innerPredicate.isEmpty) {
@@ -61,17 +61,16 @@ trait FilteringExpression extends Expression {
 
   private def checkInnerPredicate: SemanticCheck = innerPredicate match {
     case Some(e) => withScopedState {
-      identifier.declare(possibleInnerTypes) chain e.semanticCheck(SemanticContext.Simple)
+      variable.declare(possibleInnerTypes) chain e.semanticCheck(SemanticContext.Simple)
     }
     case None    => SemanticCheckResult.success
   }
 }
 
-
 case class FilterExpression(scope: FilterScope, expression: Expression)(val position: InputPosition) extends FilteringExpression {
   val name = "filter"
 
-  def identifier = scope.identifier
+  def variable = scope.variable
   def innerPredicate = scope.innerPredicate
 
   override def semanticCheck(ctx: SemanticContext) =
@@ -81,15 +80,15 @@ case class FilterExpression(scope: FilterScope, expression: Expression)(val posi
 }
 
 object FilterExpression {
-  def apply(identifier: Identifier, expression: Expression, innerPredicate: Option[Expression])(position: InputPosition): FilterExpression =
-    FilterExpression(FilterScope(identifier, innerPredicate)(position), expression)(position)
+  def apply(variable: Variable, expression: Expression, innerPredicate: Option[Expression])(position: InputPosition): FilterExpression =
+    FilterExpression(FilterScope(variable, innerPredicate)(position), expression)(position)
 }
 
 case class ExtractExpression(scope: ExtractScope, expression: Expression)(val position: InputPosition) extends FilteringExpression
 {
   val name = "extract"
 
-  def identifier = scope.identifier
+  def variable = scope.variable
   def innerPredicate = scope.innerPredicate
   def extractExpression = scope.extractExpression
 
@@ -108,27 +107,27 @@ case class ExtractExpression(scope: ExtractScope, expression: Expression)(val po
   private def checkInnerExpression: SemanticCheck =
     scope.extractExpression.fold(SemanticCheckResult.success) {
       e => withScopedState {
-        identifier.declare(possibleInnerTypes) chain e.semanticCheck(SemanticContext.Simple)
+        variable.declare(possibleInnerTypes) chain e.semanticCheck(SemanticContext.Simple)
       } chain {
-        val outerTypes: TypeGenerator = e.types(_).wrapInCollection
+        val outerTypes: TypeGenerator = e.types(_).wrapInList
         this.specifyType(outerTypes)
       }
     }
 }
 
 object ExtractExpression {
-  def apply(identifier: Identifier,
+  def apply(variable: Variable,
             expression: Expression,
             innerPredicate: Option[Expression],
             extractExpression: Option[Expression])(position: InputPosition): ExtractExpression =
-    ExtractExpression(ExtractScope(identifier, innerPredicate, extractExpression)(position), expression)(position)
+    ExtractExpression(ExtractScope(variable, innerPredicate, extractExpression)(position), expression)(position)
 }
 
 case class ListComprehension(scope: ExtractScope, expression: Expression)(val position: InputPosition) extends FilteringExpression
 {
   val name = "[...]"
 
-  def identifier = scope.identifier
+  def variable = scope.variable
   def innerPredicate = scope.innerPredicate
   def extractExpression = scope.extractExpression
 
@@ -140,9 +139,9 @@ case class ListComprehension(scope: ExtractScope, expression: Expression)(val po
   private def checkInnerExpression: SemanticCheck = extractExpression match {
     case Some(e) =>
       withScopedState {
-        identifier.declare(possibleInnerTypes) chain e.semanticCheck(SemanticContext.Simple)
+        variable.declare(possibleInnerTypes) chain e.semanticCheck(SemanticContext.Simple)
       } chain {
-        val outerTypes: TypeGenerator = e.types(_).wrapInCollection
+        val outerTypes: TypeGenerator = e.types(_).wrapInList
         this.specifyType(outerTypes)
       }
     case None    => this.specifyType(expression.types)
@@ -150,18 +149,18 @@ case class ListComprehension(scope: ExtractScope, expression: Expression)(val po
 }
 
 object ListComprehension {
-  def apply(identifier: Identifier,
+  def apply(variable: Variable,
             expression: Expression,
             innerPredicate: Option[Expression],
             extractExpression: Option[Expression])(position: InputPosition): ListComprehension =
-    ListComprehension(ExtractScope(identifier, innerPredicate, extractExpression)(position), expression)(position)
+    ListComprehension(ExtractScope(variable, innerPredicate, extractExpression)(position), expression)(position)
 
 }
 
 sealed trait IterablePredicateExpression extends FilteringExpression {
 
   def scope: FilterScope
-  def identifier = scope.identifier
+  def variable = scope.variable
   def innerPredicate = scope.innerPredicate
 
   override def semanticCheck(ctx: SemanticContext) =
@@ -175,8 +174,8 @@ case class AllIterablePredicate(scope: FilterScope, expression: Expression)(val 
 }
 
 object AllIterablePredicate {
-  def apply(identifier: Identifier, expression: Expression, innerPredicate: Option[Expression])(position: InputPosition): AllIterablePredicate =
-    AllIterablePredicate(FilterScope(identifier, innerPredicate)(position), expression)(position)
+  def apply(variable: Variable, expression: Expression, innerPredicate: Option[Expression])(position: InputPosition): AllIterablePredicate =
+    AllIterablePredicate(FilterScope(variable, innerPredicate)(position), expression)(position)
 }
 
 case class AnyIterablePredicate(scope: FilterScope, expression: Expression)(val position: InputPosition) extends IterablePredicateExpression {
@@ -184,8 +183,8 @@ case class AnyIterablePredicate(scope: FilterScope, expression: Expression)(val 
 }
 
 object AnyIterablePredicate {
-  def apply(identifier: Identifier, expression: Expression, innerPredicate: Option[Expression])(position: InputPosition): AnyIterablePredicate =
-    AnyIterablePredicate(FilterScope(identifier, innerPredicate)(position), expression)(position)
+  def apply(variable: Variable, expression: Expression, innerPredicate: Option[Expression])(position: InputPosition): AnyIterablePredicate =
+    AnyIterablePredicate(FilterScope(variable, innerPredicate)(position), expression)(position)
 }
 
 case class NoneIterablePredicate(scope: FilterScope, expression: Expression)(val position: InputPosition) extends IterablePredicateExpression {
@@ -193,8 +192,8 @@ case class NoneIterablePredicate(scope: FilterScope, expression: Expression)(val
 }
 
 object NoneIterablePredicate {
-  def apply(identifier: Identifier, expression: Expression, innerPredicate: Option[Expression])(position: InputPosition): NoneIterablePredicate =
-    NoneIterablePredicate(FilterScope(identifier, innerPredicate)(position), expression)(position)
+  def apply(variable: Variable, expression: Expression, innerPredicate: Option[Expression])(position: InputPosition): NoneIterablePredicate =
+    NoneIterablePredicate(FilterScope(variable, innerPredicate)(position), expression)(position)
 }
 
 case class SingleIterablePredicate(scope: FilterScope, expression: Expression)(val position: InputPosition) extends IterablePredicateExpression {
@@ -202,36 +201,36 @@ case class SingleIterablePredicate(scope: FilterScope, expression: Expression)(v
 }
 
 object SingleIterablePredicate {
-  def apply(identifier: Identifier, expression: Expression, innerPredicate: Option[Expression])(position: InputPosition): SingleIterablePredicate =
-    SingleIterablePredicate(FilterScope(identifier, innerPredicate)(position), expression)(position)
+  def apply(variable: Variable, expression: Expression, innerPredicate: Option[Expression])(position: InputPosition): SingleIterablePredicate =
+    SingleIterablePredicate(FilterScope(variable, innerPredicate)(position), expression)(position)
 }
 
-case class ReduceExpression(scope: ReduceScope, init: Expression, collection: Expression)(val position: InputPosition) extends Expression {
+case class ReduceExpression(scope: ReduceScope, init: Expression, list: Expression)(val position: InputPosition) extends Expression {
   import ReduceExpression._
 
-  def identifier = scope.identifier
+  def variable = scope.variable
   def accumulator = scope.accumulator
   def expression = scope.expression
 
   def semanticCheck(ctx: SemanticContext): SemanticCheck =
     init.semanticCheck(ctx) chain
-    collection.semanticCheck(ctx) chain
-    collection.expectType(CTCollection(CTAny).covariant) chain
+    list.semanticCheck(ctx) chain
+    list.expectType(CTList(CTAny).covariant) chain
     withScopedState {
       val indexType: TypeGenerator = s =>
-        (collection.types(s) constrain CTCollection(CTAny)).unwrapCollections
+        (list.types(s) constrain CTList(CTAny)).unwrapLists
       val accType: TypeGenerator = init.types
 
-      identifier.declare(indexType) chain
+      variable.declare(indexType) chain
       accumulator.declare(accType) chain
       expression.semanticCheck(SemanticContext.Simple)
     } chain expression.expectType(init.types, AccumulatorExpressionTypeMismatchMessageGenerator) chain
     this.specifyType(s => init.types(s) leastUpperBounds expression.types(s)) chain
-    failIfAggregrating
+    failIfAggregating
 
-  protected def failIfAggregrating: Option[SemanticError] =
+  protected def failIfAggregating: Option[SemanticError] =
     if (expression.containsAggregate) {
-      val message = "Can't use aggregating expressions inside of expressions executing over collections"
+      val message = "Can't use aggregating expressions inside of expressions executing over lists"
       Some(SemanticError(message, expression.position))
     } else None
 
@@ -240,7 +239,7 @@ case class ReduceExpression(scope: ReduceScope, init: Expression, collection: Ex
 object ReduceExpression {
   val AccumulatorExpressionTypeMismatchMessageGenerator = (expected: String, existing: String) => s"accumulator is $expected but expression has type $existing"
 
-  def apply(accumulator: Identifier, init: Expression, identifier: Identifier, collection: Expression, expression: Expression)(position: InputPosition): ReduceExpression =
-    ReduceExpression(ReduceScope(accumulator, identifier, expression)(position), init, collection)(position)
+  def apply(accumulator: Variable, init: Expression, variable: Variable, list: Expression, expression: Expression)(position: InputPosition): ReduceExpression =
+    ReduceExpression(ReduceScope(accumulator, variable, expression)(position), init, list)(position)
 }
 

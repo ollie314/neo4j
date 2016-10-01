@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,24 +25,24 @@ import org.mockito.Mockito.when
 import org.neo4j.cypher.internal.compiler.v3_0.spi.{GraphStatistics, GraphStatisticsSnapshot, NodesWithLabelCardinality}
 import org.neo4j.cypher.internal.frontend.v3_0.LabelId
 import org.neo4j.cypher.internal.frontend.v3_0.test_helpers.CypherFunSuite
-import org.neo4j.helpers.FakeClock
+import org.neo4j.time.FakeClock
 
 class PlanFingerprintReferenceTest extends CypherFunSuite {
 
   test("should be stale if all properties are out of date") {
-    val snapshot = GraphStatisticsSnapshot(Map(NodesWithLabelCardinality(label(21)) -> 5.0))
+    val snapshot = GraphStatisticsSnapshot(Map(NodesWithLabelCardinality(label(21)) -> 4.0))
     val ttl = 1000l
     val threshold = 0.0
     val clock = new FakeClock
     val stats = mock[GraphStatistics]
     when(stats.nodesWithLabelCardinality(label(21))).thenReturn(5.0)
-    val fingerprint = PlanFingerprint(clock.currentTimeMillis(), 17, snapshot)
+    val fingerprint = PlanFingerprint(clock.millis(), 17, snapshot)
 
     clock.forward(2, SECONDS)
 
-    val stale = PlanFingerprintReference(clock, ttl, threshold, fingerprint).isStale(->(42), stats)
+    val stale = new PlanFingerprintReference(clock, ttl, threshold, fingerprint).isStale(->(42), stats)
 
-    stale should be(true)
+    stale shouldBe true
   }
 
   test("should not be stale if stats are not diverged over the threshold") {
@@ -52,13 +52,13 @@ class PlanFingerprintReferenceTest extends CypherFunSuite {
     val clock = new FakeClock
     val stats = mock[GraphStatistics]
     when(stats.nodesWithLabelCardinality(label(21))).thenReturn(5.0)
-    val fingerprint = PlanFingerprint(clock.currentTimeMillis(), 17, snapshot)
+    val fingerprint = PlanFingerprint(clock.millis(), 17, snapshot)
 
     clock.forward(2, SECONDS)
 
-    val stale = PlanFingerprintReference(clock, ttl, threshold, fingerprint).isStale(->(42), stats)
+    val stale = new PlanFingerprintReference(clock, ttl, threshold, fingerprint).isStale(->(42), stats)
 
-    stale should be(false)
+    stale shouldBe false
   }
 
   test("should not be stale if txId didn't change") {
@@ -68,13 +68,13 @@ class PlanFingerprintReferenceTest extends CypherFunSuite {
     val clock = new FakeClock
     val stats = mock[GraphStatistics]
     when(stats.nodesWithLabelCardinality(label(21))).thenReturn(5.0)
-    val fingerprint = PlanFingerprint(clock.currentTimeMillis(), 17, snapshot)
+    val fingerprint = PlanFingerprint(clock.millis(), 17, snapshot)
 
     clock.forward(2, SECONDS)
 
-    val stale = PlanFingerprintReference(clock, ttl, threshold, fingerprint).isStale(->(17), stats)
+    val stale = new PlanFingerprintReference(clock, ttl, threshold, fingerprint).isStale(->(17), stats)
 
-    stale should be(false)
+    stale shouldBe false
   }
 
   test("should not be stale if life time has not expired") {
@@ -84,13 +84,13 @@ class PlanFingerprintReferenceTest extends CypherFunSuite {
     val clock = new FakeClock
     val stats = mock[GraphStatistics]
     when(stats.nodesWithLabelCardinality(label(21))).thenReturn(5.0)
-    val fingerprint = PlanFingerprint(clock.currentTimeMillis(), 17, snapshot)
+    val fingerprint = PlanFingerprint(clock.millis(), 17, snapshot)
 
     clock.forward(500, MILLISECONDS)
 
-    val stale = PlanFingerprintReference(clock, ttl, threshold, fingerprint).isStale(->(42), stats)
+    val stale = new PlanFingerprintReference(clock, ttl, threshold, fingerprint).isStale(->(42), stats)
 
-    stale should be(false)
+    stale shouldBe false
   }
 
   test("should update the timestamp if the life time is expired but transaction has not changed") {
@@ -100,15 +100,15 @@ class PlanFingerprintReferenceTest extends CypherFunSuite {
     val clock = new FakeClock
     val stats = mock[GraphStatistics]
     when(stats.nodesWithLabelCardinality(label(21))).thenReturn(5.0)
-    val fingerprint = PlanFingerprint(clock.currentTimeMillis(), 17, snapshot)
+    val fingerprint = PlanFingerprint(clock.millis(), 17, snapshot)
 
-    val reference = PlanFingerprintReference(clock, ttl, threshold, fingerprint)
+    val reference = new PlanFingerprintReference(clock, ttl, threshold, fingerprint)
 
     clock.forward(2, SECONDS)
-    reference.isStale(->(17), stats) should be(false)
+    reference.isStale(->(17), stats) shouldBe false
 
     clock.forward(500, MILLISECONDS)
-    reference.isStale(->(23), stats) should be(false)
+    reference.isStale(->(23), stats) shouldBe false
   }
 
   test("should update the timestamp and the txId if the life time is expired the txId is old but stats has not changed over the threshold") {
@@ -118,15 +118,15 @@ class PlanFingerprintReferenceTest extends CypherFunSuite {
     val clock = new FakeClock
     val stats = mock[GraphStatistics]
     when(stats.nodesWithLabelCardinality(label(21))).thenReturn(5.0)
-    val fingerprint = PlanFingerprint(clock.currentTimeMillis(), 17, snapshot)
+    val fingerprint = PlanFingerprint(clock.millis(), 17, snapshot)
 
-    val reference = PlanFingerprintReference(clock, ttl, threshold, fingerprint)
-
-    clock.forward(2, SECONDS)
-    reference.isStale(->(23), stats) should be(false)
+    val reference = new PlanFingerprintReference(clock, ttl, threshold, fingerprint)
 
     clock.forward(2, SECONDS)
-    reference.isStale(->(23), stats) should be(false)
+    reference.isStale(->(23), stats) shouldBe false
+
+    clock.forward(2, SECONDS)
+    reference.isStale(->(23), stats) shouldBe false
   }
 
   implicit def liftToOption[T](item: T): Option[T] = Option(item)

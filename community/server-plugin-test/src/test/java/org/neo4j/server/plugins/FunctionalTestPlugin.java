@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,7 +26,6 @@ import java.util.Set;
 
 import org.neo4j.graphalgo.GraphAlgoFactory;
 import org.neo4j.graphalgo.PathFinder;
-import org.neo4j.graphdb.DynamicRelationshipType;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.NotFoundException;
@@ -243,9 +242,9 @@ public class FunctionalTestPlugin extends ServerPlugin
         try ( Transaction tx = me.getGraphDatabase().beginTx() )
         {
             Node other;
-            if ( me.hasRelationship( DynamicRelationshipType.withName( "friend" ) ) )
+            if ( me.hasRelationship( RelationshipType.withName( "friend" ) ) )
             {
-                other = me.getRelationships( DynamicRelationshipType.withName( "friend" ) )
+                other = me.getRelationships( RelationshipType.withName( "friend" ) )
                         .iterator()
                         .next()
                         .getOtherNode( me );

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,12 +19,12 @@
  */
 package org.neo4j.kernel.impl.core;
 
+import org.junit.Rule;
+import org.junit.Test;
+
 import java.util.HashSet;
 import java.util.Set;
 
-import org.junit.Rule;
-import org.junit.Test;
-import org.neo4j.graphdb.DynamicLabel;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
@@ -32,8 +32,8 @@ import org.neo4j.graphdb.ResourceIterator;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.test.EmbeddedDatabaseRule;
 
-import static org.junit.Assert.*;
-import static org.neo4j.helpers.collection.IteratorUtil.asSet;
+import static org.junit.Assert.assertEquals;
+import static org.neo4j.helpers.collection.Iterators.asSet;
 
 public class TestConcurrentIteratorModification {
     @Rule
@@ -43,8 +43,8 @@ public class TestConcurrentIteratorModification {
     public void shouldNotThrowConcurrentModificationExceptionWhenUpdatingWhileIterating()
     {
         // given
-        GraphDatabaseService graph = dbRule.getGraphDatabaseService();
-        Label label = DynamicLabel.label( "Bird" );
+        GraphDatabaseService graph = dbRule.getGraphDatabaseAPI();
+        Label label = Label.label( "Bird" );
 
         Node node1, node2, node3;
         try ( Transaction tx = graph.beginTx() ) {

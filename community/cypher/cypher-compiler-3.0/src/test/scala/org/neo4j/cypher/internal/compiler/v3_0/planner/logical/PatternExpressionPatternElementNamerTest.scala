@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -70,7 +70,7 @@ class PatternExpressionPatternElementNamerTest extends CypherFunSuite with Logic
     processMap(map) should equal(Map(52 -> "  UNNAMED53", 59 -> "  UNNAMED60"))
   }
 
-  private def processMap(map: Map[PatternElement, Identifier]) = {
+  private def processMap(map: Map[PatternElement, Variable]) = {
     map.collect {
       case (pattern: NodePattern, ident) => pattern.position.offset -> ident.name
       case (pattern: RelationshipChain, ident) => pattern.relationship.position.offset -> ident.name

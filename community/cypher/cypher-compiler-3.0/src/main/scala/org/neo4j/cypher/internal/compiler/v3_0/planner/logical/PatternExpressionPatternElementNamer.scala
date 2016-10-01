@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,43 +25,43 @@ import org.neo4j.cypher.internal.frontend.v3_0.{IdentityMap, Rewriter, topDown}
 
 object PatternExpressionPatternElementNamer {
 
-  def apply(expr: PatternExpression): (PatternExpression, Map[PatternElement, Identifier]) = {
+  def apply(expr: PatternExpression): (PatternExpression, Map[PatternElement, Variable]) = {
     val unnamedMap = nameUnnamedPatternElements(expr)
     val namedPattern = expr.pattern.endoRewrite(namePatternElementsFromMap(unnamedMap))
     val namedExpr = expr.copy(pattern = namedPattern)
     (namedExpr, unnamedMap)
   }
 
-  private def nameUnnamedPatternElements(expr: PatternExpression): Map[PatternElement, Identifier] = {
-    val unnamedElements = findPatternElements(expr.pattern).filter(_.identifier.isEmpty)
+  private def nameUnnamedPatternElements(expr: PatternExpression): Map[PatternElement, Variable] = {
+    val unnamedElements = findPatternElements(expr.pattern).filter(_.variable.isEmpty)
     IdentityMap(unnamedElements.map {
       case elem: NodePattern =>
-        elem -> Identifier(UnNamedNameGenerator.name(elem.position.bumped()))(elem.position)
+        elem -> Variable(UnNamedNameGenerator.name(elem.position.bumped()))(elem.position)
       case elem@RelationshipChain(_, relPattern, _) =>
-        elem -> Identifier(UnNamedNameGenerator.name(relPattern.position.bumped()))(relPattern.position)
+        elem -> Variable(UnNamedNameGenerator.name(relPattern.position.bumped()))(relPattern.position)
     }: _*)
   }
 
   private case object findPatternElements {
     def apply(astNode: ASTNode): Seq[PatternElement] = astNode.treeFold(Seq.empty[PatternElement]) {
       case patternElement: PatternElement =>
-        (acc, children) => children(acc :+ patternElement)
+        acc => (acc :+ patternElement, Some(identity))
 
       case patternExpr: PatternExpression =>
-        (acc, _) => acc
+        acc => (acc, None)
     }
   }
 
-  private case class namePatternElementsFromMap(map: Map[PatternElement, Identifier]) extends Rewriter {
-    def apply(that: AnyRef): AnyRef = topDown(instance).apply(that)
+  private case class namePatternElementsFromMap(map: Map[PatternElement, Variable]) extends Rewriter {
+    override def apply(that: AnyRef): AnyRef = instance.apply(that)
 
-    private val instance: Rewriter = Rewriter.lift {
+    private val instance: Rewriter = topDown(Rewriter.lift {
       case pattern: NodePattern if map.contains(pattern) =>
-        pattern.copy(identifier = Some(map(pattern)))(pattern.position)
+        pattern.copy(variable = Some(map(pattern)))(pattern.position)
       case pattern: RelationshipChain if map.contains(pattern) =>
         val rel = pattern.relationship
-        pattern.copy(relationship = rel.copy(identifier = Some(map(pattern)))(rel.position))(pattern.position)
-    }
+        pattern.copy(relationship = rel.copy(variable = Some(map(pattern)))(rel.position))(pattern.position)
+    })
   }
 }
 

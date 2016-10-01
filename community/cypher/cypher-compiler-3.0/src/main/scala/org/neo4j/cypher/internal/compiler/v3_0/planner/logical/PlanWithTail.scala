@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,90 +19,37 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner.logical
 
+import org.neo4j.cypher.internal.compiler.v3_0.planner.PlannerQuery
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.LogicalPlan
-import org.neo4j.cypher.internal.compiler.v3_0.planner.{PlannerQuery, QueryGraph}
-import org.neo4j.cypher.internal.frontend.v3_0.Rewriter
-
-import scala.annotation.tailrec
 
 /*
 This class ties together disparate query graphs through their event horizons. It does so by using Apply,
 which in most cases is then rewritten away by LogicalPlan rewriting.
-
-In cases where the preceding PlannerQuery has updates we must make the Apply an EagerApply if there
-are overlaps between the previous update and the reads of any of the tails. We must also make Reads
-in the tail into RepeatableReads if there is overlap between the read and update within the PlannerQuery.
-
-For example:
-
-    +Apply2
-    |\
-    | +Update3
-    | |
-    | +Read3
-    |
-    +Apply1
-    |\
-    | +Update2
-    | |
-    | +Read2
-    |
-    +Update1
-    |
-    +Read1
-
-In this case the following must hold
-  - Apply1 is eager if updates from Update1 will be matched by Reads2 or Reads3.
-  - Apply2 is eager if updates from Update2 will be matched by Reads3
-  - If Update2 affects Read2, Read2 must use RepeatableRead
-  - If Update3 affects Read3, Read2 must use RepeatableRead
-
 */
-case class PlanWithTail(expressionRewriterFactory: (LogicalPlanningContext => Rewriter) = ExpressionRewriterFactory,
-                        planEventHorizon: LogicalPlanningFunction2[PlannerQuery, LogicalPlan, LogicalPlan] = PlanEventHorizon(),
-                        planUpdates: LogicalPlanningFunction2[PlannerQuery, LogicalPlan, LogicalPlan] = PlanUpdates)
+case class PlanWithTail(planEventHorizon: LogicalPlanningFunction2[PlannerQuery, LogicalPlan, LogicalPlan] = PlanEventHorizon,
+                        planPart: (PlannerQuery, LogicalPlanningContext, Option[LogicalPlan]) => LogicalPlan = planPart,
+                        planUpdates: LogicalPlanningFunction3[PlannerQuery, LogicalPlan, Boolean, LogicalPlan] = PlanUpdates)
   extends LogicalPlanningFunction2[LogicalPlan, Option[PlannerQuery], LogicalPlan] {
 
   override def apply(lhs: LogicalPlan, remaining: Option[PlannerQuery])(implicit context: LogicalPlanningContext): LogicalPlan = {
     remaining match {
-      case Some(query) =>
+      case Some(plannerQuery) =>
         val lhsContext = context.recurse(lhs)
-        val partPlan = planPart(query, lhsContext, Some(context.logicalPlanProducer.planQueryArgumentRow(query.queryGraph)))
+        val row = context.logicalPlanProducer.planArgumentRowFrom(lhs)
+        val partPlan = planPart(plannerQuery, lhsContext, Some(row))
+        val firstPlannerQuery = false
+        val planWithUpdates = planUpdates(plannerQuery, partPlan, firstPlannerQuery)(context)
 
-
-        //If reads interfere with writes, make it a RepeatableRead
-        val planWithEffects =
-          if (query.updateGraph.overlaps(query.queryGraph))
-            context.logicalPlanProducer.planRepeatableRead(partPlan)
-          else partPlan
-
-        val planWithUpdates = planUpdates(query, planWithEffects)(context)
-
-        //If previous update interferes with any of the reads here or in tail, make it an EagerApply
-        val applyPlan = {
-          val lastPlannerQuery = lhs.solved.last
-          val newLhs = if (!lastPlannerQuery.writeOnly && query.allQueryGraphs.exists(lastPlannerQuery.updateGraph.overlaps))
-              context.logicalPlanProducer.planEager(lhs)
-          else lhs
-
-          context.logicalPlanProducer.planTailApply(newLhs, planWithUpdates)
-        }
+        val applyPlan = context.logicalPlanProducer.planTailApply(lhs, planWithUpdates)
 
         val applyContext = lhsContext.recurse(applyPlan)
-        val projectedPlan = planEventHorizon(query, applyPlan)(applyContext)
+        val projectedPlan = planEventHorizon(plannerQuery, applyPlan)(applyContext)
         val projectedContext = applyContext.recurse(projectedPlan)
 
-        val completePlan = {
-          val expressionRewriter = expressionRewriterFactory(projectedContext)
-
-          projectedPlan.endoRewrite(expressionRewriter)
-        }
-
-        // planning nested expressions doesn't change outer cardinality
-        apply(completePlan, query.tail)(projectedContext)
+        this.apply(projectedPlan, plannerQuery.tail)(projectedContext)
 
       case None =>
-        lhs
+        lhs.endoRewrite(Eagerness.unnestEager)
     }
   }
 }

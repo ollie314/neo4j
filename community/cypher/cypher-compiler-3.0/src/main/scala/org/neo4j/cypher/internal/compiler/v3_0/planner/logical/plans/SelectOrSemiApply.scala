@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,19 +24,11 @@ import org.neo4j.cypher.internal.compiler.v3_0.planner.{CardinalityEstimation, P
 
 case class SelectOrSemiApply(left: LogicalPlan, right: LogicalPlan, expr: Expression)
                             (val solved: PlannerQuery with CardinalityEstimation)
-  extends AbstractSelectOrSemiApply(left, right, expr, solved) {
-
-  override def mapExpressions(f: (Set[IdName], Expression) => Expression): LogicalPlan =
-    copy(expr = f(left.availableSymbols, expr))(solved)
-}
+  extends AbstractSelectOrSemiApply(left, right, expr, solved)
 
 case class SelectOrAntiSemiApply(left: LogicalPlan, right: LogicalPlan, expr: Expression)
                                 (val solved: PlannerQuery with CardinalityEstimation)
-  extends AbstractSelectOrSemiApply(left, right, expr, solved) {
-
-  override def mapExpressions(f: (Set[IdName], Expression) => Expression): LogicalPlan =
-    copy(expr = f(left.availableSymbols, expr))(solved)
-}
+  extends AbstractSelectOrSemiApply(left, right, expr, solved)
 
 abstract class AbstractSelectOrSemiApply(left: LogicalPlan, right: LogicalPlan, expr: Expression,
                                          solved: PlannerQuery with CardinalityEstimation)

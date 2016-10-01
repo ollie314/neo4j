@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,8 @@ import org.neo4j.cypher.internal.RewindableExecutionResult
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.InternalExecutionResult
 import org.neo4j.cypher.internal.frontend.v3_0.InternalException
 import org.neo4j.cypher.internal.helpers.GraphIcing
-import org.neo4j.graphdb.{GraphDatabaseService, Transaction}
+import org.neo4j.kernel.GraphDatabaseQueryService
+import org.neo4j.kernel.impl.coreapi.InternalTransaction
 
 import scala.collection.immutable.Iterable
 import scala.util.{Failure, Success, Try}
@@ -37,12 +38,12 @@ import scala.util.{Failure, Success, Try}
  * we drop the database and create a new one. This way we can make sure that two queries don't affect each other more than
  * necessary.
  */
-class QueryRunner(formatter: (GraphDatabaseService, Transaction) => InternalExecutionResult => Content) extends GraphIcing {
+class QueryRunner(formatter: (GraphDatabaseQueryService, InternalTransaction) => InternalExecutionResult => Content) extends GraphIcing {
 
   def runQueries(contentsWithInit: Seq[ContentWithInit], title: String): TestRunResult = {
 
     val groupedByInits: Map[Seq[String], Seq[(String, QueryResultPlaceHolder)]] =
-      contentsWithInit.groupBy(_.initKey).mapValues(_.map(init => (init.lastInit -> init.queryResultPlaceHolder)))
+      contentsWithInit.groupBy(_.initKey).mapValues(_.map(init => init.lastInit -> init.queryResultPlaceHolder))
     var graphVizCounter = 0
 
     val results: Iterable[RunResult] = groupedByInits.flatMap {
@@ -52,23 +53,34 @@ class QueryRunner(formatter: (GraphDatabaseService, Transaction) => InternalExec
         try {
           if (db.failures.nonEmpty) db.failures
           else {
-            val result = placeHolders.map {
-              case (queryText: String, tb: TablePlaceHolder) =>
-                runSingleQuery(db, queryText, tb.assertions, tb)
+            val result = placeHolders.map { queryAndPlaceHolder =>
+              try {
+                queryAndPlaceHolder match {
+                  case (queryText: String, tb: TablePlaceHolder) =>
+                    runSingleQuery(db, queryText, tb.assertions, tb)
 
-              case (queryText: String, gv: GraphVizPlaceHolder) =>
-                graphVizCounter = graphVizCounter + 1
-                Try(db.execute(queryText)) match {
-                  case Success(inner) =>
-                    GraphVizRunResult(gv, captureStateAsGraphViz(db.getInnerDb, title, graphVizCounter))
-                  case Failure(error) =>
-                    QueryRunResult(queryText, gv, Left(error))
+                  case (queryText: String, gv: GraphVizPlaceHolder) =>
+                    graphVizCounter = graphVizCounter + 1
+                    Try(db.execute(queryText)) match {
+                      case Success(inner) =>
+                        GraphVizRunResult(gv, captureStateAsGraphViz(db.getInnerDb, title, graphVizCounter, gv.options))
+                      case Failure(error) =>
+                        QueryRunResult(queryText, gv, Left(error))
+                    }
+
+                  case (queryText: String, placeHolder: ExecutionPlanPlaceHolder) =>
+                    explainSingleQuery(db, queryText, placeHolder)
+
+                  case (queryText: String, placeHolder: ProfileExecutionPlanPlaceHolder) =>
+                    profileSingleQuery(db, queryText, placeHolder.assertions, placeHolder)
+
+                  case _ =>
+                    ???
                 }
-
-              case _ =>
-                ???
+              } finally {
+                db.nowIsASafePointToRestartDatabase()
+              }
             }
-            db.nowIsASafePointToRestartDatabase()
             result
           }
         } finally db.shutdown()
@@ -78,34 +90,31 @@ class QueryRunner(formatter: (GraphDatabaseService, Transaction) => InternalExec
   }
 
   private def runSingleQuery(database: RestartableDatabase, queryText: String, assertions: QueryAssertions, content: TablePlaceHolder): QueryRunResult = {
-    val format: (Transaction) => (InternalExecutionResult) => Content = (tx: Transaction) => formatter(database.getInnerDb, tx)(_)
+    val format: (InternalTransaction) => (InternalExecutionResult) => Content = (tx: InternalTransaction) => formatter(database.getInnerDb, tx)(_)
 
-      val result: Either[Throwable, Transaction => Content] =
+      val result: Either[Throwable, InternalTransaction => Content] =
         try {
           val resultTry = Try(database.execute(queryText))
           (assertions, resultTry) match {
             // *** Success conditions
 
-            case (ResultAssertions(f), Success(inner)) =>
-              val result = RewindableExecutionResult(inner)
-              f(result)
-              Right(format(_)(result))
+            case (ResultAssertions(f), Success(r)) =>
+              f(r)
+              Right(format(_)(r))
 
-            case (ResultAndDbAssertions(f), Success(inner)) =>
-              val result = RewindableExecutionResult(inner)
-              f(result, database.getInnerDb)
-              Right(format(_)(result))
+            case (ResultAndDbAssertions(f), Success(r)) =>
+              f(r, database.getInnerDb)
+              Right(format(_)(r))
 
-            case (NoAssertions, Success(inner)) =>
-              val result = RewindableExecutionResult(inner)
-              Right(format(_)(result))
+            case (NoAssertions, Success(r)) =>
+              Right(format(_)(r))
 
             // *** Error conditions
             case (_, Failure(exception: Throwable)) =>
               Left(exception)
 
             case x =>
-              throw new InternalException(s"This not see this one coming $x")
+              throw new InternalException(s"Did not see this one coming $x")
           }
         } catch {
           case e: Throwable =>
@@ -120,6 +129,41 @@ class QueryRunner(formatter: (GraphDatabaseService, Transaction) => InternalExec
 
       QueryRunResult(queryText, content, formattedResult)
     }
+
+  private def explainSingleQuery(database: RestartableDatabase,
+                                 queryText: String,
+                                 placeHolder: QueryResultPlaceHolder) = {
+    val planString = Try(database.execute(s"EXPLAIN $queryText")) match {
+      case Success(inner) =>
+        inner.executionPlanDescription().toString
+      case x =>
+        throw new InternalException(s"Did not see this one coming $x")
+    }
+    ExecutionPlanRunResult(queryText, placeHolder, ExecutionPlan(planString))
+  }
+
+  private def profileSingleQuery(database: RestartableDatabase,
+                                 queryText: String,
+                                 assertions: QueryAssertions,
+                                 placeHolder: QueryResultPlaceHolder) = {
+    val profilingAttempt = Try(database.execute(s"PROFILE $queryText"))
+    val planString = (assertions, profilingAttempt) match {
+      case (ResultAssertions(f), Success(result)) =>
+        f(result)
+        result.executionPlanDescription().toString
+
+      case (ResultAndDbAssertions(f), Success(result)) =>
+        f(result, database.getInnerDb)
+        result.executionPlanDescription().toString
+
+      case (NoAssertions, Success(inner)) =>
+        inner.executionPlanDescription().toString
+
+      case x =>
+        throw new InternalException(s"Did not see this one coming $x")
+    }
+    ExecutionPlanRunResult(queryText, placeHolder, ExecutionPlan(planString))
+  }
 }
 
 sealed trait RunResult {
@@ -140,6 +184,15 @@ case class QueryRunResult(queryText: String, original: QueryResultPlaceHolder, t
 case class GraphVizRunResult(original: GraphVizPlaceHolder, graphViz: GraphViz) extends RunResult {
   override def success = true
   override def newContent = Some(graphViz)
+  override def newFailure = None
+}
+
+case class ExecutionPlanRunResult(queryText: String, original: QueryResultPlaceHolder, executionPlan: ExecutionPlan) extends RunResult {
+
+  override def success = true
+
+  override def newContent = Some(executionPlan)
+
   override def newFailure = None
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -17,12 +17,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 package org.neo4j.cypher.internal.compiler.v3_0.planDescription
 
 import java.util.Locale
 
-import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Property, LengthFunction, Identifier}
+import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.{Property, LengthFunction, Variable}
 import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates.{Equals, HasLabel, PropertyExists, Not}
 import org.neo4j.cypher.internal.compiler.v3_0.commands.values.{TokenType, KeyToken}
 import org.neo4j.cypher.internal.compiler.v3_0.pipes._
@@ -128,23 +127,23 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
     val plan = PlanDescriptionImpl(new Id, "ROOT", TwoChildren(intermediate1, intermediate2), Seq.empty, Set())
 
     renderAsTreeTable(plan) should equal(
-      """+-----------------+-------------+
-        || Operator        | Identifiers |
-        |+-----------------+-------------+
-        || +ROOT           |             |
-        || |\              +-------------+
-        || | +INTERMEDIATE |             |
-        || | |\            +-------------+
-        || | | +LEAF       | d           |
-        || | |             +-------------+
-        || | +LEAF         | c           |
-        || |               +-------------+
-        || +INTERMEDIATE   |             |
-        || |\              +-------------+
-        || | +LEAF         | b           |
-        || |               +-------------+
-        || +LEAF           | a           |
-        |+-----------------+-------------+
+      """+-----------------+-----------+
+        || Operator        | Variables |
+        |+-----------------+-----------+
+        || +ROOT           |           |
+        || |\              +-----------+
+        || | +INTERMEDIATE |           |
+        || | |\            +-----------+
+        || | | +LEAF       | d         |
+        || | |             +-----------+
+        || | +LEAF         | c         |
+        || |               +-----------+
+        || +INTERMEDIATE   |           |
+        || |\              +-----------+
+        || | +LEAF         | b         |
+        || |               +-----------+
+        || +LEAF           | a         |
+        |+-----------------+-----------+
         |""".stripMargin)
   }
 
@@ -208,15 +207,15 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
     val plan = PlanDescriptionImpl(new Id, "NAME", NoChildren, arguments, Set("n"))
 
     renderAsTreeTable(plan) should equal(
-      """+----------+----------------+------+---------+-------------+
-        || Operator | Estimated Rows | Rows | DB Hits | Identifiers |
-        |+----------+----------------+------+---------+-------------+
-        || +NAME    |              1 |   42 |      33 | n           |
-        |+----------+----------------+------+---------+-------------+
+      """+----------+----------------+------+---------+-----------+
+        || Operator | Estimated Rows | Rows | DB Hits | Variables |
+        |+----------+----------------+------+---------+-----------+
+        || +NAME    |              1 |   42 |      33 | n         |
+        |+----------+----------------+------+---------+-----------+
         |""".stripMargin)
   }
 
-  test("extra identifiers are not a problem") {
+  test("extra variables are not a problem") {
     val arguments = Seq(
       Rows(42),
       DbHits(33),
@@ -225,15 +224,15 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
     val plan = PlanDescriptionImpl(new Id, "NAME", NoChildren, arguments, Set("a", "b", "c"))
 
     renderAsTreeTable(plan) should equal(
-      """+----------+----------------+------+---------+-------------+
-        || Operator | Estimated Rows | Rows | DB Hits | Identifiers |
-        |+----------+----------------+------+---------+-------------+
-        || +NAME    |              1 |   42 |      33 | a, b, c     |
-        |+----------+----------------+------+---------+-------------+
+      """+----------+----------------+------+---------+-----------+
+        || Operator | Estimated Rows | Rows | DB Hits | Variables |
+        |+----------+----------------+------+---------+-----------+
+        || +NAME    |              1 |   42 |      33 | a, b, c   |
+        |+----------+----------------+------+---------+-----------+
         |""".stripMargin)
   }
 
-  test("super many identifiers stretches the column") {
+  test("super many variables stretches the column") {
     val arguments = Seq(
       Rows(42),
       DbHits(33),
@@ -243,7 +242,7 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
 
     renderAsTreeTable(plan) should equal(
       """+----------+----------------+------+---------+------------------+
-        || Operator | Estimated Rows | Rows | DB Hits | Identifiers      |
+        || Operator | Estimated Rows | Rows | DB Hits | Variables        |
         |+----------+----------------+------+---------+------------------+
         || +NAME    |              1 |   42 |      33 | a, b, c, d, e, f |
         |+----------+----------------+------+---------+------------------+
@@ -256,11 +255,11 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
     val plan = PlanDescriptionImpl(new Id, "NAME", NoChildren, arguments, Set("n"))
 
     renderAsTreeTable(plan) should equal(
-      """+----------+----------------+-------------+
-        || Operator | Estimated Rows | Identifiers |
-        |+----------+----------------+-------------+
-        || +NAME    |              1 | n           |
-        |+----------+----------------+-------------+
+      """+----------+----------------+-----------+
+        || Operator | Estimated Rows | Variables |
+        |+----------+----------------+-----------+
+        || +NAME    |              1 | n         |
+        |+----------+----------------+-----------+
         |""".stripMargin)
   }
 
@@ -272,13 +271,13 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
     val plan2 = PlanDescriptionImpl(new Id, "NAME", SingleChild(plan1), args2, Set("b"))
 
     renderAsTreeTable(plan2) should equal(
-      """+----------+----------------+------+---------+-------------+--------------+
-        || Operator | Estimated Rows | Rows | DB Hits | Identifiers | Other        |
-        |+----------+----------------+------+---------+-------------+--------------+
-        || +NAME    |              1 |    2 |     633 | b           | :Label(Prop) |
-        || |        +----------------+------+---------+-------------+--------------+
-        || +NAME    |              1 |   42 |      33 | a           |              |
-        |+----------+----------------+------+---------+-------------+--------------+
+      """+----------+----------------+------+---------+-----------+--------------+
+        || Operator | Estimated Rows | Rows | DB Hits | Variables | Other        |
+        |+----------+----------------+------+---------+-----------+--------------+
+        || +NAME    |              1 |    2 |     633 | b         | :Label(Prop) |
+        || |        +----------------+------+---------+-----------+--------------+
+        || +NAME    |              1 |   42 |      33 | a         |              |
+        |+----------+----------------+------+---------+-----------+--------------+
         |""".stripMargin)
   }
 
@@ -287,11 +286,11 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
     val expandPipe = ExpandAllPipe(pipe, "from", "rel", "to", SemanticDirection.INCOMING, LazyTypes.empty)(Some(1L))(mock[PipeMonitor])
 
     renderAsTreeTable(expandPipe.planDescription) should equal(
-      """+--------------+----------------+-------------+---------------------+
-        || Operator     | Estimated Rows | Identifiers | Other               |
-        |+--------------+----------------+-------------+---------------------+
-        || +Expand(All) |              1 | rel, to     | (from)<-[rel:]-(to) |
-        |+--------------+----------------+-------------+---------------------+
+      """+--------------+----------------+-----------+---------------------+
+        || Operator     | Estimated Rows | Variables | Other               |
+        |+--------------+----------------+-----------+---------------------+
+        || +Expand(All) |              1 | rel, to   | (from)<-[rel:]-(to) |
+        |+--------------+----------------+-----------+---------------------+
         |""".stripMargin)
   }
 
@@ -299,11 +298,11 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
     val pipe = NodeByLabelScanPipe("n", LazyLabel("Foo"))(Some(1L))(mock[PipeMonitor])
 
     renderAsTreeTable(pipe.planDescription) should equal(
-      """+------------------+----------------+-------------+-------+
-        || Operator         | Estimated Rows | Identifiers | Other |
-        |+------------------+----------------+-------------+-------+
-        || +NodeByLabelScan |              1 | n           | :Foo  |
-        |+------------------+----------------+-------------+-------+
+      """+------------------+----------------+-----------+-------+
+        || Operator         | Estimated Rows | Variables | Other |
+        |+------------------+----------------+-----------+-------+
+        || +NodeByLabelScan |              1 | n         | :Foo  |
+        |+------------------+----------------+-----------+-------+
         |""".stripMargin )
   }
 
@@ -311,15 +310,15 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
     val expandPipe = VarLengthExpandPipe(pipe, "from", "rel", "to", SemanticDirection.INCOMING, SemanticDirection.OUTGOING, LazyTypes.empty, 0, None, nodeInScope = false)(Some(1L))(mock[PipeMonitor])
 
     renderAsTreeTable(expandPipe.planDescription) should equal(
-      """+-----------------------+----------------+-------------+----------------------+
-        || Operator              | Estimated Rows | Identifiers | Other                |
-        |+-----------------------+----------------+-------------+----------------------+
-        || +VarLengthExpand(All) |              1 | rel, to     | (from)-[rel:*]->(to) |
-        |+-----------------------+----------------+-------------+----------------------+
+      """+-----------------------+----------------+-----------+----------------------+
+        || Operator              | Estimated Rows | Variables | Other                |
+        |+-----------------------+----------------+-----------+----------------------+
+        || +VarLengthExpand(All) |              1 | rel, to   | (from)-[rel:*]->(to) |
+        |+-----------------------+----------------+-----------+----------------------+
         |""".stripMargin)
   }
 
-  test("do not show unnamed identifiers") {
+  test("do not show unnamed variables") {
     val arguments = Seq(
       Rows(42),
       DbHits(33),
@@ -329,7 +328,7 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
     val plan = PlanDescriptionImpl(new Id, "NAME", NoChildren, arguments, Set("n", "  UNNAMED123", "  FRESHID12", "  AGGREGATION255"))
     renderAsTreeTable(plan) should equal(
       """+----------+----------------+------+---------+-----------------------------------+------------------+
-        || Operator | Estimated Rows | Rows | DB Hits | Identifiers                       | Other            |
+        || Operator | Estimated Rows | Rows | DB Hits | Variables                         | Other            |
         |+----------+----------------+------+---------+-----------------------------------+------------------+
         || +NAME    |              1 |   42 |      33 | anon[255], anon[12], anon[123], n | ()-[R:WHOOP]->() |
         |+----------+----------------+------+---------+-----------------------------------+------------------+
@@ -345,28 +344,28 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
 
     val plan = PlanDescriptionImpl(new Id, "NAME", NoChildren, arguments, Set("n"))
     renderAsTreeTable(plan) should equal(
-      """+----------+----------------+------+---------+-------------+-------------------------------------------------+
-        || Operator | Estimated Rows | Rows | DB Hits | Identifiers | Other                                           |
-        |+----------+----------------+------+---------+-------------+-------------------------------------------------+
-        || +NAME    |              1 |   42 |      33 | n           | (source)-[through:SOME|:OTHER|:THING]->(target) |
-        |+----------+----------------+------+---------+-------------+-------------------------------------------------+
+      """+----------+----------------+------+---------+-----------+-------------------------------------------------+
+        || Operator | Estimated Rows | Rows | DB Hits | Variables | Other                                           |
+        |+----------+----------------+------+---------+-----------+-------------------------------------------------+
+        || +NAME    |              1 |   42 |      33 | n         | (source)-[through:SOME|:OTHER|:THING]->(target) |
+        |+----------+----------------+------+---------+-----------+-------------------------------------------------+
         |""".stripMargin)
   }
 
-  test("show nicer output instead of unnamed identifiers in equals expression") {
+  test("show nicer output instead of unnamed variables in equals expression") {
     val arguments = Seq(
       Rows(42),
       DbHits(33),
-      LegacyExpression(Not(Equals(Identifier("  UNNAMED123"), Identifier("  UNNAMED321")))),
+      LegacyExpression(Not(Equals(Variable("  UNNAMED123"), Variable("  UNNAMED321")))),
       EstimatedRows(1))
 
     val plan = PlanDescriptionImpl(new Id, "NAME", NoChildren, arguments, Set("n"))
     renderAsTreeTable(plan) should equal(
-      """+----------+----------------+------+---------+-------------+-----------------------------+
-        || Operator | Estimated Rows | Rows | DB Hits | Identifiers | Other                       |
-        |+----------+----------------+------+---------+-------------+-----------------------------+
-        || +NAME    |              1 |   42 |      33 | n           | NOT(anon[123] == anon[321]) |
-        |+----------+----------------+------+---------+-------------+-----------------------------+
+      """+----------+----------------+------+---------+-----------+-----------------------------+
+        || Operator | Estimated Rows | Rows | DB Hits | Variables | Other                       |
+        |+----------+----------------+------+---------+-----------+-----------------------------+
+        || +NAME    |              1 |   42 |      33 | n         | NOT(anon[123] == anon[321]) |
+        |+----------+----------------+------+---------+-----------+-----------------------------+
         |""".stripMargin)
   }
 
@@ -375,16 +374,16 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
     val arguments = Seq(
       Rows(42),
       DbHits(33),
-      LegacyExpression(HasLabel(Identifier("x"), KeyToken.Resolved("Artist", 5, TokenType.Label))),
+      LegacyExpression(HasLabel(Variable("x"), KeyToken.Resolved("Artist", 5, TokenType.Label))),
       EstimatedRows(1))
 
     val plan = PlanDescriptionImpl(new Id, "NAME", NoChildren, arguments, Set("n"))
     renderAsTreeTable(plan) should equal(
-      """+----------+----------------+------+---------+-------------+----------+
-        || Operator | Estimated Rows | Rows | DB Hits | Identifiers | Other    |
-        |+----------+----------------+------+---------+-------------+----------+
-        || +NAME    |              1 |   42 |      33 | n           | x:Artist |
-        |+----------+----------------+------+---------+-------------+----------+
+      """+----------+----------------+------+---------+-----------+----------+
+        || Operator | Estimated Rows | Rows | DB Hits | Variables | Other    |
+        |+----------+----------------+------+---------+-----------+----------+
+        || +NAME    |              1 |   42 |      33 | n         | x:Artist |
+        |+----------+----------------+------+---------+-----------+----------+
         |""".stripMargin)
   }
 
@@ -393,16 +392,16 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
     val arguments = Seq(
       Rows(42),
       DbHits(33),
-      LegacyExpression(LengthFunction(Identifier("n"))),
+      LegacyExpression(LengthFunction(Variable("n"))),
       EstimatedRows(1))
 
     val plan = PlanDescriptionImpl(new Id, "NAME", NoChildren, arguments, Set("n"))
     renderAsTreeTable(plan) should equal(
-      """+----------+----------------+------+---------+-------------+-----------+
-        || Operator | Estimated Rows | Rows | DB Hits | Identifiers | Other     |
-        |+----------+----------------+------+---------+-------------+-----------+
-        || +NAME    |              1 |   42 |      33 | n           | length(n) |
-        |+----------+----------------+------+---------+-------------+-----------+
+      """+----------+----------------+------+---------+-----------+-----------+
+        || Operator | Estimated Rows | Rows | DB Hits | Variables | Other     |
+        |+----------+----------------+------+---------+-----------+-----------+
+        || +NAME    |              1 |   42 |      33 | n         | length(n) |
+        |+----------+----------------+------+---------+-----------+-----------+
         |""".stripMargin)
   }
 
@@ -411,18 +410,18 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
     val arguments = Seq(
       Rows(42),
       DbHits(33),
-      LegacyExpression(Identifier("  id@23")),
+      LegacyExpression(Variable("  id@23")),
       EstimatedRows(1))
 
     val plan = PlanDescriptionImpl(new Id, "NAME", NoChildren, arguments, Set("  n@76"))
 
     val details = renderAsTreeTable(plan)
     details should equal(
-      """+----------+----------------+------+---------+-------------+-------+
-        || Operator | Estimated Rows | Rows | DB Hits | Identifiers | Other |
-        |+----------+----------------+------+---------+-------------+-------+
-        || +NAME    |              1 |   42 |      33 | n           | id    |
-        |+----------+----------------+------+---------+-------------+-------+
+      """+----------+----------------+------+---------+-----------+-------+
+        || Operator | Estimated Rows | Rows | DB Hits | Variables | Other |
+        |+----------+----------------+------+---------+-----------+-------+
+        || +NAME    |              1 |   42 |      33 | n         | id    |
+        |+----------+----------------+------+---------+-----------+-------+
         |""".stripMargin)
   }
 
@@ -432,16 +431,16 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
       Rows(42),
       DbHits(33),
       Planner("COST"),
-      LegacyExpression(Identifier("  id@23")),
+      LegacyExpression(Variable("  id@23")),
       EstimatedRows(1))
 
     val plan = PlanDescriptionImpl(new Id, "NAME", NoChildren, arguments, Set("n"))
     renderAsTreeTable(plan) should equal(
-      """+----------+----------------+------+---------+-------------+-------+
-        || Operator | Estimated Rows | Rows | DB Hits | Identifiers | Other |
-        |+----------+----------------+------+---------+-------------+-------+
-        || +NAME    |              1 |   42 |      33 | n           | id    |
-        |+----------+----------------+------+---------+-------------+-------+
+      """+----------+----------------+------+---------+-----------+-------+
+        || Operator | Estimated Rows | Rows | DB Hits | Variables | Other |
+        |+----------+----------------+------+---------+-----------+-------+
+        || +NAME    |              1 |   42 |      33 | n         | id    |
+        |+----------+----------------+------+---------+-----------+-------+
         |""".stripMargin)
   }
 
@@ -450,19 +449,19 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
     val pipe2 = NodeByLabelScanPipe("n", LazyLabel("Foo"))(Some(1.23456789))(mock[PipeMonitor])
 
     renderAsTreeTable(pipe1.planDescription) should equal(
-      """+------------------+----------------+-------------+-------+
-        || Operator         | Estimated Rows | Identifiers | Other |
-        |+------------------+----------------+-------------+-------+
-        || +NodeByLabelScan |              0 | n           | :Foo  |
-        |+------------------+----------------+-------------+-------+
+      """+------------------+----------------+-----------+-------+
+        || Operator         | Estimated Rows | Variables | Other |
+        |+------------------+----------------+-----------+-------+
+        || +NodeByLabelScan |              0 | n         | :Foo  |
+        |+------------------+----------------+-----------+-------+
         |""".stripMargin )
 
     renderAsTreeTable(pipe2.planDescription ) should equal(
-      """+------------------+----------------+-------------+-------+
-        || Operator         | Estimated Rows | Identifiers | Other |
-        |+------------------+----------------+-------------+-------+
-        || +NodeByLabelScan |              1 | n           | :Foo  |
-        |+------------------+----------------+-------------+-------+
+      """+------------------+----------------+-----------+-------+
+        || Operator         | Estimated Rows | Variables | Other |
+        |+------------------+----------------+-----------+-------+
+        || +NodeByLabelScan |              1 | n         | :Foo  |
+        |+------------------+----------------+-----------+-------+
         |""".stripMargin )
   }
 
@@ -470,37 +469,37 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
     val arguments = Seq(
       Rows( 42 ),
       DbHits( 33 ),
-      LegacyExpression( Property(Identifier( "x" ), KeyToken.Resolved( "Artist", 5, TokenType.PropertyKey ))),
+      LegacyExpression( Property(Variable( "x" ), KeyToken.Resolved( "Artist", 5, TokenType.PropertyKey ))),
       EstimatedRows(1))
 
     val plan = PlanDescriptionImpl( new Id, "NAME", NoChildren, arguments, Set( "n") )
     renderAsTreeTable(plan) should equal(
-      """+----------+----------------+------+---------+-------------+----------+
-        || Operator | Estimated Rows | Rows | DB Hits | Identifiers | Other    |
-        |+----------+----------------+------+---------+-------------+----------+
-        || +NAME    |              1 |   42 |      33 | n           | x.Artist |
-        |+----------+----------------+------+---------+-------------+----------+
+      """+----------+----------------+------+---------+-----------+----------+
+        || Operator | Estimated Rows | Rows | DB Hits | Variables | Other    |
+        |+----------+----------------+------+---------+-----------+----------+
+        || +NAME    |              1 |   42 |      33 | n         | x.Artist |
+        |+----------+----------------+------+---------+-----------+----------+
         |""".stripMargin )
   }
 
-  test("show hasProp with identifier and property") {
+  test("show hasProp with variable and property") {
     val arguments = Seq(
       Rows( 42 ),
       DbHits( 33 ),
-      LegacyExpression( PropertyExists(Identifier("x"), KeyToken.Resolved("prop", 42, TokenType.PropertyKey))),
+      LegacyExpression( PropertyExists(Variable("x"), KeyToken.Resolved("prop", 42, TokenType.PropertyKey))),
       EstimatedRows(1))
 
     val plan = PlanDescriptionImpl( new Id, "NAME", NoChildren, arguments, Set( "n") )
     renderAsTreeTable(plan) should equal(
-      """+----------+----------------+------+---------+-------------+-----------------+
-        || Operator | Estimated Rows | Rows | DB Hits | Identifiers | Other           |
-        |+----------+----------------+------+---------+-------------+-----------------+
-        || +NAME    |              1 |   42 |      33 | n           | hasProp(x.prop) |
-        |+----------+----------------+------+---------+-------------+-----------------+
+      """+----------+----------------+------+---------+-----------+-----------------+
+        || Operator | Estimated Rows | Rows | DB Hits | Variables | Other           |
+        |+----------+----------------+------+---------+-----------+-----------------+
+        || +NAME    |              1 |   42 |      33 | n         | hasProp(x.prop) |
+        |+----------+----------------+------+---------+-----------+-----------------+
         |""".stripMargin )
   }
 
-  test("don't show unnamed identifiers in key names") {
+  test("don't show unnamed variables in key names") {
     val joinPipe = NodeHashJoinPipe(Set("a", "  UNNAMED45", "  FRESHID77"), pipe, pipe)(Some(42))(mock[PipeMonitor])
 
     renderAsTreeTable(joinPipe.planDescription) should equal(
@@ -509,10 +508,312 @@ class RenderTreeTableTest extends CypherFunSuite with BeforeAndAfterAll {
         |+---------------+----------------+-----------------------+
         || +NodeHashJoin |             42 | a, anon[45], anon[77] |
         || |\            +----------------+-----------------------+
-        || | +Argument   |              1 |                       |
+        || | +EmptyRow   |              1 |                       |
         || |             +----------------+-----------------------+
-        || +Argument     |              1 |                       |
+        || +EmptyRow     |              1 |                       |
         |+---------------+----------------+-----------------------+
         |""".stripMargin )
   }
+
+  /*
+   * Tests for the query plan compaction system. This system will perform two types of compaction:
+   *  - similar consecutive operators are merged
+   *  - long list of variables are truncated
+   *
+   *  The definition of similar is:
+   *  - same operator name
+   *  - no 'other' field
+   *
+   *  When compacting variable lists:
+   *  - we truncate the list and append '...'
+   *  - total column width, including '...' is limited to threshold
+   *  - at least one variable will always be printed (and '...' if necessary)
+   *  - newly assigned variables are printed first, separated from older with ' -- '
+   */
+
+  test("compact two identical nodes") {
+    val leaf = PlanDescriptionImpl(new Id, "NODE", NoChildren, Seq.empty, Set())
+    val plan = leaf.andThen(new Id, "NODE", Set())
+
+    renderAsTreeTable(plan) should equal(
+      """+----------+
+        || Operator |
+        |+----------+
+        || +NODE(2) |
+        |+----------+
+        |""".stripMargin)
+  }
+
+  test("compact two similar nodes with variables") {
+    val leaf = PlanDescriptionImpl(new Id, "NODE", NoChildren, Seq.empty, Set("a"))
+    val plan = leaf.andThen(new Id, "NODE", Set("b"))
+
+    renderAsTreeTable(plan) should equal(
+      """+----------+-----------+
+        || Operator | Variables |
+        |+----------+-----------+
+        || +NODE(2) | a, b      |
+        |+----------+-----------+
+        |""".stripMargin)
+  }
+
+  test("compact two pairs of similar nodes with variables") {
+    val leaf = PlanDescriptionImpl(new Id, "NODE", NoChildren, Seq.empty, Set("a"))
+    val plan = leaf.andThen(new Id, "NODE", Set("b")).andThen(new Id, "OPERATOR", Set("c")).andThen(new Id,
+      "OPERATOR", Set("d"))
+
+    renderAsTreeTable(plan) should equal(
+      """+--------------+-----------+
+        || Operator     | Variables |
+        |+--------------+-----------+
+        || +OPERATOR(2) | c, d      |
+        || |            +-----------+
+        || +NODE(2)     | a, b      |
+        |+--------------+-----------+
+        |""".stripMargin)
+  }
+
+  test("compact two pairs of similar nodes with same variables") {
+    val leaf = PlanDescriptionImpl(new Id, "NODE", NoChildren, Seq.empty, Set("a"))
+    val plan = leaf.andThen(new Id, "NODE", Set("b")).andThen(new Id, "OPERATOR", Set("a")).andThen(new Id,
+      "OPERATOR", Set("b"))
+
+    renderAsTreeTable(plan) should equal(
+      """+--------------+-----------+
+        || Operator     | Variables |
+        |+--------------+-----------+
+        || +OPERATOR(2) | a, b      |
+        || |            +-----------+
+        || +NODE(2)     | a, b      |
+        |+--------------+-----------+
+        |""".stripMargin)
+  }
+
+  test("compact two pairs of similar nodes with one new variable") {
+    val leaf = PlanDescriptionImpl(new Id, "NODE", NoChildren, Seq.empty, Set("a"))
+    val plan = leaf.andThen(new Id, "NODE", Set("b")).andThen(new Id, "OPERATOR", Set("a")).andThen(new Id,
+      "OPERATOR", Set("b", "c"))
+
+    renderAsTreeTable(plan) should equal(
+      """+--------------+-----------+
+        || Operator     | Variables |
+        |+--------------+-----------+
+        || +OPERATOR(2) | c -- a, b |
+        || |            +-----------+
+        || +NODE(2)     | a, b      |
+        |+--------------+-----------+
+        |""".stripMargin)
+  }
+
+  test("compact two pairs of similar nodes with many repeating variables") {
+    val repeating = ('b' to 'z').toSet[Char].map(c => s"var_$c")
+    val leaf = PlanDescriptionImpl(new Id, "NODE", NoChildren, Seq.empty, Set("var_a"))
+    val plan = leaf.andThen(new Id, "NODE", repeating).andThen(new Id, "OPERATOR", Set("var_a"))
+      .andThen(new Id, "OPERATOR", repeating + "var_A" + "var_B")
+
+    renderAsTreeTable(plan) should equal(
+      """+--------------+--------------------------------------------------------------------------------------------------+
+        || Operator     | Variables                                                                                        |
+        |+--------------+--------------------------------------------------------------------------------------------------+
+        || +OPERATOR(2) | var_A, var_B -- var_a, var_b, var_c, var_d, var_e, var_f, var_g, var_h, var_i, var_j, var_k, ... |
+        || |            +--------------------------------------------------------------------------------------------------+
+        || +NODE(2)     | var_a, var_b, var_c, var_d, var_e, var_f, var_g, var_h, var_i, var_j, var_k, var_l, var_m, ...   |
+        |+--------------+--------------------------------------------------------------------------------------------------+
+        |""".stripMargin)
+  }
+
+  test("compact only the sufficiently similar pair of two simular pairs of nodes with many repeating variables") {
+    val repeating = ('b' to 'z').toSet[Char].map(c => s"var_$c")
+    val leaf = PlanDescriptionImpl(new Id, "NODE", NoChildren, Seq(LabelName("123")), Set("var_a"))
+    val plan = leaf.andThen(new Id, "NODE", repeating).andThen(new Id, "OPERATOR", Set("var_a"))
+      .andThen(new Id, "OPERATOR", repeating + "var_A" + "var_B")
+
+    renderAsTreeTable(plan) should equal(
+      """+--------------+--------------------------------------------------------------------------------------------------+-------+
+        || Operator     | Variables                                                                                        | Other |
+        |+--------------+--------------------------------------------------------------------------------------------------+-------+
+        || +OPERATOR(2) | var_A, var_B, var_a -- var_b, var_c, var_d, var_e, var_f, var_g, var_h, var_i, var_j, var_k, ... |       |
+        || |            +--------------------------------------------------------------------------------------------------+-------+
+        || +NODE        | var_b, var_c, var_d, var_e, var_f, var_g, var_h, var_i, var_j, var_k, var_l, var_m, var_n, ...   |       |
+        || |            +--------------------------------------------------------------------------------------------------+-------+
+        || +NODE        | var_a                                                                                            | :123  |
+        |+--------------+--------------------------------------------------------------------------------------------------+-------+
+        |""".stripMargin)
+  }
+
+  test("compact only the sufficiently similar pair of two simular pairs of nodes with many repeating variables and many columns") {
+    val repeating = ('b' to 'z').toSet[Char].map(c => s"var_$c")
+    val l = LabelName("123")
+    val t = Time(12345678)
+    val r = Rows(2)
+    val d = DbHits(2)
+    val leaf = PlanDescriptionImpl(new Id, "NODE", NoChildren, Seq(l, t, r, d), Set("var_a"))
+    val plan = leaf.
+      andThen(new Id, "NODE", repeating, t, r, d).
+      andThen(new Id, "OPERATOR", Set("var_a"), t, r, d).
+      andThen(new Id, "OPERATOR", repeating + "var_A" + "var_B", t, r, d)
+
+    renderAsTreeTable(plan) should equal(
+      """+--------------+------+---------+-----------+--------------------------------------------------------------------------------------------------+-------+
+        || Operator     | Rows | DB Hits | Time (ms) | Variables                                                                                        | Other |
+        |+--------------+------+---------+-----------+--------------------------------------------------------------------------------------------------+-------+
+        || +OPERATOR(2) |    2 |       4 |    24.691 | var_A, var_B, var_a -- var_b, var_c, var_d, var_e, var_f, var_g, var_h, var_i, var_j, var_k, ... |       |
+        || |            +------+---------+-----------+--------------------------------------------------------------------------------------------------+-------+
+        || +NODE        |    2 |       2 |    12.346 | var_b, var_c, var_d, var_e, var_f, var_g, var_h, var_i, var_j, var_k, var_l, var_m, var_n, ...   |       |
+        || |            +------+---------+-----------+--------------------------------------------------------------------------------------------------+-------+
+        || +NODE        |    2 |       2 |    12.346 | var_a                                                                                            | :123  |
+        |+--------------+------+---------+-----------+--------------------------------------------------------------------------------------------------+-------+
+        |""".stripMargin)
+  }
+
+  test("do not compact two similar pairs of nodes with non-empty other column and many repeating variables and many columns") {
+    val repeating = ('b' to 'z').toSet[Char].map(c => s"var_$c")
+    val l = LabelName("123")
+    val t = Time(12345678)
+    val r = Rows(2)
+    val d = DbHits(2)
+    val leaf = PlanDescriptionImpl(new Id, "NODE", NoChildren, Seq(l, t, r, d), Set("var_a"))
+    val plan = leaf.
+      andThen(new Id, "NODE", repeating, l, t, r, d).
+      andThen(new Id, "OPERATOR", Set("var_a"), l, t, r, d).
+      andThen(new Id, "OPERATOR", repeating + "var_A" + "var_B", l, t, r, d)
+
+    renderAsTreeTable(plan) should equal(
+      """+-----------+------+---------+-----------+------------------------------------------------------------------------------------------------+-------+
+        || Operator  | Rows | DB Hits | Time (ms) | Variables                                                                                      | Other |
+        |+-----------+------+---------+-----------+------------------------------------------------------------------------------------------------+-------+
+        || +OPERATOR |    2 |       2 |    12.346 | var_A, var_B, var_b, var_c, var_d, var_e, var_f, var_g, var_h, var_i, var_j, var_k, var_l, ... | :123  |
+        || |         +------+---------+-----------+------------------------------------------------------------------------------------------------+-------+
+        || +OPERATOR |    2 |       2 |    12.346 | var_a                                                                                          | :123  |
+        || |         +------+---------+-----------+------------------------------------------------------------------------------------------------+-------+
+        || +NODE     |    2 |       2 |    12.346 | var_b, var_c, var_d, var_e, var_f, var_g, var_h, var_i, var_j, var_k, var_l, var_m, var_n, ... | :123  |
+        || |         +------+---------+-----------+------------------------------------------------------------------------------------------------+-------+
+        || +NODE     |    2 |       2 |    12.346 | var_a                                                                                          | :123  |
+        |+-----------+------+---------+-----------+------------------------------------------------------------------------------------------------+-------+
+        |""".stripMargin)
+  }
+
+  test("no compaction on complex plan with no repeated names") {
+    val leaf1 = PlanDescriptionImpl(new Id, "LEAF", NoChildren, Seq(), Set("a"))
+    val leaf2 = PlanDescriptionImpl(new Id, "LEAF", NoChildren, Seq(), Set("b"))
+    val leaf3 = PlanDescriptionImpl(new Id, "LEAF", NoChildren, Seq(), Set("c"))
+    val leaf4 = PlanDescriptionImpl(new Id, "LEAF", NoChildren, Seq(), Set("d"))
+    val branch1 = PlanDescriptionImpl(new Id, "BRANCH", SingleChild(leaf1), Seq.empty, Set("a"))
+    val branch2 = PlanDescriptionImpl(new Id, "BRANCH", SingleChild(leaf2), Seq.empty, Set("b"))
+    val branch3 = PlanDescriptionImpl(new Id, "BRANCH", SingleChild(leaf3), Seq.empty, Set("c"))
+    val branch4 = PlanDescriptionImpl(new Id, "BRANCH", SingleChild(leaf4), Seq.empty, Set("d"))
+    val intermediate1 = PlanDescriptionImpl(new Id, "INTERMEDIATE", TwoChildren(branch1, branch2), Seq.empty, Set())
+    val intermediate2 = PlanDescriptionImpl(new Id, "INTERMEDIATE", TwoChildren(branch3, branch4), Seq.empty, Set())
+    val plan = PlanDescriptionImpl(new Id, "ROOT", TwoChildren(intermediate1, intermediate2), Seq.empty, Set())
+
+    renderAsTreeTable(plan) should equal(
+      """+-----------------+-----------+
+        || Operator        | Variables |
+        |+-----------------+-----------+
+        || +ROOT           |           |
+        || |\              +-----------+
+        || | +INTERMEDIATE |           |
+        || | |\            +-----------+
+        || | | +BRANCH     | d         |
+        || | | |           +-----------+
+        || | | +LEAF       | d         |
+        || | |             +-----------+
+        || | +BRANCH       | c         |
+        || | |             +-----------+
+        || | +LEAF         | c         |
+        || |               +-----------+
+        || +INTERMEDIATE   |           |
+        || |\              +-----------+
+        || | +BRANCH       | b         |
+        || | |             +-----------+
+        || | +LEAF         | b         |
+        || |               +-----------+
+        || +BRANCH         | a         |
+        || |               +-----------+
+        || +LEAF           | a         |
+        |+-----------------+-----------+
+        |""".stripMargin)
+  }
+
+  test("compaction on complex plan with repeated names") {
+    val leaf1 = PlanDescriptionImpl(new Id, "NODE", NoChildren, Seq(), Set())
+    val leaf2 = PlanDescriptionImpl(new Id, "NODE", NoChildren, Seq(), Set())
+    val leaf3 = PlanDescriptionImpl(new Id, "NODE", NoChildren, Seq(), Set())
+    val leaf4 = PlanDescriptionImpl(new Id, "NODE", NoChildren, Seq(), Set())
+    val branch1 = PlanDescriptionImpl(new Id, "NODE", SingleChild(leaf1), Seq.empty, Set())
+    val branch2 = PlanDescriptionImpl(new Id, "NODE", SingleChild(leaf2), Seq.empty, Set())
+    val branch3 = PlanDescriptionImpl(new Id, "NODE", SingleChild(leaf3), Seq.empty, Set())
+    val branch4 = PlanDescriptionImpl(new Id, "NODE", SingleChild(leaf4), Seq.empty, Set())
+    val intermediate1 = PlanDescriptionImpl(new Id, "NODE", TwoChildren(branch1, branch2), Seq.empty, Set())
+    val intermediate2 = PlanDescriptionImpl(new Id, "NODE", TwoChildren(branch3, branch4), Seq.empty, Set())
+    val plan = PlanDescriptionImpl(new Id, "NODE", TwoChildren(intermediate1, intermediate2), Seq.empty, Set())
+
+    renderAsTreeTable(plan) should equal(
+      """+--------------+
+        || Operator     |
+        |+--------------+
+        || +NODE        |
+        || |\           +
+        || | +NODE      |
+        || | |\         +
+        || | | +NODE(2) |
+        || | |          +
+        || | +NODE(2)   |
+        || |            +
+        || +NODE        |
+        || |\           +
+        || | +NODE(2)   |
+        || |            +
+        || +NODE(2)     |
+        |+--------------+
+        |""".stripMargin)
+  }
+
+  test("Variable line compaction with no variables") {
+    val line = Line("NODE", Map.empty, Set.empty)
+    val compacted = new CompactedLine(line, Set.empty)
+    compacted.formattedVariables should be("")
+  }
+
+  test("Variable line compaction with only new variables") {
+    val line = Line("NODE", Map.empty, Set("a", "b"))
+    val compacted = new CompactedLine(line, Set.empty)
+    compacted.formattedVariables should be("a, b")
+  }
+
+  test("Variable line compaction with only old variables") {
+    val line = Line("NODE", Map.empty, Set("a", "b"))
+    val compacted = new CompactedLine(line, Set("a", "b"))
+    compacted.formattedVariables should be("a, b")
+  }
+
+  test("Variable line compaction with old and new variables") {
+    val line = Line("NODE", Map.empty, Set("a", "b", "c", "d"))
+    val compacted = new CompactedLine(line, Set("a", "b"))
+    compacted.formattedVariables should be("c, d -- a, b")
+  }
+
+  test("Variable line compaction with many old and new variables and all compaction lengths") {
+    val newvars = ('a' to 'e').toSet[Char].map(c => s"var_$c")
+    val repeating = ('f' to 'z').toSet[Char].map(c => s"var_$c")
+    val line = Line("NODE", Map.empty, repeating ++ newvars, None)
+    val compacted = CompactedLine(line, repeating)
+    val maxlen = compacted.formatVariables(1000).length
+    val mintext = "var_a, ..."
+    Range(maxlen, 1, -1).foreach { length =>
+      val formatted = compacted.formatVariables(length)
+      if (formatted.length < maxlen)
+        formatted should endWith("...")
+      else
+        formatted should endWith("var_z")
+      if (length < mintext.length) {
+        formatted should be(mintext)
+      } else {
+        withClue(s"Expected formatted length to be no greater than $length.") {
+          formatted.length should be <= length
+        }
+      }
+    }
+  }
+
 }

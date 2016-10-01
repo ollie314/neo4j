@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,76 +19,128 @@
  */
 package org.neo4j.internal.cypher.acceptance
 
-import org.neo4j.cypher.{CypherTypeException, ExecutionEngineFunSuite, NewPlannerTestSupport, QueryStatisticsTestSupport}
+import org.neo4j.cypher._
 
 import scala.collection.JavaConverters._
 
 class ExpressionAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTestSupport with NewPlannerTestSupport {
 
+  test("IN should work with nested list subscripting") {
+    val query = """WITH [[1, 2, 3]] AS list
+                  |RETURN 3 IN list[0] AS r
+                """.stripMargin
+
+    val result = executeWithAllPlanners(query)
+
+    result.toList should equal(List(Map("r" -> true)))
+  }
+
+  test("IN should work with nested literal list subscripting") {
+    val query = "RETURN 3 IN [[1, 2, 3]][0] AS r"
+
+    val result = executeWithAllPlanners(query)
+
+    result.toList should equal(List(Map("r" -> true)))
+  }
+
+  test("IN should work with list slices") {
+    val query = """WITH [1, 2, 3] AS list
+                  |RETURN 3 IN list[0..1] AS r
+                """.stripMargin
+
+    val result = executeWithAllPlanners(query)
+
+    result.toList should equal(List(Map("r" -> false)))
+  }
+
+  test("IN should work with literal list slices") {
+    val query = "RETURN 3 IN [1, 2, 3][0..1] AS r"
+
+    val result = executeWithAllPlanners(query)
+
+    result.toList should equal(List(Map("r" -> false)))
+  }
+
+  test("accepts property access on type Any") {
+    val query = "WITH [{prop: 1}, 1] AS list RETURN (list[0]).prop AS p"
+
+    val result = executeWithAllPlanners(query)
+
+    result.toList should equal(List(Map("p" -> 1)))
+  }
+
+  test("fails at runtime when doing property access on non-map") {
+    val query = "WITH [{prop: 1}, 1] AS list RETURN (list[1]).prop AS p"
+
+    a [CypherTypeException] should be thrownBy {
+      executeWithAllPlanners(query)
+    }
+  }
+
   test("n[0]") {
-    executeScalarWithAllPlanners[Int]("RETURN [1, 2, 3][0]") should equal(1)
+    executeScalarWithAllPlannersAndCompatibilityMode[Int]("RETURN [1, 2, 3][0]") should equal(1)
   }
 
   test("n['name'] in read queries") {
     createNode("Apa")
-    executeScalarWithAllPlanners[String]("MATCH (n {name: 'Apa'}) RETURN n['nam' + 'e']") should equal("Apa")
+    executeScalarWithAllPlannersAndCompatibilityMode[String]("MATCH (n {name: 'Apa'}) RETURN n['nam' + 'e']") should equal("Apa")
   }
 
   test("n['name'] in update queries") {
-    executeScalarWithAllPlanners[String]("CREATE (n {name: 'Apa'}) RETURN n['nam' + 'e']") should equal("Apa")
+    executeScalarWithAllPlannersAndCompatibilityMode[String]("CREATE (n {name: 'Apa'}) RETURN n['nam' + 'e']") should equal("Apa")
   }
 
   test("Uses dynamic property lookup based on parameters when there is no type information") {
-    executeScalarWithAllPlanners[String]("WITH {expr} AS expr, {idx} AS idx RETURN expr[idx]", "expr" -> Map("name" -> "Apa").asJava, "idx" -> "name") should equal("Apa")
+    executeScalarWithAllPlannersAndCompatibilityMode[String]("WITH {expr} AS expr, {idx} AS idx RETURN expr[idx]", "expr" -> Map("name" -> "Apa").asJava, "idx" -> "name") should equal("Apa")
   }
 
   test("Uses dynamic property lookup based on parameters when there is lhs type information") {
-    executeScalarWithAllPlanners[String]("CREATE (n {name: 'Apa'}) RETURN n[{idx}]", "idx" -> "name") should equal("Apa")
+    executeScalarWithAllPlannersAndCompatibilityMode[String]("CREATE (n {name: 'Apa'}) RETURN n[{idx}]", "idx" -> "name") should equal("Apa")
   }
 
   test("Uses dynamic property lookup based on parameters when there is rhs type information") {
-    executeScalarWithAllPlanners[String]("WITH {expr} AS expr, {idx} AS idx RETURN expr[toString(idx)]", "expr" -> Map("name" -> "Apa").asJava, "idx" -> "name") should equal("Apa")
+    executeScalarWithAllPlannersAndCompatibilityMode[String]("WITH {expr} AS expr, {idx} AS idx RETURN expr[toString(idx)]", "expr" -> Map("name" -> "Apa").asJava, "idx" -> "name") should equal("Apa")
   }
 
   test("Uses collection lookup based on parameters when there is no type information") {
-    executeScalarWithAllPlanners[String]("WITH {expr} AS expr, {idx} AS idx RETURN expr[idx]", "expr" -> List("Apa").asJava, "idx" -> 0) should equal("Apa")
+    executeScalarWithAllPlannersAndCompatibilityMode[String]("WITH {expr} AS expr, {idx} AS idx RETURN expr[idx]", "expr" -> List("Apa").asJava, "idx" -> 0) should equal("Apa")
   }
 
   test("Uses collection lookup based on parameters when there is lhs type information") {
-    executeScalarWithAllPlanners[String]("WITH ['Apa'] AS expr RETURN expr[{idx}]", "idx" -> 0) should equal("Apa")
+    executeScalarWithAllPlannersAndCompatibilityMode[String]("WITH ['Apa'] AS expr RETURN expr[{idx}]", "idx" -> 0) should equal("Apa")
   }
 
   test("Uses collection lookup based on parameters when there is rhs type information") {
-    executeScalarWithAllPlanners[String]("WITH {expr} AS expr, {idx} AS idx RETURN expr[toInt(idx)]", "expr" -> List("Apa").asJava, "idx" -> 0) should equal("Apa")
+    executeScalarWithAllPlannersAndCompatibilityMode[String]("WITH {expr} AS expr, {idx} AS idx RETURN expr[toInt(idx)]", "expr" -> List("Apa").asJava, "idx" -> 0) should equal("Apa")
   }
 
   test("Fails at runtime when attempting to index with an Int into a Map") {
     a [CypherTypeException] should be thrownBy {
-      executeScalarWithAllPlanners[String]("WITH {expr} AS expr, {idx} AS idx RETURN expr[idx]", "expr" -> Map("name" -> "Apa").asJava, "idx" -> 0)
+      executeScalarWithAllPlannersAndCompatibilityMode[String]("WITH {expr} AS expr, {idx} AS idx RETURN expr[idx]", "expr" -> Map("name" -> "Apa").asJava, "idx" -> 0)
     }
   }
 
   test("fails at runtime when trying to index into a map with a non-string") {
     a [CypherTypeException] should be thrownBy {
-      executeScalarWithAllPlanners[Any]("RETURN {expr}[{idx}]", "expr" -> Map("name" -> "Apa").asJava, "idx" -> 12.3)
+      executeScalarWithAllPlannersAndCompatibilityMode[Any]("RETURN {expr}[{idx}]", "expr" -> Map("name" -> "Apa").asJava, "idx" -> 12.3)
     }
   }
 
   test("Fails at runtime when attempting to index with a String into a Collection") {
     a [CypherTypeException] should be thrownBy {
-      executeScalarWithAllPlanners[String]("WITH {expr} AS expr, {idx} AS idx RETURN expr[idx]", "expr" -> List("Apa").asJava, "idx" -> "name")
+      executeScalarWithAllPlannersAndCompatibilityMode[String]("WITH {expr} AS expr, {idx} AS idx RETURN expr[idx]", "expr" -> List("Apa").asJava, "idx" -> "name")
     }
   }
 
   test("fails at runtime when trying to index into a map with a non-int") {
     a [CypherTypeException] should be thrownBy {
-      executeScalarWithAllPlanners[Any]("RETURN {expr}[{idx}]", "expr" -> List("Apa").asJava, "idx" -> List("Apa").asJava)
+      executeScalarWithAllPlannersAndCompatibilityMode[Any]("RETURN {expr}[{idx}]", "expr" -> List("Apa").asJava, "idx" -> List("Apa").asJava)
     }
   }
 
   test("fails at runtime when trying to index into something which is not a map or collection") {
     a [CypherTypeException] should be thrownBy {
-      executeScalarWithAllPlanners[Any]("RETURN {expr}[{idx}]", "expr" -> 1, "idx" -> 12.3)
+      executeScalarWithAllPlannersAndCompatibilityMode[Any]("RETURN {expr}[{idx}]", "expr" -> 1, "idx" -> 12.3)
     }
   }
 }

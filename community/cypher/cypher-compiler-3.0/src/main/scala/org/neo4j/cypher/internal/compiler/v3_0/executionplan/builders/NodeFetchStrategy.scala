@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -25,8 +25,6 @@ import org.neo4j.cypher.internal.compiler.v3_0.commands.predicates._
 import org.neo4j.cypher.internal.compiler.v3_0.commands.values.KeyToken
 import org.neo4j.cypher.internal.compiler.v3_0.spi.PlanContext
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
-import org.neo4j.cypher.internal.frontend.v3_0.parser._
-import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 
 /*
 This rather simple class finds a starting strategy for a given single node and a list of predicates required
@@ -76,14 +74,14 @@ Finders produce StartItemWithRatings for a node and a set of required predicates
 trait NodeStrategy {
 
   type LabelName = String
-  type IdentifierName = String
+  type VariableName = String
   type PropertyKey = String
 
   def findRatedStartItems(node: String, where: Seq[Predicate], ctx: PlanContext, symbols: SymbolTable): Seq[RatedStartItem]
 
   protected def findLabelsForNode(node: String, where: Seq[Predicate]): Seq[SolvedPredicate[LabelName]] =
     where.collect {
-      case predicate @ HasLabel(Identifier(identifier), label) if identifier == node => SolvedPredicate(label.name, predicate)
+      case predicate @ HasLabel(Variable(variable), label) if variable == node => SolvedPredicate(label.name, predicate)
     }
 
   case class SolvedPredicate[+T](solution: T, predicate: Predicate, newUnsolvedPredicate: Option[Predicate] = None)
@@ -92,7 +90,7 @@ trait NodeStrategy {
 object NodeByIdStrategy extends NodeStrategy {
 
   def findRatedStartItems(node: String, where: Seq[Predicate], ctx: PlanContext, symbols: SymbolTable): Seq[RatedStartItem] = {
-    val solvedPredicates: Seq[SolvedPredicate[Expression]] = findEqualityPredicatesForBoundIdentifiers(node, symbols, where)
+    val solvedPredicates: Seq[SolvedPredicate[Expression]] = findEqualityPredicatesForBoundVariables(node, symbols, where)
     val solutions: Seq[Expression] = solvedPredicates.map(_.solution)
     val predicates: Seq[Predicate] = solvedPredicates.map(_.predicate)
 
@@ -102,17 +100,18 @@ object NodeByIdStrategy extends NodeStrategy {
     }
   }
 
-  private def findEqualityPredicatesForBoundIdentifiers(identifier: IdentifierName, symbols: SymbolTable, where: Seq[Predicate]): Seq[SolvedPredicate[Expression]] = {
+  private def findEqualityPredicatesForBoundVariables(variable: VariableName, symbols: SymbolTable, where: Seq[Predicate]): Seq[SolvedPredicate[Expression]] = {
     def computable(expression: Expression): Boolean = expression.symbolDependenciesMet(symbols)
 
     where.collect {
-      case predicate @ Equals(IdFunction(Identifier(id)), Literal(idValue: Number)) if id == identifier => SolvedPredicate(Literal(idValue.longValue()), predicate)
-      case predicate @ Equals(Literal(idValue: Number), IdFunction(Identifier(id))) if id == identifier => SolvedPredicate(Literal(idValue.longValue()), predicate)
+      case predicate @ Equals(IdFunction(Variable(id)), Literal(idValue: Number)) if id == variable => SolvedPredicate(Literal(idValue.longValue()), predicate)
+      case predicate @ Equals(Literal(idValue: Number), IdFunction(Variable(id))) if id == variable => SolvedPredicate(Literal(idValue.longValue()), predicate)
 
-      case predicate @ Equals(IdFunction(Identifier(id)), expression) if id == identifier && computable(expression) => SolvedPredicate(expression, predicate)
-      case predicate @ Equals(expression, IdFunction(Identifier(id))) if id == identifier && computable(expression) => SolvedPredicate(expression, predicate)
+      case predicate @ Equals(IdFunction(Variable(id)), expression) if id == variable && computable(expression) => SolvedPredicate(expression, predicate)
+      case predicate @ Equals(expression, IdFunction(Variable(id))) if id == variable && computable(expression) => SolvedPredicate(expression, predicate)
 
-      case predicate @ AnyInCollection(collectionExpression, _, Equals(IdFunction(Identifier(id)), _)) if id == identifier && computable(collectionExpression) => SolvedPredicate(collectionExpression, predicate)
+      case predicate @ AnyInList(collectionExpression, _, Equals(IdFunction(Variable(id)), _)) if id == variable && computable(collectionExpression) => SolvedPredicate(collectionExpression, predicate)
+      case predicate @ CachedIn(IdFunction(Variable(id)), collectionExpression) if id == variable && computable(collectionExpression) => SolvedPredicate(collectionExpression, predicate)
     }
   }
 }
@@ -160,37 +159,35 @@ object IndexSeekStrategy extends NodeStrategy {
     result.flatten
   }
 
-  private def findEqualityPredicatesOnProperty(identifier: IdentifierName, where: Seq[Predicate], initialSymbols: SymbolTable): Seq[SolvedPredicate[PropertyKey]] = {
-    val symbols = initialSymbols.add(identifier, CTNode)
-
+  private def findEqualityPredicatesOnProperty(variable: VariableName, where: Seq[Predicate], symbols: SymbolTable): Seq[SolvedPredicate[PropertyKey]] = {
     where.collect {
-      case predicate @ Equals(Property(Identifier(id), propertyKey), expression)
-        if id == identifier && predicate.symbolDependenciesMet(symbols) => SolvedPredicate(propertyKey.name, predicate)
+      case predicate @ Equals(Property(Variable(id), propertyKey), expression)
+        if id == variable && expression.symbolDependenciesMet(symbols) => SolvedPredicate(propertyKey.name, predicate)
 
-      case predicate @ Equals(expression, Property(Identifier(id), propertyKey))
-        if id == identifier && predicate.symbolDependenciesMet(symbols) => SolvedPredicate(propertyKey.name, predicate)
+      case predicate @ Equals(expression, Property(Variable(id), propertyKey))
+        if id == variable && expression.symbolDependenciesMet(symbols) => SolvedPredicate(propertyKey.name, predicate)
 
-      case predicate @ AnyInCollection(expression, _, Equals(Property(Identifier(id), propertyKey),Identifier(_)))
-        if id == identifier && predicate.symbolDependenciesMet(symbols) => SolvedPredicate(propertyKey.name, predicate)
+      case predicate @ AnyInList(expression, _, Equals(Property(Variable(id), propertyKey), Variable(_)))
+        if id == variable && expression.symbolDependenciesMet(symbols) => SolvedPredicate(propertyKey.name, predicate)
+
+      case predicate @ CachedIn(Property(Variable(id), propertyKey), expression)
+        if id == variable && expression.symbolDependenciesMet(symbols) => SolvedPredicate(propertyKey.name, predicate)
     }
   }
 
-  private def findIndexSeekByPrefixPredicatesOnProperty(identifier: IdentifierName, where: Seq[Predicate], initialSymbols: SymbolTable): Seq[SolvedPredicate[PropertyKey]] = {
+  private def findIndexSeekByPrefixPredicatesOnProperty(variable: VariableName, where: Seq[Predicate], initialSymbols: SymbolTable): Seq[SolvedPredicate[PropertyKey]] = {
     where.collect {
-      case literalPredicate@StartsWith(p@Property(Identifier(id), prop), _) if id == identifier =>
+      case literalPredicate@StartsWith(p@Property(Variable(id), prop), _) if id == variable =>
         SolvedPredicate(prop.name, literalPredicate)
     }
   }
 
-  private def findIndexSeekByRangePredicatesOnProperty(identifier: IdentifierName, where: Seq[Predicate], initialSymbols: SymbolTable): Seq[SolvedPredicate[PropertyKey]] = {
-    val symbols = initialSymbols.add(identifier, CTNode)
-
+  private def findIndexSeekByRangePredicatesOnProperty(variable: VariableName, where: Seq[Predicate], symbols: SymbolTable): Seq[SolvedPredicate[PropertyKey]] =
     where.collect {
-      case predicate@AndedPropertyComparablePredicates(Identifier(id), Property(_, key), comparables)
-        if id == identifier && predicate.symbolDependenciesMet(symbols) =>
+      case predicate@AndedPropertyComparablePredicates(Variable(id), prop@Property(_, key), comparables)
+        if id == variable && comparables.forall(_.other(prop).symbolDependenciesMet(symbols)) =>
         SolvedPredicate(key.name, predicate)
     }
-  }
 }
 
 object GlobalStrategy extends NodeStrategy {

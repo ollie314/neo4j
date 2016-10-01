@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -29,6 +29,10 @@ import java.io.FileWriter;
 import java.io.IOException;
 import javax.swing.*;
 
+import org.neo4j.desktop.model.DesktopModel;
+import org.neo4j.desktop.model.LastLocation;
+import org.neo4j.desktop.model.exceptions.UnsuitableDirectoryException;
+
 import static javax.swing.JFileChooser.APPROVE_OPTION;
 import static javax.swing.JFileChooser.CUSTOM_DIALOG;
 import static javax.swing.JFileChooser.DIRECTORIES_ONLY;
@@ -45,9 +49,9 @@ class BrowseForDatabaseActionListener implements ActionListener
 
     public BrowseForDatabaseActionListener( JFrame frame, JTextField directoryDisplay, DesktopModel model )
     {
+        this.model = model;
         this.frame = frame;
         this.directoryDisplay = directoryDisplay;
-        this.model = model;
     }
 
     @Override
@@ -75,27 +79,17 @@ class BrowseForDatabaseActionListener implements ActionListener
 
                 validLocation = true;
 
-                FileWriter fileWriter = new FileWriter( new File( ".dblocation" ) );
-                fileWriter.write( selectedFile.getAbsolutePath() );
-                fileWriter.flush();
-                fileWriter.close();
+                LastLocation.setLastLocation( selectedFile.getAbsolutePath() );
             }
             catch ( UnsuitableDirectoryException ude )
             {
-                int choice = showWrappedConfirmDialog(
-                        frame,
-                        ude.getMessage() + "\n" + "Please choose a different folder.",
+                int choice = showWrappedConfirmDialog( frame, "Please choose a different folder." + "\n" + ude.getStackTrace(),
                         "Invalid folder selected", OK_CANCEL_OPTION, ERROR_MESSAGE );
 
                 if ( choice == CANCEL_OPTION )
                 {
                     cancelled = true;
                 }
-            }
-            catch ( IOException ioe )
-            {
-                System.out.println( "Error saving DB location" );
-                System.out.println( ioe );
             }
         }
     }

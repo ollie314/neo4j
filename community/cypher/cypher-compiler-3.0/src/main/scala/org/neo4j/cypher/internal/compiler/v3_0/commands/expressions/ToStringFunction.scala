@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,23 +21,6 @@ package org.neo4j.cypher.internal.compiler.v3_0.commands.expressions
 
 import org.neo4j.cypher.internal.compiler.v3_0.ExecutionContext
 import org.neo4j.cypher.internal.compiler.v3_0.pipes.QueryState
-import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
 import org.neo4j.cypher.internal.frontend.v3_0.ParameterWrongTypeException
-import org.neo4j.cypher.internal.frontend.v3_0.symbols._
 
-case class ToStringFunction(a: Expression) extends NullInNullOutExpression(a) with StringHelper {
-  def symbolTableDependencies: Set[String] = a.symbolTableDependencies
 
-  protected def calculateType(symbols: SymbolTable): CypherType = CTString
-
-  def arguments: Seq[Expression] = Seq(a)
-
-  def rewrite(f: (Expression) => Expression): Expression = f(ToStringFunction(a.rewrite(f)))
-
-  def compute(value: Any, m: ExecutionContext)(implicit state: QueryState): Any = a(m) match {
-    case v: Number => v.toString
-    case v: String => v
-    case v =>
-      throw new ParameterWrongTypeException("Expected a String or Number, got: " + v.toString)
-  }
-}

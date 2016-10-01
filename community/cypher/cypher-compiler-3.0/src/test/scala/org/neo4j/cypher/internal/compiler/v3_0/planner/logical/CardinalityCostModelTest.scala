@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,6 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner.logical
 
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.LazyLabel
 import org.neo4j.cypher.internal.compiler.v3_0.planner.LogicalPlanningTestSupport
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.Metrics.QueryGraphSolverInput
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans._
@@ -31,9 +30,9 @@ class CardinalityCostModelTest extends CypherFunSuite with LogicalPlanningTestSu
 
   test("expand should only be counted once") {
     val plan =
-      Selection(List(HasLabels(ident("a"), Seq(LabelName("Awesome") _)) _),
+      Selection(List(HasLabels(varFor("a"), Seq(LabelName("Awesome") _)) _),
         Expand(
-          Selection(List(HasLabels(ident("a"), Seq(LabelName("Awesome") _)) _),
+          Selection(List(HasLabels(varFor("a"), Seq(LabelName("Awesome") _)) _),
             Expand(
               Argument(Set("a"))(solvedWithEstimation(10.0))(),
               "a", SemanticDirection.OUTGOING, Seq.empty, "b", "r1")(solvedWithEstimation(100.0))
@@ -45,9 +44,9 @@ class CardinalityCostModelTest extends CypherFunSuite with LogicalPlanningTestSu
 
   test("should introduce increase cost when estimating an eager operator and lazyness is preferred") {
     val plan = NodeHashJoin(Set("a"),
-      NodeByLabelScan("a", LazyLabel("A"), Set.empty)(solvedWithEstimation(10.0)),
+      NodeByLabelScan("a", lblName("A"), Set.empty)(solvedWithEstimation(10.0)),
       Expand(
-        NodeByLabelScan("b", LazyLabel("B"), Set.empty)(solvedWithEstimation(5.0)),
+        NodeByLabelScan("b", lblName("B"), Set.empty)(solvedWithEstimation(5.0)),
         "b", SemanticDirection.OUTGOING, Seq.empty, "a", "r", ExpandAll)(solvedWithEstimation(15.0))
     )(solvedWithEstimation(10.0))
 
@@ -62,28 +61,28 @@ class CardinalityCostModelTest extends CypherFunSuite with LogicalPlanningTestSu
 
     val lazyPlan = Projection(
       Selection(
-        Seq(HasLabels(ident("a2"), Seq(LabelName("A")(pos)))(pos)),
+        Seq(HasLabels(varFor("a2"), Seq(LabelName("A")(pos)))(pos)),
         Expand(
           Expand(
-            NodeByLabelScan("a1", LazyLabel("A"), Set.empty)(solvedWithEstimation(10.0)),
+            NodeByLabelScan("a1", lblName("A"), Set.empty)(solvedWithEstimation(10.0)),
             "a1", SemanticDirection.OUTGOING, Seq.empty, "b", "r1", ExpandAll
           )(solvedWithEstimation(50.0)),
           "b", SemanticDirection.INCOMING, Seq.empty, "a2", "r2", ExpandAll
         )(solvedWithEstimation(250.0))
-      )(solvedWithEstimation(250.0)), Map("b" -> ident("b"))
+      )(solvedWithEstimation(250.0)), Map("b" -> varFor("b"))
     )(solvedWithEstimation(250.0))
 
     val eagerPlan = Projection(
       NodeHashJoin(Set("b"),
         Expand(
-          NodeByLabelScan("a1", LazyLabel("A"), Set.empty)(solvedWithEstimation(10.0)),
+          NodeByLabelScan("a1", lblName("A"), Set.empty)(solvedWithEstimation(10.0)),
           "a1", SemanticDirection.OUTGOING, Seq.empty, "b", "r1", ExpandAll
         )(solvedWithEstimation(50.0)),
         Expand(
-          NodeByLabelScan("a2", LazyLabel("A"), Set.empty)(solvedWithEstimation(10.0)),
+          NodeByLabelScan("a2", lblName("A"), Set.empty)(solvedWithEstimation(10.0)),
           "a2", SemanticDirection.OUTGOING, Seq.empty, "b", "r2", ExpandAll
         )(solvedWithEstimation(50.0))
-      )(solvedWithEstimation(250.0)), Map("b" -> ident("b"))
+      )(solvedWithEstimation(250.0)), Map("b" -> varFor("b"))
     )(solvedWithEstimation(250.0))
 
     val whatever = QueryGraphSolverInput.empty

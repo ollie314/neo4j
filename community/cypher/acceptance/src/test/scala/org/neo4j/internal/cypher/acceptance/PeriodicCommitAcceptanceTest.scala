@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,10 +22,13 @@ package org.neo4j.internal.cypher.acceptance
 import java.io.PrintWriter
 
 import org.neo4j.cypher._
+import org.neo4j.cypher.internal.compiler.v3_0.planDescription.InternalPlanDescription.Arguments.Planner
 import org.neo4j.cypher.internal.compiler.v3_0.test_helpers.CreateTempFileTestSupport
 import org.neo4j.cypher.internal.helpers.TxCounts
 import org.neo4j.cypher.internal.frontend.v3_0.helpers.StringHelper.RichString
 import org.neo4j.graphdb.Node
+import org.neo4j.kernel.api.KernelTransaction
+import org.neo4j.kernel.impl.transaction.log.TransactionIdStore
 
 class PeriodicCommitAcceptanceTest extends ExecutionEngineFunSuite
   with TxCountsTrackingTestSupport with QueryStatisticsTestSupport
@@ -61,6 +64,29 @@ class PeriodicCommitAcceptanceTest extends ExecutionEngineFunSuite
 
     result.toList should equal(List(Map("n.id" -> "42")))
     result.columns should equal(List("n.id"))
+  }
+
+  test("should use cost planner for periodic commit and load csv") {
+    val url = createTempFileURL("foo", ".csv") { writer: PrintWriter =>
+      writer.println("1")
+      writer.println("2")
+      writer.println("3")
+      writer.println("4")
+      writer.println("5")
+    }
+
+    // to make sure the property key id is created before the tx in order to not mess up with the tx counts
+    createNode(Map("id" -> 42))
+
+    val txIdStore = graph.getDependencyResolver.resolveDependency(classOf[TransactionIdStore])
+    val beforeTxId = txIdStore.getLastClosedTransactionId
+    val result = execute(s"PROFILE USING PERIODIC COMMIT 1 LOAD CSV FROM '$url' AS line CREATE (n {id: line[0]}) RETURN n.id as id")
+    result.executionPlanDescription().arguments should contain(Planner("IDP"))
+    result.columnAs[Long]("id").toList should equal(List("1","2","3","4","5"))
+    val afterTxId = txIdStore.getLastClosedTransactionId
+    result.close()
+
+    afterTxId should equal(beforeTxId + 5)
   }
 
   test("should support simple periodic commit") {
@@ -151,19 +177,19 @@ class PeriodicCommitAcceptanceTest extends ExecutionEngineFunSuite
 
   test("should reject periodic commit hint with negative size") {
     val url = createTempCSVFile(1)
-    evaluating {
+    intercept[SyntaxException] {
       executeScalar[Node](s"USING PERIODIC COMMIT -1 LOAD CSV FROM '$url' AS line CREATE (n) RETURN n")
-    } should produce[SyntaxException]
+    }
   }
 
   test("should fail if periodic commit is executed in an open transaction") {
     // given
-    evaluating {
+    intercept[PeriodicCommitInOpenTransactionException] {
       val url = createTempCSVFile(3)
-      graph.inTx {
+      graph.inTx( {
         execute(s"USING PERIODIC COMMIT LOAD CSV FROM '$url' AS line CREATE ()")
-      }
-    } should produce[PeriodicCommitInOpenTransactionException]
+      }, KernelTransaction.Type.explicit)
+    }
   }
 
   test("should tell line number information when failing using periodic commit and load csv") {

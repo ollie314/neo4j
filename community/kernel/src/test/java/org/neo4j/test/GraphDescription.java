@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -32,19 +32,18 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
-import org.neo4j.graphdb.DynamicRelationshipType;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.index.AutoIndexer;
-import org.neo4j.tooling.GlobalGraphOperations;
 
 import static java.util.Arrays.asList;
 import static java.util.Arrays.copyOfRange;
 
-import static org.neo4j.graphdb.DynamicLabel.label;
+import static org.neo4j.graphdb.Label.label;
 import static org.neo4j.test.GraphDescription.PropType.ERROR;
 import static org.neo4j.test.GraphDescription.PropType.STRING;
 
@@ -238,7 +237,7 @@ public class GraphDescription implements GraphDefinition
             for ( REL def : rels )
             {
                 init( result.get( def.start() ).createRelationshipTo( result.get( def.end() ),
-                        DynamicRelationshipType.withName( def.type() ) ), def.setNameProperty() ? def.name() : null,
+                                RelationshipType.withName( def.type() ) ), def.setNameProperty() ? def.name() : null,
                         def.properties(), graphdb.index().getRelationshipAutoIndexer(), autoIndexRelationships );
             }
             tx.success();
@@ -307,7 +306,7 @@ public class GraphDescription implements GraphDefinition
         GraphDatabaseService db = nodes.values().iterator().next().getGraphDatabase();
         try ( Transaction tx = db.beginTx() )
         {
-            for ( Node node : GlobalGraphOperations.at( db ).getAllNodes() )
+            for ( Node node : db.getAllNodes() )
             {
                 for ( Relationship rel : node.getRelationships() )
                     rel.delete();

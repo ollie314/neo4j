@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,11 +20,11 @@
 package org.neo4j.internal.cypher.acceptance
 
 import org.neo4j.cypher.{SyntaxException, NewPlannerTestSupport, ExecutionEngineFunSuite}
-import org.neo4j.graphdb.Node
 
 class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerTestSupport {
+
   test("should handle aggregates inside non aggregate expressions") {
-    executeWithAllPlanners(
+    executeWithAllPlannersAndCompatibilityMode(
       "MATCH (a { name: 'Andres' })<-[:FATHER]-(child) RETURN {foo:a.name='Andres',kids:collect(child.name)}"
     ).toList
   }
@@ -36,7 +36,7 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
     relate(a, b1, "A")
     relate(a, b2, "A")
 
-    val result = executeWithAllPlanners(
+    val result = executeWithAllPlannersAndCompatibilityMode(
       s"match (a:Start)-[rel]->(b) return a, count(*)"
     )
 
@@ -49,7 +49,7 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
     createNode(Map("name" -> "jim", "division" -> "England"))
     createNode(Map("name" -> "mattias", "division" -> "Sweden"))
 
-    val result = executeWithAllPlanners(
+    val result = executeWithAllPlannersAndCompatibilityMode(
       """match (n)
         |return n.division, count(*)
         |order by count(*) DESC, n.division ASC""".stripMargin
@@ -65,7 +65,7 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
     createNode(Map("x" -> 33))
     createNode(Map("x" -> 42))
 
-    val result = executeWithAllPlanners("match (n) return n.x, count(*)")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (n) return n.x, count(*)")
 
     result.toList should equal(List(Map("n.x" -> 42, "count(*)" -> 1), Map("n.x" -> 33, "count(*)" -> 2)))
   }
@@ -75,7 +75,7 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
     createNode(Map("y" -> "a"))
     createNode(Map("y" -> "b", "x" -> 42))
 
-    val result = executeWithAllPlanners("match (n) return n.y, count(n.x)")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (n) return n.y, count(n.x)")
 
     result.toSet should equal(Set(Map("n.y" -> "a", "count(n.x)" -> 1), Map("n.y" -> "b", "count(n.x)" -> 1)))
   }
@@ -85,7 +85,7 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
     createNode(Map("y" -> "a"))
     createNode(Map("y" -> "a", "x" -> 42))
 
-    val result = executeWithAllPlanners("match (n) return n.y, sum(n.x)")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (n) return n.y, sum(n.x)")
 
     result.toList should contain(Map("n.y" -> "a", "sum(n.x)" -> 75))
   }
@@ -97,23 +97,36 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
     relate(a, b)
     relate(a, c)
 
-    val result = executeWithAllPlanners(
+    val result = executeWithAllPlannersAndCompatibilityMode(
       """match p = (a:Start)-[*]-> (b)
         |return b, avg(length(p))""".stripMargin)
 
-    result.columnAs[Node]("b").toSet should equal (Set(b, c))
+    result.toSet should equal(Set(Map("b" -> c, "avg(length(p))" -> 1.0),
+                                  Map("b" -> b, "avg(length(p))" -> 1.0)))
   }
 
   test("should be able to do distinct on unbound node") {
-    val result = executeWithAllPlanners("optional match (a) return count(distinct a)")
+    val result = executeWithAllPlannersAndCompatibilityMode("optional match (a) return count(distinct a)")
     result.toList should equal (List(Map("count(distinct a)" -> 0)))
   }
 
   test("shouldBeAbleToDoDistinctOnNull") {
     createNode()
 
-    val result = executeWithAllPlanners("match (a) return count(distinct a.foo)")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a) return count(distinct a.foo)")
     result.toList should equal (List(Map("count(distinct a.foo)" -> 0)))
+  }
+
+  test("should be able to collect distinct nulls") {
+    val query = "unwind [NULL, NULL] AS x RETURN collect(distinct x) as c"
+    val result = executeWithAllPlanners(query)
+    result.toSeq.head shouldBe Map("c" -> List.empty)
+  }
+
+  test("should be able to collect distinct values mixed with nulls") {
+    val query = "unwind [NULL, 1, NULL] AS x RETURN collect(distinct x) as c"
+    val result = executeWithAllPlanners(query)
+    result.toSeq.head shouldBe Map("c" -> List(1))
   }
 
   test("should aggregate on array values") {
@@ -121,7 +134,7 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
     createNode("color" -> Array("blue"))
     createNode("color" -> Array("red"))
 
-    val result = executeWithAllPlanners("match (a) return distinct a.color, count(*)").toList
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a) return distinct a.color, count(*)").toList
     result.foreach { x =>
       val c = x("a.color").asInstanceOf[Array[_]]
 
@@ -136,13 +149,13 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
   test("aggregates in aggregates should fail") {
     createNode()
 
-    intercept[SyntaxException](executeWithAllPlanners("match (a) return count(count(*))").toList)
+    intercept[SyntaxException](executeWithAllPlannersAndCompatibilityMode("match (a) return count(count(*))").toList)
   }
 
   test("aggregates should be possible to use with arithmetics") {
     createNode()
 
-    val result = executeWithAllPlanners("match (a) return count(*) * 10").toList
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a) return count(*) * 10").toList
     result should equal (List(Map("count(*) * 10" -> 10)))
   }
 
@@ -151,14 +164,14 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
     createLabeledNode("X")
     createLabeledNode("X")
 
-    val result = executeWithAllPlanners("match (a:A), (b:X) return count(a) * 10 + count(b) * 5 as X order by X").toList
+    val result = executeWithAllPlannersAndCompatibilityMode("match (a:A), (b:X) return count(a) * 10 + count(b) * 5 as X order by X").toList
     result should equal (List(Map("X" -> 30)))
   }
 
   test("should handle multiple aggregates on the same node") {
     //WHEN
     val a = createNode()
-    val result = executeWithAllPlanners("match (n) return count(n), collect(n)")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (n) return count(n), collect(n)")
 
     //THEN
     result.toList should equal (List(Map("count(n)" -> 1, "collect(n)" -> Seq(a))))
@@ -173,7 +186,7 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
     }
 
     //WHEN
-    val result = executeWithAllPlanners("match (n) return count(*)")
+    val result = executeWithAllPlannersAndCompatibilityMode("match (n) return count(*)")
 
     //THEN
     result.toList should equal (List(Map("count(*)" -> 100)))
@@ -193,7 +206,7 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
     relate(d, e)
     relate(e, f)
 
-    val result = executeWithAllPlanners(
+    val result = executeWithAllPlannersAndCompatibilityMode(
       """match p = (a)-[*]->(b)
         |return collect(nodes(p)) as paths, length(p) as l order by length(p)""".stripMargin)
 
@@ -217,12 +230,13 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
     // when
     val query =
       """MATCH p=(a:T {name: "a"})-[:R*]-(other: T)
-        |WHERE other <> a WITH a, other, min(length(p)) AS len
-        |RETURN a.name as name, collect(other.name) AS others, len;""".stripMargin
-    val result = executeWithAllPlanners(query)
+        |WHERE other <> a
+        |WITH a, other, min(length(p)) AS len ORDER BY other.name
+        |RETURN a.name as name, collect(other.name) AS others, len""".stripMargin
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
 
     //then
-    result.toList should equal(Seq(Map("name" -> "a", "others" -> Seq("c", "b"), "len" -> 1 )))
+    result.toList should equal(Seq(Map("name" -> "a", "others" -> Seq("b", "c"), "len" -> 1 )))
   }
 
   test("should handle subexpression in aggregation also occuring as standalone expression with nested aggregation in a literal map") {
@@ -242,5 +256,74 @@ class AggregationAcceptanceTest extends ExecutionEngineFunSuite with NewPlannerT
     val result = executeWithCostPlannerOnly(query)
 
     result.toList should equal(List(Map("foo" -> 42, "bar" -> 42, "baz" -> Map("y" -> 1))))
+  }
+
+  test("should not project too much when aggregating in a WITH before merge and after a WITH with filter") {
+    val n = createLabeledNode(Map("prop" -> 42), "A")
+
+    val query =
+      """|UNWIND [42] as props
+         |WITH props WHERE props > 32
+         |WITH distinct props as p
+         |MERGE (a:A {prop:p})
+         |RETURN a.prop as prop""".stripMargin
+
+    val result = executeWithAllPlannersAndCompatibilityMode(query)
+
+    result.toList should equal(List(Map("prop" -> 42)))
+  }
+
+  test("should not overflow when doing summation") {
+    executeWithAllPlanners("unwind range(1000000,2000000) as i with i limit 3000 return sum(i)").toList should equal(
+      List(Map("sum(i)" -> 3004498500L)))
+  }
+
+  test("should count correctly in case of loops") {
+    val node = createNode()
+    relate(node, node)
+
+    val list = executeWithAllPlanners("MATCH ()-[r]-() RETURN id(r) as r").columnAs[Long]("r").toList
+    val result = executeWithAllPlanners("MATCH ()-[r]-() RETURN count(r) as c").columnAs[Long]("c").next()
+
+    list should equal(Seq(0))
+    result should equal(1)
+  }
+
+  test("should aggregate using as grouping key expressions using variables in scope and nothing else") {
+    val userId = createLabeledNode(Map("userId" -> 11), "User")
+    relate(userId, createNode(), "FRIEND", Map("propFive" -> 1))
+    relate(userId, createNode(), "FRIEND", Map("propFive" -> 3))
+    relate(createNode(), userId, "FRIEND", Map("propFive" -> 2))
+    relate(createNode(), userId, "FRIEND", Map("propFive" -> 4))
+
+    val query1 = """MATCH (user:User {userId: 11})-[friendship:FRIEND]-()
+                   |WITH user, collect(friendship)[toInt(rand() * count(friendship))] AS selectedFriendship
+                   |RETURN id(selectedFriendship) AS friendshipId, selectedFriendship.propFive AS propertyValue""".stripMargin
+    val query2 = """MATCH (user:User {userId: 11})-[friendship:FRIEND]-()
+                   |WITH user, collect(friendship) AS friendships
+                   |WITH user, friendships[toInt(rand() * size(friendships))] AS selectedFriendship
+                   |RETURN id(selectedFriendship) AS friendshipId, selectedFriendship.propFive AS propertyValue""".stripMargin
+
+    // TODO: this can be executed with the compatibility mode when we'll depend on the 2.3.5 cypher-compiler
+    val result1 = executeWithCostPlannerOnly(query1).toList
+    val result2 = executeWithCostPlannerOnly(query2).toList
+
+    result1.size should equal(result2.size)
+  }
+
+  test("max() should aggregate strings") {
+    val query = "UNWIND ['a', 'b', 'B', null, 'abc', 'abc1'] AS i RETURN max(i)"
+
+    val result = executeWithAllPlanners(query)
+
+    result.toList should equal(List(Map("max(i)" -> "b")))
+  }
+
+  test("min() should aggregate strings") {
+    val query = "UNWIND ['a', 'b', 'B', null, 'abc', 'abc1'] AS i RETURN min(i)"
+
+    val result = executeWithAllPlanners(query)
+
+    result.toList should equal(List(Map("min(i)" -> "B")))
   }
 }

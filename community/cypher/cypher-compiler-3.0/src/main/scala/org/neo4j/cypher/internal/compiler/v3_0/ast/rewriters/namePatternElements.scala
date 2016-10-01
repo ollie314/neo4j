@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,26 +26,26 @@ import org.neo4j.cypher.internal.frontend.v3_0.{Rewriter, bottomUp}
 
 case object nameAllPatternElements extends Rewriter {
 
-  override def apply(in: AnyRef): AnyRef = bottomUp(namingRewriter).apply(in)
+  override def apply(in: AnyRef): AnyRef = namingRewriter.apply(in)
 
   val namingRewriter: Rewriter = bottomUp(Rewriter.lift {
-    case pattern: NodePattern if !pattern.identifier.isDefined =>
+    case pattern: NodePattern if pattern.variable.isEmpty =>
       val syntheticName = UnNamedNameGenerator.name(pattern.position.bumped())
-      pattern.copy(identifier = Some(Identifier(syntheticName)(pattern.position)))(pattern.position)
+      pattern.copy(variable = Some(Variable(syntheticName)(pattern.position)))(pattern.position)
 
-    case pattern: RelationshipPattern if !pattern.identifier.isDefined  =>
+    case pattern: RelationshipPattern if pattern.variable.isEmpty  =>
       val syntheticName = UnNamedNameGenerator.name(pattern.position.bumped())
-      pattern.copy(identifier = Some(Identifier(syntheticName)(pattern.position)))(pattern.position)
+      pattern.copy(variable = Some(Variable(syntheticName)(pattern.position)))(pattern.position)
   })
 }
 
 case object namePatternPredicatePatternElements extends Rewriter {
 
-  override def apply(in: AnyRef): AnyRef = bottomUp(instance).apply(in)
+  override def apply(in: AnyRef): AnyRef = instance.apply(in)
 
-  val instance: Rewriter = Rewriter.lift {
+  private val instance: Rewriter = bottomUp(Rewriter.lift {
     case expr: PatternExpression =>
       val (rewrittenExpr, _) = PatternExpressionPatternElementNamer(expr)
       rewrittenExpr
-  }
+  })
 }

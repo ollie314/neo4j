@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -22,20 +22,25 @@ package org.neo4j.server.rest.web;
 import javax.servlet.http.HttpServletRequest;
 
 import org.neo4j.kernel.impl.query.QuerySession;
+import org.neo4j.kernel.impl.query.TransactionalContext;
+
+import static java.lang.String.format;
 
 public class ServerQuerySession extends QuerySession
 {
     private final HttpServletRequest request;
 
-    public ServerQuerySession( HttpServletRequest request )
+    public ServerQuerySession( HttpServletRequest request, TransactionalContext transactionalContext )
     {
+        super( transactionalContext );
         this.request = request;
     }
 
     @Override
     public String toString()
     {
-        return request != null ? String.format( "server-session\t%s\t%s", request.getRemoteAddr(),
-                request.getRequestURI() ) : "server-session";
+        return request == null ?
+               "server-session" :
+               format("server-session\thttp\t%s\t%s", request.getRemoteAddr(), request.getRequestURI() );
     }
 }

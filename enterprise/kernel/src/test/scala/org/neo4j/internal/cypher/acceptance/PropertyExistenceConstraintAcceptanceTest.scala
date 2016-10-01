@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,11 +20,11 @@
 package org.neo4j.internal.cypher.acceptance
 
 import org.neo4j.cypher._
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.CollectionSupport
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.ListSupport
 import org.neo4j.kernel.api.exceptions.Status
 
 class PropertyExistenceConstraintAcceptanceTest extends ExecutionEngineFunSuite with QueryStatisticsTestSupport
-with CollectionSupport with EnterpriseGraphDatabaseTestSupport{
+  with ListSupport with EnterpriseGraphDatabaseTestSupport {
 
   test("node: should enforce constraints on creation") {
     // GIVEN
@@ -149,7 +149,7 @@ with CollectionSupport with EnterpriseGraphDatabaseTestSupport{
     val e = intercept[CypherExecutionException](execute("create constraint on (node:Label1) assert exists(node.key1)"))
 
     //THEN
-    e.status should equal(Status.Schema.ConstraintCreationFailure)
+    e.status should equal(Status.Schema.ConstraintCreationFailed)
   }
 
   test("relationship: should fail to create constraint when existing data violates it") {
@@ -160,7 +160,7 @@ with CollectionSupport with EnterpriseGraphDatabaseTestSupport{
     val e = intercept[CypherExecutionException](execute("create constraint on ()-[rel:KNOWS]-() assert exists(rel.since)"))
 
     //THEN
-    e.status should equal(Status.Schema.ConstraintCreationFailure)
+    e.status should equal(Status.Schema.ConstraintCreationFailed)
   }
 
   test("node: should drop constraint") {
@@ -191,6 +191,20 @@ with CollectionSupport with EnterpriseGraphDatabaseTestSupport{
 
     // THEN
     numberOfRelationships shouldBe 1
+  }
+
+  test("should not use countStore short cut when no constraint exist") {
+    val plan = execute("MATCH (n:X) RETURN count(n.foo)")
+
+    plan shouldNot use("NodeCountFromCountStore")
+  }
+
+  test("should use countStore short cut when constraint exist") {
+    execute("CREATE CONSTRAINT ON (n:X) ASSERT EXISTS(n.foo)")
+
+    val result = execute("MATCH (n:X) RETURN count(n.foo)")
+
+    result should use("NodeCountFromCountStore")
   }
 
   private def numberOfNodes = executeScalar[Long]("match (n) return count(n)")

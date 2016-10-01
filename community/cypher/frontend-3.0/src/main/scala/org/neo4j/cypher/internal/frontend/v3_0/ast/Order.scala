@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -24,8 +24,8 @@ import org.neo4j.cypher.internal.frontend.v3_0.{InputPosition, SemanticCheckable
 case class OrderBy(sortItems: Seq[SortItem])(val position: InputPosition) extends ASTNode with ASTPhrase with SemanticCheckable {
   def semanticCheck = sortItems.semanticCheck
 
-  def dependencies: Set[Identifier] =
-    sortItems.foldLeft(Set.empty[Identifier]) { case (acc, item) => acc ++ item.expression.dependencies }
+  def dependencies: Set[Variable] =
+    sortItems.foldLeft(Set.empty[Variable]) { case (acc, item) => acc ++ item.expression.dependencies }
 }
 
 sealed trait SortItem extends ASTNode with ASTPhrase with SemanticCheckable {

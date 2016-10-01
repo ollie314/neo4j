@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,6 @@ import org.neo4j.cypher.internal.compiler.v3_0._
 import org.neo4j.cypher.internal.compiler.v3_0.executionplan.Effects
 import org.neo4j.cypher.internal.compiler.v3_0.planDescription.{Id, InternalPlanDescription, SingleRowPlanDescription}
 import org.neo4j.cypher.internal.compiler.v3_0.symbols.SymbolTable
-import org.neo4j.helpers.ThisShouldNotHappenError
 
 import scala.collection.immutable
 
@@ -88,7 +87,7 @@ trait Pipe extends Effectful {
 
   def isLeaf = false
 
-  def identifiers: immutable.Set[String] = symbols.identifiers.keySet.toSet
+  def variables: immutable.Set[String] = symbols.variables.keySet.toSet
 
   // Used by profiling to identify where to report dbhits and rows
   val id = new Id
@@ -99,11 +98,11 @@ case class SingleRowPipe()(implicit val monitor: PipeMonitor) extends Pipe with 
   def symbols: SymbolTable = new SymbolTable()
 
   def internalCreateResults(state: QueryState) =
-      Iterator(ExecutionContext.empty)
+    Iterator(state.initialContext.getOrElse(ExecutionContext.empty))
 
   def exists(pred: Pipe => Boolean) = pred(this)
 
-  def planDescriptionWithoutCardinality: InternalPlanDescription = new SingleRowPlanDescription(this.id, Seq.empty, identifiers)
+  def planDescriptionWithoutCardinality: InternalPlanDescription = new SingleRowPlanDescription(this.id, Seq.empty, variables)
 
   override def localEffects = Effects()
 
@@ -129,7 +128,7 @@ abstract class PipeWithSource(source: Pipe, val monitor: PipeMonitor) extends Pi
   }
 
   protected def internalCreateResults(state: QueryState): Iterator[ExecutionContext] =
-    throw new ThisShouldNotHappenError("Andres", "This method should never be called on PipeWithSource")
+    throw new UnsupportedOperationException("This method should never be called on PipeWithSource")
 
   protected def internalCreateResults(input:Iterator[ExecutionContext], state: QueryState): Iterator[ExecutionContext]
 

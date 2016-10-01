@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -27,27 +27,26 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import org.neo4j.cursor.IOCursor;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.fs.StoreChannel;
 import org.neo4j.kernel.impl.transaction.CommittedTransactionRepresentation;
-import org.neo4j.kernel.impl.transaction.command.Command;
-import org.neo4j.kernel.impl.transaction.log.IOCursor;
 import org.neo4j.kernel.impl.transaction.log.LogEntryCursor;
 import org.neo4j.kernel.impl.transaction.log.PhysicalLogFile;
 import org.neo4j.kernel.impl.transaction.log.PhysicalLogVersionedStoreChannel;
 import org.neo4j.kernel.impl.transaction.log.PhysicalTransactionRepresentation;
 import org.neo4j.kernel.impl.transaction.log.ReadAheadLogChannel;
+import org.neo4j.kernel.impl.transaction.log.ReadableClosablePositionAwareChannel;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntry;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntryCommand;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntryCommit;
+import org.neo4j.kernel.impl.transaction.log.entry.LogEntryReader;
 import org.neo4j.kernel.impl.transaction.log.entry.LogEntryStart;
 import org.neo4j.kernel.impl.transaction.log.entry.LogHeader;
-
-import static javax.transaction.xa.Xid.MAXBQUALSIZE;
-import static javax.transaction.xa.Xid.MAXGTRIDSIZE;
+import org.neo4j.storageengine.api.StorageCommand;
 
 import static org.neo4j.kernel.impl.transaction.log.LogVersionBridge.NO_MORE_CHANNELS;
-import static org.neo4j.kernel.impl.transaction.log.ReadAheadLogChannel.DEFAULT_READ_AHEAD_SIZE;
+import static org.neo4j.kernel.impl.transaction.log.entry.LogHeader.LOG_HEADER_SIZE;
 import static org.neo4j.kernel.impl.transaction.log.entry.LogHeaderReader.readLogHeader;
 
 class TransactionStream
@@ -56,17 +55,21 @@ class TransactionStream
     private final FileSystemAbstraction fs;
     private final boolean isContiguous;
     private final LogFile firstFile;
+    private final LogEntryReader<ReadableClosablePositionAwareChannel> logEntryReader;
 
-    public TransactionStream( FileSystemAbstraction fs, File path ) throws IOException
+    public TransactionStream( FileSystemAbstraction fs, File path,
+                              LogEntryReader<ReadableClosablePositionAwareChannel> logEntryReader )
+            throws IOException
     {
         this.fs = fs;
+        this.logEntryReader = logEntryReader;
         { // read metadata from all files in the directory
-            ByteBuffer buffer = ByteBuffer.allocateDirect( 9 + MAXGTRIDSIZE + MAXBQUALSIZE * 10 );
+            ByteBuffer buffer = ByteBuffer.allocateDirect( LOG_HEADER_SIZE );
             File[] files = fs.listFiles( path, new TxFileFilter( fs ) );
             ArrayList<LogFile> logFiles = new ArrayList<>( files.length );
             for ( File file : files )
             {
-                LogFile logFile = new LogFile( fs, file, buffer );
+                LogFile logFile = new LogFile( fs, file, buffer, logEntryReader );
                 if ( logFile.lastTxId > 0 )
                 {
                     logFiles.add( logFile );
@@ -109,7 +112,7 @@ class TransactionStream
         return firstFile.header.lastCommittedTxId;
     }
 
-    public IOCursor<CommittedTransactionRepresentation> cursor() throws IOException
+    public IOCursor<CommittedTransactionRepresentation> cursor()
     {
         return new Cursor();
     }
@@ -126,7 +129,7 @@ class TransactionStream
 
     private class Cursor implements IOCursor<CommittedTransactionRepresentation>
     {
-        private final ByteBuffer buffer = ByteBuffer.allocateDirect( 9 + MAXGTRIDSIZE + MAXBQUALSIZE * 10 );
+        private final ByteBuffer buffer = ByteBuffer.allocateDirect( LOG_HEADER_SIZE );
         private int file;
         private CommittedTransactionRepresentation current;
         private IOCursor<LogEntry> entries;
@@ -180,7 +183,7 @@ class TransactionStream
                 return null;
             }
             LogEntryStart start = null;
-            List<Command> commands = new ArrayList<>();
+            List<StorageCommand> commands = new ArrayList<>();
             while ( entries.next() )
             {
                 LogEntry entry = entries.get();
@@ -199,9 +202,9 @@ class TransactionStream
                     PhysicalTransactionRepresentation transaction = new PhysicalTransactionRepresentation(
                             commands );
                     transaction.setHeader( start.getAdditionalHeader(), start.getMasterId(),
-                                           start.getLocalId(), start.getTimeWritten(),
-                                           start.getLastCommittedTxWhenTransactionStarted(),
-                                           commit.getTimeWritten(), -1 );
+                            start.getLocalId(), start.getTimeWritten(),
+                            start.getLastCommittedTxWhenTransactionStarted(),
+                            commit.getTimeWritten(), -1 );
                     return new CommittedTransactionRepresentation( start, transaction, commit );
                 }
                 else
@@ -220,14 +223,15 @@ class TransactionStream
         private final long lastTxId;
         long cap = Long.MAX_VALUE;
 
-        LogFile( FileSystemAbstraction fs, File file, ByteBuffer buffer ) throws IOException
+        LogFile( FileSystemAbstraction fs, File file, ByteBuffer buffer,
+                 LogEntryReader<ReadableClosablePositionAwareChannel> logEntryReader ) throws IOException
         {
             this.file = file;
             try ( StoreChannel channel = fs.open( file, "r" ) )
             {
-                header = readLogHeader( buffer, channel, false );
+                header = readLogHeader( buffer, channel, false, file );
 
-                try ( IOCursor<LogEntry> cursor = logEntryCursor( channel, header ) )
+                try ( IOCursor<LogEntry> cursor = logEntryCursor( logEntryReader, channel, header ) )
                 {
                     long txId = header.lastCommittedTxId;
                     while ( cursor.next() )
@@ -284,7 +288,7 @@ class TransactionStream
         StringBuilder rangeString( StringBuilder target )
         {
             return target.append( ']' ).append( header.lastCommittedTxId )
-                         .append( ", " ).append( lastTxId ).append( ']' );
+                    .append( ", " ).append( lastTxId ).append( ']' );
         }
     }
 
@@ -293,7 +297,7 @@ class TransactionStream
         StoreChannel channel = fs.open( file.file, "r" );
         try
         {
-            LogHeader header = readLogHeader( buffer, channel, false );
+            LogHeader header = readLogHeader( buffer, channel, false, file.file );
             if ( !header.equals( file.header ) )
             {
                 throw new IOException( "Files have changed on disk." );
@@ -303,14 +307,16 @@ class TransactionStream
         {
             buffer.clear();
         }
-        return logEntryCursor( channel, file.header );
+        return logEntryCursor( logEntryReader, channel, file.header );
     }
 
-    private static IOCursor<LogEntry> logEntryCursor( StoreChannel channel, LogHeader header ) throws IOException
+    private static IOCursor<LogEntry> logEntryCursor(
+            LogEntryReader<ReadableClosablePositionAwareChannel> logEntryReader,
+            StoreChannel channel, LogHeader header ) throws IOException
     {
-        return new LogEntryCursor( new ReadAheadLogChannel(
+        return new LogEntryCursor( logEntryReader, new ReadAheadLogChannel(
                 new PhysicalLogVersionedStoreChannel( channel, header.logVersion, header.logFormatVersion ),
-                NO_MORE_CHANNELS, DEFAULT_READ_AHEAD_SIZE ) );
+                NO_MORE_CHANNELS ) );
     }
 
     private static class TxFileFilter implements FilenameFilter

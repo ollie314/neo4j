@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -54,8 +54,8 @@ public class DynamicProcessorAssignerTest
         assigner.check( execution );
 
         // THEN
-        assertEquals( 5, slowStep.numberOfProcessors() );
-        assertEquals( 1, fastStep.numberOfProcessors() );
+        assertEquals( 5, slowStep.processors( 0 ) );
+        assertEquals( 1, fastStep.processors( 0 ) );
     }
 
     @Test
@@ -67,9 +67,10 @@ public class DynamicProcessorAssignerTest
         // and it rounds down. So there's room for assigning one more.
         DynamicProcessorAssigner assigner = new DynamicProcessorAssigner( config, 3 );
 
-        ControlledStep<?> slowStep = spy( stepWithStats( "slow", 1, avg_processing_time, 10L, done_batches, 10L ) );
+        ControlledStep<?> slowStep = spy( stepWithStats( "slow", 1, avg_processing_time, 6L, done_batches, 10L )
+                .setProcessors( 2 ) );
         ControlledStep<?> fastStep = spy( stepWithStats( "fast", 0, avg_processing_time, 2L, done_batches, 10L )
-                .setNumberOfProcessors( 2 ) );
+                .setProcessors( 2 ) );
 
         StageExecution[] execution = executionOf( config, slowStep, fastStep );
         assigner.start( execution );
@@ -78,8 +79,7 @@ public class DynamicProcessorAssignerTest
         assigner.check( execution );
 
         // THEN one processor should be removed from the fast step
-        verify( fastStep, times( 0 ) ).incrementNumberOfProcessors();
-        verify( fastStep, times( 1 ) ).decrementNumberOfProcessors();
+        verify( fastStep, times( 1 ) ).processors( -1 );
     }
 
     @Test
@@ -91,7 +91,7 @@ public class DynamicProcessorAssignerTest
 
         ControlledStep<?> slowStep = spy( stepWithStats( "slow", 1, avg_processing_time, 10L, done_batches, 10L ) );
         ControlledStep<?> fastStep = spy( stepWithStats( "fast", 0, avg_processing_time, 7L, done_batches, 10L )
-                .setNumberOfProcessors( 3 ) );
+                .setProcessors( 3 ) );
 
         StageExecution[] execution = executionOf( config, slowStep, fastStep );
         assigner.start( execution );
@@ -100,8 +100,8 @@ public class DynamicProcessorAssignerTest
         assigner.check( execution );
 
         // THEN one processor should be removed from the fast step
-        verify( fastStep, times( 0 ) ).incrementNumberOfProcessors();
-        verify( fastStep, times( 0 ) ).decrementNumberOfProcessors();
+        verify( fastStep, times( 0 ) ).processors( 1 );
+        verify( fastStep, times( 0 ) ).processors( -1 );
     }
 
     @Test
@@ -121,8 +121,8 @@ public class DynamicProcessorAssignerTest
         assigner.check( execution );
 
         // THEN
-        assertEquals( 1, aStep.numberOfProcessors() );
-        assertEquals( 1, anotherStep.numberOfProcessors() );
+        assertEquals( 1, aStep.processors( 0 ) );
+        assertEquals( 1, anotherStep.processors( 0 ) );
     }
 
     @Test
@@ -135,10 +135,10 @@ public class DynamicProcessorAssignerTest
 
         // GIVEN
         Configuration config = movingAverageConfig( 10 );
-        DynamicProcessorAssigner assigner = new DynamicProcessorAssigner( config, 5 );
-        Step<?> wayFastest = stepWithStats( "wayFastest", 0, avg_processing_time, 0L, done_batches, 20L );
+        DynamicProcessorAssigner assigner = new DynamicProcessorAssigner( config, 3 );
+        Step<?> wayFastest = stepWithStats( "wayFastest", 0, avg_processing_time, 50L, done_batches, 20L );
         Step<?> fast = spy( stepWithStats( "fast", 0, avg_processing_time, 100L, done_batches, 20L )
-                .setNumberOfProcessors( 3 ) );
+                .setProcessors( 3 ) );
         Step<?> slow = stepWithStats( "slow", 1, avg_processing_time, 220L, done_batches, 20L );
         StageExecution[] execution = executionOf( config, slow, wayFastest, fast );
         assigner.start( execution );
@@ -147,7 +147,7 @@ public class DynamicProcessorAssignerTest
         assigner.check( execution );
 
         // THEN
-        verify( fast ).decrementNumberOfProcessors();
+        verify( fast ).processors( -1 );
     }
 
     private Configuration movingAverageConfig( final int movingAverage )

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -75,7 +75,7 @@ class OptionalMatchTest extends DocumentingTestBase with SoftReset {
   @Test def optionalTypedRelationship() {
     testQuery(
       title = "Optional typed and named relationship",
-      text = "Just as with a normal relationship, you can decide which identifier it goes into, and what relationship type " +
+      text = "Just as with a normal relationship, you can decide which variable it goes into, and what relationship type " +
         "you need.",
       queryText = """match (a:Movie {title: 'Wall Street'}) optional match (a)-[r:ACTS_IN]->() return r""",
       optionalResultExplanation = """This returns a node, and +NULL+, since the node has no outgoing `ACTS_IN` relationships.""",

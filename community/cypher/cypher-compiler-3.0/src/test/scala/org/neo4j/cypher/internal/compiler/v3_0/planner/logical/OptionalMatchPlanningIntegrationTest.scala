@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,6 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_0.planner.logical
 
-import org.neo4j.cypher.internal.compiler.v3_0.pipes.LazyLabel
 import org.neo4j.cypher.internal.compiler.v3_0.planner.LogicalPlanningTestSupport2
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.rewriter.unnestOptional
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.{Limit, _}
@@ -41,8 +40,8 @@ class OptionalMatchPlanningIntegrationTest extends CypherFunSuite with LogicalPl
       }
     } planFor "MATCH (a:X)-[r1]->(b) OPTIONAL MATCH (b)-[r2]->(c:Y) RETURN b").plan should equal(
         OuterHashJoin(Set("b"),
-          Expand(NodeByLabelScan("a", LazyLabel("X"), Set.empty)(solved), "a", SemanticDirection.OUTGOING, Seq(), "b", "r1")(solved),
-          Expand(NodeByLabelScan("c", LazyLabel("Y"), Set.empty)(solved), "c", SemanticDirection.INCOMING, Seq(), "b", "r2")(solved)
+          Expand(NodeByLabelScan("a", lblName("X"), Set.empty)(solved), "a", SemanticDirection.OUTGOING, Seq(), "b", "r1")(solved),
+          Expand(NodeByLabelScan("c", lblName("Y"), Set.empty)(solved), "c", SemanticDirection.INCOMING, Seq(), "b", "r2")(solved)
         )(solved)
     )
   }
@@ -73,11 +72,11 @@ class OptionalMatchPlanningIntegrationTest extends CypherFunSuite with LogicalPl
         Apply(
         Limit(
         Expand(
-        AllNodesScan(IdName("b1"), _), _, _, _, _, _, _), _),
+        AllNodesScan(IdName("b1"), _), _, _, _, _, _, _), _, _),
         Optional(
         ProjectEndpoints(
         Argument(args), IdName("r"), IdName("b2"), false, IdName("a1"), true, None, true, SimplePatternLength
-        )
+        ), _
         )
         ) =>
         args should equal(Set(IdName("r"), IdName("a1")))
@@ -87,7 +86,7 @@ class OptionalMatchPlanningIntegrationTest extends CypherFunSuite with LogicalPl
   test("should build optional ProjectEndpoints with extra predicates") {
     planFor("MATCH (a1)-[r]->(b1) WITH r, a1 LIMIT 1 OPTIONAL MATCH (a2)<-[r]-(b2) WHERE a1 = a2 RETURN a1, r, b2").plan match {
       case Apply(
-      Limit(Expand(AllNodesScan(IdName("b1"), _), _, _, _, _, _, _), _),
+      Limit(Expand(AllNodesScan(IdName("b1"), _), _, _, _, _, _, _), _, _),
       Optional(
       Selection(
       predicates,
@@ -95,11 +94,11 @@ class OptionalMatchPlanningIntegrationTest extends CypherFunSuite with LogicalPl
       Argument(args),
       IdName("r"), IdName("b2"), false, IdName("a2"), false, None, true, SimplePatternLength
       )
-      )
+      ), _
       )
       ) =>
         args should equal(Set(IdName("r"), IdName("a1")))
-        val predicate: Expression = Equals(Identifier("a1")_, Identifier("a2")_)_
+        val predicate: Expression = Equals(Variable("a1")_, Variable("a2")_)_
         predicates should equal(Seq(predicate))
     }
   }
@@ -107,12 +106,12 @@ class OptionalMatchPlanningIntegrationTest extends CypherFunSuite with LogicalPl
   test("should build optional ProjectEndpoints with extra predicates 2") {
     planFor("MATCH (a1)-[r]->(b1) WITH r LIMIT 1 OPTIONAL MATCH (a2)-[r]->(b2) RETURN a2, r, b2").plan  match {
       case Apply(
-      Limit(Expand(AllNodesScan(IdName("b1"), _), _, _, _, _, _, _), _),
+      Limit(Expand(AllNodesScan(IdName("b1"), _), _, _, _, _, _, _), _, _),
       Optional(
       ProjectEndpoints(
       Argument(args),
       IdName("r"), IdName("a2"), false, IdName("b2"), false, None, true, SimplePatternLength
-      )
+      ), _
       )
       ) =>
         args should equal(Set(IdName("r")))
@@ -137,7 +136,7 @@ class OptionalMatchPlanningIntegrationTest extends CypherFunSuite with LogicalPl
                          |RETURN m""".stripMargin).plan.endoRewrite(unnestOptional)
     val s = solved
     val allNodesN:LogicalPlan = AllNodesScan(IdName("n"),Set())(s)
-    val predicate: Expression = In(Property(ident("m"), PropertyKeyName("prop") _) _, Collection(List(SignedDecimalIntegerLiteral("42") _)) _) _
+    val predicate: Expression = In(Property(varFor("m"), PropertyKeyName("prop") _) _, ListLiteral(List(SignedDecimalIntegerLiteral("42") _)) _) _
     plan should equal(
       OptionalExpand(allNodesN, IdName("n"), SemanticDirection.BOTH, Seq.empty, IdName("m"), IdName("r"), ExpandAll,
         Vector(predicate))(s)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -26,23 +26,23 @@ import org.neo4j.cypher.internal.frontend.v3_0.{DummyPosition, SemanticError, Se
 class FilterExpressionTest extends CypherFunSuite {
 
   val dummyExpression = DummyExpression(
-    possibleTypes = CTCollection(CTNode) | CTBoolean | CTCollection(CTString)
+    possibleTypes = CTList(CTNode) | CTBoolean | CTList(CTString)
   )
 
   test("shouldHaveCollectionTypesOfInnerExpression") {
     val filter = FilterExpression(
-      identifier = Identifier("x")(DummyPosition(5)),
+      variable = Variable("x")(DummyPosition(5)),
       expression = dummyExpression,
       innerPredicate = Some(True()(DummyPosition(5)))
     )(DummyPosition(0))
     val result = filter.semanticCheck(Expression.SemanticContext.Simple)(SemanticState.clean)
     result.errors shouldBe empty
-    filter.types(result.state) should equal(CTCollection(CTNode) | CTCollection(CTString))
+    filter.types(result.state) should equal(CTList(CTNode) | CTList(CTString))
   }
 
   test("shouldRaiseSyntaxErrorIfMissingPredicate") {
     val filter = FilterExpression(
-      identifier = Identifier("x")(DummyPosition(5)),
+      variable = Variable("x")(DummyPosition(5)),
       expression = dummyExpression,
       innerPredicate = None
     )(DummyPosition(0))

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,7 @@ import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.LogicalPlan
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.{CandidateSelector, LogicalPlanningContext, LogicalPlanningFunction0}
 
 object pickBestPlanUsingHintsAndCost extends LogicalPlanningFunction0[CandidateSelector] {
-  private val VERBOSE = java.lang.Boolean.getBoolean("pickBestPlan.VERBOSE")
+  val VERBOSE = java.lang.Boolean.getBoolean("pickBestPlan.VERBOSE")
   private val baseOrdering = implicitly[Ordering[(Int, Double, Int)]]
 
   override def apply(implicit context: LogicalPlanningContext): CandidateSelector = new CandidateSelector {
@@ -39,18 +39,26 @@ object pickBestPlanUsingHintsAndCost extends LogicalPlanningFunction0[CandidateS
         if (sortedPlans.size > 1) {
           println("- Get best of:")
           for (plan <- sortedPlans) {
-            println(s"\t* ${plan.toString}")
+            val planText = plan.toString.replaceAll(System.lineSeparator(), System.lineSeparator() + "\t\t")
+            println("=-" * 10)
+            println(s"* Plan #${plan.debugId}")
+            println(s"\t$planText")
             println(s"\t\t${costs(plan, context.input)}")
             println(s"\t\t${plan.solved.estimatedCardinality}")
             println(s"\t\tHints(${plan.solved.numHints})")
+            println(s"\t\tlhs: ${plan.lhs}")
           }
 
           val best = sortedPlans.head
+          println("!¡" * 10)
           println("- Best is:")
+          println(s"Plan #${best.debugId}")
           println(s"\t${best.toString}")
           println(s"\t\t${costs(best, context.input)}")
           println(s"\t\t${best.solved.estimatedCardinality}")
           println(s"\t\tHints(${best.solved.numHints})")
+          println(s"\t\tlhs: ${best.lhs}")
+          println("!¡" * 10)
           println()
         }
       }

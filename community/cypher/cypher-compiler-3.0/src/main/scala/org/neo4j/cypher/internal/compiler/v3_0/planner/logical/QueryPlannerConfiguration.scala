@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -20,13 +20,13 @@
 package org.neo4j.cypher.internal.compiler.v3_0.planner.logical
 
 import org.neo4j.cypher.internal.compiler.v3_0.planner.QueryGraph
-import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.greedy.projectEndpoints
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.plans.LogicalPlan
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.steps._
 import org.neo4j.cypher.internal.compiler.v3_0.planner.logical.steps.solveOptionalMatches.OptionalSolver
+import org.neo4j.cypher.internal.compiler.v3_0.{UpdateStrategy, defaultUpdateStrategy}
 
 object QueryPlannerConfiguration {
-  val default = QueryPlannerConfiguration(
+  val default: QueryPlannerConfiguration = QueryPlannerConfiguration(
     pickBestCandidate = pickBestPlanUsingHintsAndCost,
     applySelections = Selector(pickBestPlanUsingHintsAndCost,
       selectPatternPredicates,
@@ -34,7 +34,6 @@ object QueryPlannerConfiguration {
       selectCovered,
       selectHasLabelWithJoin
     ),
-    projectAllEndpoints = projectEndpoints.all,
     optionalSolvers = Seq(
       applyOptional,
       outerHashJoin
@@ -52,6 +51,7 @@ object QueryPlannerConfiguration {
       indexSeekLeafPlanner,
 
       // MATCH (n) WHERE has(n.prop) RETURN n
+      // MATCH (n:Person) WHERE n.prop CONTAINS ...
       indexScanLeafPlanner,
 
       // MATCH (n:Person) RETURN n
@@ -62,26 +62,30 @@ object QueryPlannerConfiguration {
 
       // Legacy indices
       legacyHintLeafPlanner
-    )
+    ),
+  updateStrategy = defaultUpdateStrategy
   )
 }
 
-case class QueryPlannerConfiguration(leafPlanners: LeafPlannerList,
+case class QueryPlannerConfiguration(leafPlanners: LeafPlannerIterable,
                                      applySelections: PlanTransformer[QueryGraph],
-                                     projectAllEndpoints: PlanTransformer[QueryGraph],
                                      optionalSolvers: Seq[OptionalSolver],
-                                     pickBestCandidate: LogicalPlanningFunction0[CandidateSelector]) {
+                                     pickBestCandidate: LogicalPlanningFunction0[CandidateSelector],
+                                     updateStrategy: UpdateStrategy) {
 
   def toKit()(implicit context: LogicalPlanningContext): QueryPlannerKit =
     QueryPlannerKit(
       select = (plan: LogicalPlan, qg: QueryGraph) => applySelections(plan, qg),
-      projectAllEndpoints = (plan: LogicalPlan, qg: QueryGraph) => projectAllEndpoints(plan, qg),
       pickBest = pickBestCandidate(context)
     )
+
+  def withLeafPlanners(leafPlanners: LeafPlannerIterable) = copy(leafPlanners = leafPlanners)
+
+  def withUpdateStrategy(updateStrategy: UpdateStrategy) = copy(updateStrategy = updateStrategy)
 }
 
 case class QueryPlannerKit(select: (LogicalPlan, QueryGraph) => LogicalPlan,
-                           projectAllEndpoints: (LogicalPlan, QueryGraph) => LogicalPlan,
+
                            pickBest: CandidateSelector) {
   def select(plans: Iterable[Seq[LogicalPlan]], qg: QueryGraph): Iterable[Seq[LogicalPlan]] =
     plans.map(_.map(plan => select(plan, qg)))

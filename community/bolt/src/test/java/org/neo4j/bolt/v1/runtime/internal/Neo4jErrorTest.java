@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,13 +21,28 @@ package org.neo4j.bolt.v1.runtime.internal;
 
 import org.junit.Test;
 
+import org.neo4j.cypher.LoadExternalResourceException;
 import org.neo4j.kernel.DeadlockDetectedException;
 import org.neo4j.kernel.api.exceptions.Status;
 
 import static junit.framework.TestCase.assertEquals;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 public class Neo4jErrorTest
 {
+    @Test
+    public void shouldAssignUnknownStatusToUnpredictedException()
+    {
+        // Given
+        Throwable cause = new Throwable( "This is not an error we know how to handle." );
+        Neo4jError error = Neo4jError.from( cause );
+
+        // Then
+        assertThat( error.status(), equalTo( (Status) Status.General.UnknownError ) );
+    }
+
     @Test
     public void shouldConvertDeadlockException() throws Throwable
     {
@@ -36,5 +51,15 @@ public class Neo4jErrorTest
 
         // Then
         assertEquals( error.status(), Status.Transaction.DeadlockDetected );
+    }
+
+    @Test
+    public void loadExternalResourceShouldNotReferToLog()
+    {
+        // Given
+        Neo4jError error = Neo4jError.from( new LoadExternalResourceException( "foo", null ) );
+
+        // Then
+        assertThat( error.status().code().classification().shouldLog(), is( false ) );
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -28,7 +28,7 @@ class ContentAndResultMergerTest extends CypherFunSuite {
   val TABLE_RESULT = Paragraph("14")
   val QUERY = "match (n) return n"
   val TABLE_PLACEHOLDER = new TablePlaceHolder(NoAssertions)
-  val GRAPHVIZ_PLACEHOLDER = new GraphVizPlaceHolder
+  val GRAPHVIZ_PLACEHOLDER = new GraphVizPlaceHolder("")
 
   test("simple doc with query") {
     // given

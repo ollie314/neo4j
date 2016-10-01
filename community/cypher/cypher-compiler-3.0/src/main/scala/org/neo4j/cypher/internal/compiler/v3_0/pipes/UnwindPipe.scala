@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,27 +21,25 @@ package org.neo4j.cypher.internal.compiler.v3_0.pipes
 
 import org.neo4j.cypher.internal.compiler.v3_0.ExecutionContext
 import org.neo4j.cypher.internal.compiler.v3_0.commands.expressions.Expression
-import org.neo4j.cypher.internal.compiler.v3_0.helpers.CollectionSupport
+import org.neo4j.cypher.internal.compiler.v3_0.helpers.ListSupport
 import org.neo4j.cypher.internal.compiler.v3_0.planDescription.{InternalPlanDescription, PlanDescriptionImpl, SingleChild}
 
-case class UnwindPipe(source: Pipe, collection: Expression, identifier: String)
+import scala.annotation.tailrec
+
+case class UnwindPipe(source: Pipe, collection: Expression, variable: String)
                      (val estimatedCardinality: Option[Double] = None)(implicit monitor: PipeMonitor)
-  extends PipeWithSource(source, monitor) with CollectionSupport with RonjaPipe {
+  extends PipeWithSource(source, monitor) with ListSupport with RonjaPipe {
   protected def internalCreateResults(input: Iterator[ExecutionContext], state: QueryState): Iterator[ExecutionContext] = {
     //register as parent so that stats are associated with this pipe
     state.decorator.registerParentPipe(this)
 
-    input.flatMap {
-      context =>
-        val seq = makeTraversable(collection(context)(state))
-        seq.map(x => context.newWith1(identifier, x))
-    }
+    if (input.hasNext) new UnwindIterator(input, state) else Iterator.empty
   }
 
   def planDescriptionWithoutCardinality: InternalPlanDescription =
-    PlanDescriptionImpl(this.id, "UNWIND", SingleChild(source.planDescription), Seq(), identifiers)
+    PlanDescriptionImpl(this.id, "Unwind", SingleChild(source.planDescription), Seq(), variables)
 
-  def symbols = source.symbols.add(identifier, collection.getType(source.symbols).legacyIteratedType)
+  def symbols = source.symbols.add(variable, collection.getType(source.symbols).legacyIteratedType)
 
   override def localEffects = collection.effects(symbols)
 
@@ -51,4 +49,36 @@ case class UnwindPipe(source: Pipe, collection: Expression, identifier: String)
   }
 
   def withEstimatedCardinality(estimated: Double) = copy()(Some(estimated))
+
+  private class UnwindIterator(input: Iterator[ExecutionContext], state: QueryState) extends Iterator[ExecutionContext] {
+    private var context: ExecutionContext = null
+    private var unwindIterator: Iterator[Any] = null
+    private var nextItem: ExecutionContext = null
+
+    prefetch()
+
+    override def hasNext: Boolean = nextItem != null
+
+    override def next(): ExecutionContext = {
+      if (hasNext) {
+        val ret = nextItem
+        prefetch()
+        ret
+      } else Iterator.empty.next()
+    }
+
+    @tailrec
+    private def prefetch() {
+      nextItem = null
+      if (unwindIterator != null && unwindIterator.hasNext) {
+        nextItem = context.newWith1(variable, unwindIterator.next())
+      } else {
+        if (input.hasNext) {
+          context = input.next()
+          unwindIterator = makeTraversable(collection(context)(state)).iterator
+          prefetch()
+        }
+      }
+    }
+  }
 }

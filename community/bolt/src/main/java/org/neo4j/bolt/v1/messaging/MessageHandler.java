@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -21,8 +21,8 @@ package org.neo4j.bolt.v1.messaging;
 
 import java.util.Map;
 
-import org.neo4j.kernel.api.exceptions.Status;
 import org.neo4j.bolt.v1.runtime.spi.Record;
+import org.neo4j.kernel.api.exceptions.Status;
 
 public interface MessageHandler<E extends Exception>
 {
@@ -32,8 +32,6 @@ public interface MessageHandler<E extends Exception>
 
     void handleDiscardAllMessage() throws E;
 
-    void handleAckFailureMessage() throws E;
-
     void handleRecordMessage( Record item ) throws E;
 
     void handleSuccessMessage( Map<String,Object> metadata ) throws E;
@@ -42,7 +40,11 @@ public interface MessageHandler<E extends Exception>
 
     void handleIgnoredMessage() throws E;
 
-    void handleInitMessage( String clientName ) throws E;
+    void handleInitMessage( String clientName, Map<String,Object> credentials ) throws E;
+
+    void handleResetMessage() throws E;
+
+    void handleAckFailureMessage() throws E;
 
     class Adapter<E extends Exception> implements MessageHandler<E>
     {
@@ -60,12 +62,6 @@ public interface MessageHandler<E extends Exception>
 
         @Override
         public void handleDiscardAllMessage() throws E
-        {
-
-        }
-
-        @Override
-        public void handleAckFailureMessage() throws E
         {
 
         }
@@ -95,7 +91,19 @@ public interface MessageHandler<E extends Exception>
         }
 
         @Override
-        public void handleInitMessage( String clientName ) throws E
+        public void handleInitMessage( String clientName, Map<String,Object> credentials ) throws E
+        {
+
+        }
+
+        @Override
+        public void handleResetMessage() throws E
+        {
+
+        }
+
+        @Override
+        public void handleAckFailureMessage() throws E
         {
 
         }

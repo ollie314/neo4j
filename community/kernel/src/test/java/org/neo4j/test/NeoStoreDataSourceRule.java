@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2015 "Neo Technology,"
+ * Copyright (c) 2002-2016 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
  *
  * This file is part of Neo4j.
@@ -19,40 +19,47 @@
  */
 package org.neo4j.test;
 
-
 import java.io.File;
+import java.time.Clock;
 import java.util.Map;
 
 import org.neo4j.graphdb.DependencyResolver;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.io.fs.FileSystemAbstraction;
+import org.neo4j.io.pagecache.IOLimiter;
 import org.neo4j.io.pagecache.PageCache;
-import org.neo4j.kernel.DefaultIdGeneratorFactory;
-import org.neo4j.kernel.KernelHealth;
 import org.neo4j.kernel.NeoStoreDataSource;
-import org.neo4j.kernel.TransactionEventHandlers;
 import org.neo4j.kernel.api.TokenNameLookup;
 import org.neo4j.kernel.api.index.SchemaIndexProvider;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.impl.api.SchemaWriteGuard;
 import org.neo4j.kernel.impl.api.index.IndexingService;
+import org.neo4j.kernel.impl.api.legacyindex.InternalAutoIndexing;
 import org.neo4j.kernel.impl.api.scan.InMemoryLabelScanStore;
 import org.neo4j.kernel.impl.api.scan.LabelScanStoreProvider;
-import org.neo4j.kernel.impl.constraints.ConstraintSemantics;
-import org.neo4j.kernel.impl.core.KernelPanicEventGenerator;
+import org.neo4j.kernel.impl.constraints.StandardConstraintSemantics;
+import org.neo4j.kernel.impl.core.DatabasePanicEventGenerator;
 import org.neo4j.kernel.impl.core.LabelTokenHolder;
-import org.neo4j.kernel.impl.core.NodeManager;
 import org.neo4j.kernel.impl.core.PropertyKeyTokenHolder;
 import org.neo4j.kernel.impl.core.RelationshipTypeTokenHolder;
 import org.neo4j.kernel.impl.core.StartupStatisticsProvider;
-import org.neo4j.kernel.impl.factory.CommunityEditionModule;
+import org.neo4j.kernel.impl.factory.CommunityCommitProcessFactory;
 import org.neo4j.kernel.impl.locking.Locks;
-import org.neo4j.kernel.impl.store.StoreFactory;
-import org.neo4j.kernel.impl.storemigration.StoreUpgrader;
+import org.neo4j.kernel.impl.locking.SimpleStatementLocksFactory;
+import org.neo4j.kernel.impl.logging.LogService;
+import org.neo4j.kernel.impl.logging.NullLogService;
+import org.neo4j.kernel.impl.proc.Procedures;
+import org.neo4j.kernel.impl.store.id.DefaultIdGeneratorFactory;
+import org.neo4j.kernel.impl.store.id.IdGeneratorFactory;
+import org.neo4j.kernel.impl.store.id.IdReuseEligibility;
+import org.neo4j.kernel.impl.store.id.configuration.CommunityIdTypeConfigurationProvider;
+import org.neo4j.kernel.impl.store.id.configuration.IdTypeConfigurationProvider;
 import org.neo4j.kernel.impl.transaction.TransactionHeaderInformationFactory;
 import org.neo4j.kernel.impl.transaction.TransactionMonitor;
 import org.neo4j.kernel.impl.transaction.log.PhysicalLogFile;
 import org.neo4j.kernel.impl.util.JobScheduler;
+import org.neo4j.kernel.internal.DatabaseHealth;
+import org.neo4j.kernel.internal.TransactionEventHandlers;
 import org.neo4j.kernel.monitoring.Monitors;
 import org.neo4j.kernel.monitoring.tracing.Tracers;
 import org.neo4j.logging.NullLog;
@@ -68,42 +75,58 @@ public class NeoStoreDataSourceRule extends ExternalResource
     private NeoStoreDataSource dataSource;
 
     public NeoStoreDataSource getDataSource( File storeDir, FileSystemAbstraction fs,
-                                             PageCache pageCache, Map<String, String> additionalConfig, KernelHealth kernelHealth )
+            PageCache pageCache, Map<String,String> additionalConfig, DatabaseHealth databaseHealth )
+    {
+        CommunityIdTypeConfigurationProvider idTypeConfigurationProvider =
+                new CommunityIdTypeConfigurationProvider();
+        DefaultIdGeneratorFactory idGeneratorFactory = new DefaultIdGeneratorFactory( fs, idTypeConfigurationProvider );
+        NullLogService logService = NullLogService.getInstance();
+        return getDataSource( storeDir, fs, idGeneratorFactory, idTypeConfigurationProvider, pageCache,
+                additionalConfig, databaseHealth, logService );
+    }
+
+    public NeoStoreDataSource getDataSource( File storeDir, FileSystemAbstraction fs, IdGeneratorFactory
+            idGeneratorFactory, IdTypeConfigurationProvider idTypeConfigurationProvider, PageCache
+            pageCache, Map<String,String> additionalConfig,
+            DatabaseHealth databaseHealth, LogService logService )
     {
         if ( dataSource != null )
         {
             dataSource.stop();
             dataSource.shutdown();
         }
-        final Config config = new Config( stringMap( additionalConfig ),
-                GraphDatabaseSettings.class );
-
-        StoreFactory sf = new StoreFactory( storeDir, config, new DefaultIdGeneratorFactory( fs ), pageCache, fs,
-                NullLogProvider.getInstance() );
+        final Config config = new Config( stringMap( additionalConfig ), GraphDatabaseSettings.class );
 
         Locks locks = mock( Locks.class );
         when( locks.newClient() ).thenReturn( mock( Locks.Client.class ) );
 
-        dataSource = new NeoStoreDataSource( storeDir, config, sf, NullLogProvider.getInstance(),
-                mock( JobScheduler.class, RETURNS_MOCKS ), mock( TokenNameLookup.class ),
+        JobScheduler jobScheduler = mock( JobScheduler.class, RETURNS_MOCKS );
+        Monitors monitors = new Monitors();
+        dataSource = new NeoStoreDataSource( storeDir, config, idGeneratorFactory, IdReuseEligibility.ALWAYS,
+                idTypeConfigurationProvider,
+                logService, mock( JobScheduler.class, RETURNS_MOCKS ), mock( TokenNameLookup.class ),
                 dependencyResolverForNoIndexProvider(), mock( PropertyKeyTokenHolder.class ),
-                mock( LabelTokenHolder.class ), mock( RelationshipTypeTokenHolder.class ), locks,
+                mock( LabelTokenHolder.class ), mock( RelationshipTypeTokenHolder.class ),
+                new SimpleStatementLocksFactory( locks ),
                 mock( SchemaWriteGuard.class ), mock( TransactionEventHandlers.class ), IndexingService.NO_MONITOR,
-                fs, mock( StoreUpgrader.class ), mock( TransactionMonitor.class ), kernelHealth,
+                fs, mock( TransactionMonitor.class ), databaseHealth,
                 mock( PhysicalLogFile.Monitor.class ), TransactionHeaderInformationFactory.DEFAULT,
-                new StartupStatisticsProvider(), mock( NodeManager.class ), null, null,
-                CommunityEditionModule.createCommitProcessFactory(), mock( PageCache.class ),
-                mock( ConstraintSemantics.class), new Monitors(), new Tracers( "null", NullLog.getInstance() ) );
+                new StartupStatisticsProvider(), null,
+                new CommunityCommitProcessFactory(), mock( InternalAutoIndexing.class ), pageCache,
+                new StandardConstraintSemantics(), monitors,
+                new Tracers( "null", NullLog.getInstance(), monitors, jobScheduler ),
+                mock( Procedures.class ),
+                IOLimiter.unlimited(), Clock.systemUTC() );
 
         return dataSource;
     }
 
     public NeoStoreDataSource getDataSource( File storeDir, FileSystemAbstraction fs,
-                                             PageCache pageCache, Map<String, String> additionalConfig )
+            PageCache pageCache, Map<String,String> additionalConfig )
     {
-        KernelHealth kernelHealth = new KernelHealth( mock( KernelPanicEventGenerator.class ),
-                NullLogProvider.getInstance().getLog( KernelHealth.class ) );
-        return getDataSource( storeDir, fs, pageCache, additionalConfig, kernelHealth );
+        DatabaseHealth databaseHealth = new DatabaseHealth( mock( DatabasePanicEventGenerator.class ),
+                NullLogProvider.getInstance().getLog( DatabaseHealth.class ) );
+        return getDataSource( storeDir, fs, pageCache, additionalConfig, databaseHealth );
     }
 
     private DependencyResolver dependencyResolverForNoIndexProvider()
