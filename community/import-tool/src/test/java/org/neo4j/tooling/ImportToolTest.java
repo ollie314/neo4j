@@ -86,6 +86,7 @@ import static org.neo4j.helpers.collection.Iterators.count;
 import static org.neo4j.helpers.collection.MapUtil.store;
 import static org.neo4j.helpers.collection.MapUtil.stringMap;
 import static org.neo4j.tooling.ImportTool.MULTI_FILE_DELIMITER;
+import static org.neo4j.unsafe.impl.batchimport.Configuration.BAD_FILE_NAME;
 
 public class ImportToolTest
 {
@@ -598,7 +599,7 @@ public class ImportToolTest
         // GIVEN
         List<String> nodeIds = nodeIds();
         Configuration config = Configuration.TABS;
-        File bad = file( "bad.log" );
+        File bad = badFile();
 
         // WHEN data file contains more columns than header file
         int extraColumns = 3;
@@ -890,7 +891,7 @@ public class ImportToolTest
                 relationship( "missing", "a", "KNOWS", "ee" ) ); // line 3 of file2
         File relationshipData1 = relationshipData( true, config, relationships.iterator(), lines( 0, 2 ), true );
         File relationshipData2 = relationshipData( false, config, relationships.iterator(), lines( 2, 5 ), true );
-        File bad = file( "bad.log" );
+        File bad = badFile();
 
         // WHEN importing data where some relationships refer to missing nodes
         importTool(
@@ -926,7 +927,7 @@ public class ImportToolTest
                 relationship( "missing", "a", "KNOWS" ) ); // line 3 of file2
         File relationshipData1 = relationshipData( true, config, relationships.iterator(), lines( 0, 2 ), true );
         File relationshipData2 = relationshipData( false, config, relationships.iterator(), lines( 2, 5 ), true );
-        File bad = file( "bad.log" );
+        File bad = badFile();
 
         // WHEN importing data where some relationships refer to missing nodes
         try
@@ -961,7 +962,7 @@ public class ImportToolTest
 
         File relationshipData1 = relationshipData( true, config, relationships.iterator(), lines( 0, 2 ), true );
         File relationshipData2 = relationshipData( false, config, relationships.iterator(), lines( 2, 5 ), true );
-        File bad = file( "bad.log" );
+        File bad = badFile();
 
         // WHEN importing data where some relationships refer to missing nodes
         try
@@ -1114,27 +1115,27 @@ public class ImportToolTest
         shouldPrintReferenceLinkAsPartOfErrorMessage( nodeIds(),
                 Iterators.iterator( new RelationshipDataLine( "1", "", "type", "name" ) ),
                 "Relationship missing mandatory field 'END_ID', read more about relationship " +
-                "format in the manual:  http://neo4j.com/docs/operations-manual/" +
+                "format in the manual:  https://neo4j.com/docs/operations-manual/" +
                 docsVersion +
-                "/#import-tool-header-format-rels" );
+                "/import/import-tool-header-format/#import-tool-header-format-rels" );
         shouldPrintReferenceLinkAsPartOfErrorMessage( nodeIds(),
                 Iterators.iterator( new RelationshipDataLine( "", "1", "type", "name" ) ),
                 "Relationship missing mandatory field 'START_ID', read more about relationship " +
-                "format in the manual:  http://neo4j.com/docs/operations-manual/" +
+                "format in the manual:  https://neo4j.com/docs/operations-manual/" +
                 docsVersion +
-                "/#import-tool-header-format-rels" );
+                "/import/import-tool-header-format/#import-tool-header-format-rels" );
         shouldPrintReferenceLinkAsPartOfErrorMessage( nodeIds(),
                 Iterators.iterator( new RelationshipDataLine( "1", "2", "", "name" ) ),
                 "Relationship missing mandatory field 'TYPE', read more about relationship " +
-                "format in the manual:  http://neo4j.com/docs/operations-manual/" +
-                docsVersion +
-                "/#import-tool-header-format-rels" );
+                "format in the manual:  https://neo4j.com/docs/operations-manual/" +
+                 docsVersion +
+                "/import/import-tool-header-format/#import-tool-header-format-rels" );
         shouldPrintReferenceLinkAsPartOfErrorMessage( Arrays.asList( "1", "1" ),
                 Iterators.iterator( new RelationshipDataLine( "1", "2", "type", "name" ) ),
                 "Duplicate input ids that would otherwise clash can be put into separate id space, read more " +
-                "about how to use id spaces in the manual: http://neo4j.com/docs/operations-manual/" +
+                "about how to use id spaces in the manual: https://neo4j.com/docs/operations-manual/" +
                 docsVersion +
-                "/#import-tool-id-spaces" );
+                "/import/import-tool-header-format/#import-tool-id-spaces" );
     }
 
     private void shouldPrintReferenceLinkAsPartOfErrorMessage( List<String> nodeIds,
@@ -1935,6 +1936,11 @@ public class ImportToolTest
     private File file( String localname )
     {
         return new File( dbRule.getStoreDir(), localname );
+    }
+
+    private File badFile()
+    {
+        return new File( dbRule.getStoreDirFile(), BAD_FILE_NAME );
     }
 
     private void writeRelationshipHeader( PrintStream writer, Configuration config,

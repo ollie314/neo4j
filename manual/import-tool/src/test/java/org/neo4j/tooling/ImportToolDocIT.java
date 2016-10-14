@@ -46,8 +46,6 @@ import org.neo4j.test.TargetDirectory;
 import org.neo4j.test.TargetDirectory.TestDirectory;
 import org.neo4j.test.TestGraphDatabaseFactory;
 import org.neo4j.tooling.ImportTool.Options;
-import org.neo4j.unsafe.impl.batchimport.Configuration;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.neo4j.helpers.ArrayUtil.join;
@@ -55,6 +53,7 @@ import static org.neo4j.helpers.collection.Iterators.asSet;
 import static org.neo4j.io.fs.FileUtils.readTextFile;
 import static org.neo4j.io.fs.FileUtils.writeToFile;
 import static org.neo4j.tooling.ImportTool.MULTI_FILE_DELIMITER;
+import static org.neo4j.unsafe.impl.batchimport.Configuration.BAD_FILE_NAME;
 
 public class ImportToolDocIT
 {
@@ -521,7 +520,7 @@ public class ImportToolDocIT
         }
 
         // WHEN
-        File badFile = new File( directory.directory(), Configuration.BAD_FILE_NAME );
+        File badFile = badFile();
         String[] arguments = arguments(
                 "--into", directory.absolutePath().getAbsolutePath(),
                 "--nodes", movies.getAbsolutePath(),
@@ -554,7 +553,7 @@ public class ImportToolDocIT
         }
 
         // WHEN
-        File badFile = new File( directory.directory(), Configuration.BAD_FILE_NAME );
+        File badFile = badFile();
         String[] arguments = arguments(
                 "--into", directory.absolutePath().getAbsolutePath(),
                 "--nodes", actors.getAbsolutePath(),
@@ -755,5 +754,10 @@ public class ImportToolDocIT
     private void importTool( String[] arguments ) throws IOException
     {
         ImportTool.main( arguments, true );
+    }
+
+    private File badFile()
+    {
+        return new File( directory.absolutePath(), BAD_FILE_NAME );
     }
 }
