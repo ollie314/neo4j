@@ -45,7 +45,6 @@
     <module>integrationtests</module>
     <module>stresstests</module>
     <module>tools</module>
-    <module>doctools</module>
   </modules>
 
   <build>
@@ -116,7 +115,7 @@
             <plainTextReport>true</plainTextReport>
             <prependText>${licensing.prepend.text}</prependText>
             <excludedGroups>
-              ^((org.neo4j){1}|(org.neo4j.app){1}|(org.neo4j.doc){1}|(org.neo4j.server.plugin){1}|(org.neo4j.assembly){1}|(org.neo4j.bolt){1}|(org.neo4j.build){1}|(org.neo4j.examples){1}|(org.neo4j.test){1})$
+              ^((org.neo4j){1}|(org.neo4j.app){1}|(org.neo4j.server.plugin){1}|(org.neo4j.assembly){1}|(org.neo4j.bolt){1}|(org.neo4j.build){1}|(org.neo4j.test){1})$
             </excludedGroups>
             <excludedArtifacts>^((neo4j-browser))$</excludedArtifacts>
             <includedScopes>compile</includedScopes>
@@ -241,7 +240,6 @@
         </property>
       </activation>
       <modules>
-        <module>manual</module>
         <module>packaging</module>
         <module>packaging/installer-linux</module>
       </modules>
@@ -278,54 +276,6 @@
             </executions>
           </plugin>
         </plugins>
-      </build>
-    </profile>
-    <profile>
-      <id>neo-docs-build</id>
-      <activation>
-        <activeByDefault>false</activeByDefault>
-        <property>
-          <name>docsBuild</name>
-        </property>
-      </activation>
-      <modules>
-        <module>manual</module>
-      </modules>
-      <properties>
-        <attach-java-sources-phase>package</attach-java-sources-phase>
-        <attach-java-test-sources-phase>package</attach-java-test-sources-phase>
-        <attach-test-jar-phase>package</attach-test-jar-phase>
-        <attach-docs-phase>verify</attach-docs-phase>
-        <integration-test-phase>integration-test</integration-test-phase>
-      </properties>
-      <build>
-        <pluginManagement>
-          <plugins>
-            <plugin>
-              <groupId>org.apache.maven.plugins</groupId>
-              <artifactId>maven-surefire-plugin</artifactId>
-              <configuration>
-                <includes>
-                  <include>**/DocTest*.java</include>
-                  <include>**/*DocTest.java</include>
-                  <include>**/*DocTests.java</include>
-                  <include>**/*DocTestCase.java</include>
-                </includes>
-              </configuration>
-            </plugin>
-            <plugin>
-              <groupId>org.apache.maven.plugins</groupId>
-              <artifactId>maven-failsafe-plugin</artifactId>
-              <configuration>
-                <includes>
-                  <include>**/DocIT*.java</include>
-                  <include>**/*DocIT.java</include>
-                  <include>**/*DocITCase.java</include>
-                </includes>
-              </configuration>
-            </plugin>
-          </plugins>
-        </pluginManagement>
       </build>
     </profile>
     <profile>
