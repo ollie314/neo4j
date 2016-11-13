@@ -19,15 +19,17 @@
  */
 package upgrade;
 
-import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
+import org.junit.rules.RuleChain;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.mockito.Mockito;
 
 import java.io.File;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
@@ -39,6 +41,7 @@ import java.util.stream.Stream;
 import org.neo4j.consistency.checking.full.ConsistencyCheckIncompleteException;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
+import org.neo4j.graphdb.mockfs.DelegatingFileSystemAbstraction;
 import org.neo4j.helpers.collection.MapUtil;
 import org.neo4j.io.fs.DefaultFileSystemAbstraction;
 import org.neo4j.io.fs.FileSystemAbstraction;
@@ -54,6 +57,7 @@ import org.neo4j.kernel.impl.store.MetaDataStore;
 import org.neo4j.kernel.impl.store.NeoStores;
 import org.neo4j.kernel.impl.store.StoreFactory;
 import org.neo4j.kernel.impl.store.format.RecordFormats;
+import org.neo4j.kernel.impl.store.format.standard.MetaDataRecordFormat;
 import org.neo4j.kernel.impl.store.format.standard.StandardV2_0;
 import org.neo4j.kernel.impl.store.format.standard.StandardV2_1;
 import org.neo4j.kernel.impl.store.format.standard.StandardV2_2;
@@ -77,9 +81,11 @@ import org.neo4j.test.rule.PageCacheRule;
 import org.neo4j.test.rule.TestDirectory;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.emptyCollectionOf;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertEquals;
@@ -89,6 +95,7 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeTrue;
+import static org.junit.internal.matchers.ThrowableMessageMatcher.hasMessage;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.verify;
@@ -107,10 +114,15 @@ import static org.neo4j.kernel.impl.storemigration.MigrationTestUtils.verifyFile
 @RunWith(Parameterized.class)
 public class StoreUpgraderTest
 {
+    private final TestDirectory directory = TestDirectory.testDirectory();
+    private final PageCacheRule pageCacheRule = new PageCacheRule();
+    private final ExpectedException expectedException = ExpectedException.none();
+
     @Rule
-    public final TestDirectory directory = TestDirectory.testDirectory();
-    @Rule
-    public final PageCacheRule pageCacheRule = new PageCacheRule();
+    public final RuleChain ruleChain = RuleChain.outerRule( expectedException )
+                                                .around( pageCacheRule )
+                                                .around( directory );
+
     private File dbDirectory;
     private final FileSystemAbstraction fileSystem = new DefaultFileSystemAbstraction();
     private StoreVersionCheck check;
@@ -144,6 +156,57 @@ public class StoreUpgraderTest
         dbDirectory = directory.directory( "db_" + version );
         File prepareDirectory = directory.directory( "prepare_" + version );
         prepareSampleDatabase( version, fileSystem, dbDirectory, prepareDirectory );
+    }
+
+    @Test
+    public void failMigrationWhenFailDuringTransactionInformationRetrieval() throws IOException
+    {
+        File storeDirectory = directory.graphDbDir();
+        File prepare = directory.directory( "prepare" );
+        FileSystemAbstraction fs = new DelegatingFileSystemAbstraction( fileSystem )
+        {
+            @Override
+            public File[] listFiles( File directory, FilenameFilter filter )
+            {
+                sneakyThrow( new IOException( "Enforced IO Exception Fail to open file" ) );
+                return super.listFiles( directory, filter );
+            }
+
+            @Override
+            public boolean fileExists( File fileName )
+            {
+                return true;
+            }
+        };
+
+        prepareSampleDatabase( version, fs, storeDirectory, prepare );
+        // and a state of the migration saying that it has done the actual migration
+        PageCache pageCache = pageCacheRule.getPageCache( fs );
+        // remove metadata store record to force tx info lookup in tx logs
+        MetaDataStore.setRecord( pageCache, new File( storeDirectory, MetaDataStore.DEFAULT_NAME),
+                MetaDataStore.Position.LAST_TRANSACTION_COMMIT_TIMESTAMP, MetaDataRecordFormat.FIELD_NOT_PRESENT );
+
+        UpgradableDatabase upgradableDatabase = new UpgradableDatabase( fs, new StoreVersionCheck( pageCache ),
+                new LegacyStoreVersionCheck( fs ), getRecordFormats() ) {
+            @Override
+            public RecordFormats checkUpgradeable( File storeDirectory )
+            {
+                return getRecordFormats();
+            }
+        };
+        SilentMigrationProgressMonitor progressMonitor = new SilentMigrationProgressMonitor();
+
+        StoreMigrator defaultMigrator = new StoreMigrator( fs, pageCache, getTuningConfig(), NullLogService.getInstance(),
+                schemaIndexProvider );
+        StoreUpgrader upgrader = new StoreUpgrader( upgradableDatabase, progressMonitor, allowMigrateConfig, fs,
+                NullLogProvider.getInstance() );
+        upgrader.addParticipant( defaultMigrator );
+
+        expectedException.expect( UnableToUpgradeException.class );
+        expectedException.expectCause( instanceOf( IOException.class ) );
+        expectedException.expectCause( hasMessage( containsString( "Enforced IO Exception Fail to open file" ) ) );
+
+        upgrader.migrateIfNeeded( storeDirectory );
     }
 
     @Test
@@ -452,6 +515,11 @@ public class StoreUpgraderTest
         upgrader.addParticipant( indexMigrator );
         upgrader.addParticipant( defaultMigrator );
         return upgrader;
+    }
+
+    private static <T extends Throwable> void sneakyThrow( Throwable throwable ) throws T
+    {
+        throw (T) throwable;
     }
 
     private List<File> migrationHelperDirs()

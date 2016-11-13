@@ -23,6 +23,7 @@ import org.apache.commons.lang.StringUtils;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Rule;
 
 import java.io.File;
 import java.io.IOException;
@@ -49,19 +50,20 @@ import org.neo4j.helpers.HostnamePort;
 import org.neo4j.kernel.api.bolt.BoltConnectionTracker;
 import org.neo4j.kernel.api.bolt.ManagedBoltStateMachine;
 import org.neo4j.kernel.api.exceptions.InvalidArgumentsException;
-import org.neo4j.kernel.enterprise.builtinprocs.BuiltInProcedures;
+import org.neo4j.kernel.enterprise.builtinprocs.EnterpriseBuiltInDbmsProcedures;
 import org.neo4j.kernel.impl.proc.Procedures;
 import org.neo4j.logging.Log;
 import org.neo4j.procedure.Context;
 import org.neo4j.procedure.Mode;
 import org.neo4j.procedure.Name;
 import org.neo4j.procedure.Procedure;
+import org.neo4j.procedure.TerminationGuard;
 import org.neo4j.procedure.UserFunction;
+import org.neo4j.server.security.enterprise.configuration.SecuritySettings;
 import org.neo4j.test.DoubleLatch;
 import org.neo4j.test.rule.concurrent.ThreadingRule;
 
 import static java.lang.String.format;
-import static java.util.Collections.singletonMap;
 import static java.util.stream.Collectors.toList;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -70,11 +72,12 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.neo4j.bolt.v1.messaging.message.InitMessage.init;
 import static org.neo4j.bolt.v1.messaging.util.MessageMatchers.msgSuccess;
 import static org.neo4j.bolt.v1.transport.integration.TransportTestUtil.eventuallyReceives;
 import static org.neo4j.helpers.collection.MapUtil.map;
+import static org.neo4j.helpers.collection.MapUtil.stringMap;
 import static org.neo4j.procedure.Mode.READ;
 import static org.neo4j.procedure.Mode.WRITE;
 import static org.neo4j.server.security.enterprise.auth.plugin.api.PredefinedRoles.ADMIN;
@@ -113,29 +116,36 @@ public abstract class ProcedureInteractionTestBase<S>
         "writeSubject", "pwdSubject", "noneSubject", "neo4j" };
     String[] initialRoles = { ADMIN, ARCHITECT, PUBLISHER, READER, EMPTY_ROLE };
 
-    protected abstract ThreadingRule threading();
+    @Rule
+    public final ThreadingRule threading = new ThreadingRule();
+
+    private ThreadingRule threading()
+    {
+        return threading;
+    }
 
     EnterpriseUserManager userManager;
 
     protected NeoInteractionLevel<S> neo;
     File securityLog;
 
-    private Map<String,String> configure() throws IOException
+    Map<String,String> defaultConfiguration() throws IOException
     {
         Path homeDir = Files.createTempDirectory( "logs" );
         securityLog = new File( homeDir.toFile(), "security.log" );
-        return singletonMap( GraphDatabaseSettings.logs_directory.name(), homeDir.toAbsolutePath().toString() );
+        return stringMap( GraphDatabaseSettings.logs_directory.name(), homeDir.toAbsolutePath().toString(),
+                SecuritySettings.procedure_roles.name(), "test.allowed*Procedure:role1;test.nestedAllowedFunction:role1;test.allowedFunc*:role1;test.*estedAllowedProcedure:role1");
     }
 
     @Before
     public void setUp() throws Throwable
     {
-        neo = setUpNeoServer( configure() );
-        reSetUp();
+        configuredSetup( defaultConfiguration() );
     }
 
-    void reSetUp() throws Exception
+    void configuredSetup( Map<String,String> config ) throws Throwable
     {
+        neo = setUpNeoServer( config );
         Procedures procedures = neo.getLocalGraph().getDependencyResolver().resolveDependency( Procedures.class );
         procedures.registerProcedure( ClassWithProcedures.class );
         procedures.registerFunction( ClassWithFunctions.class );
@@ -366,8 +376,7 @@ public abstract class ProcedureInteractionTestBase<S>
     private String assertCallEmpty( S subject, String call )
     {
         return neo.executeQuery( subject, call, null,
-                ( res ) -> assertFalse( "Expected no results", res.hasNext()
-            ) );
+                result -> assertTrue( "Expected no results", result.stream().collect( toList() ).isEmpty() ) );
     }
 
     private void executeQuery( S subject, String call )
@@ -453,8 +462,8 @@ public abstract class ProcedureInteractionTestBase<S>
 
     private Map<String,Long> countTransactionsByUsername()
     {
-        return BuiltInProcedures.countTransactionByUsername(
-                    BuiltInProcedures.getActiveTransactions(
+        return EnterpriseBuiltInDbmsProcedures.countTransactionByUsername(
+                    EnterpriseBuiltInDbmsProcedures.getActiveTransactions(
                             neo.getLocalGraph().getDependencyResolver()
                     ).stream()
                             .filter( tx -> !tx.terminationReason().isPresent() )
@@ -464,9 +473,9 @@ public abstract class ProcedureInteractionTestBase<S>
 
     Map<String,Long> countBoltConnectionsByUsername()
     {
-        BoltConnectionTracker boltConnectionTracker = BuiltInProcedures.getBoltConnectionTracker(
+        BoltConnectionTracker boltConnectionTracker = EnterpriseBuiltInDbmsProcedures.getBoltConnectionTracker(
                 neo.getLocalGraph().getDependencyResolver() );
-        return BuiltInProcedures.countConnectionsByUsername(
+        return EnterpriseBuiltInDbmsProcedures.countConnectionsByUsername(
                 boltConnectionTracker
                         .getActiveConnections()
                         .stream()
@@ -501,7 +510,7 @@ public abstract class ProcedureInteractionTestBase<S>
         }
     }
 
-    @SuppressWarnings( "unused" )
+    @SuppressWarnings( {"unused", "WeakerAccess"} )
     public static class ClassWithProcedures
     {
         @Context
@@ -513,6 +522,45 @@ public abstract class ProcedureInteractionTestBase<S>
         private static final AtomicReference<LatchedRunnables> testLatch = new AtomicReference<>();
 
         static DoubleLatch doubleLatch = null;
+
+        public static volatile DoubleLatch volatileLatch = null;
+
+        @Context
+        public TerminationGuard guard;
+
+        @Procedure(name = "test.loop")
+        public void loop()
+        {
+            DoubleLatch latch = volatileLatch;
+
+            if ( latch != null )
+            {
+                latch.startAndWaitForAllToStart();
+            }
+            try
+            {
+                //noinspection InfiniteLoopStatement
+                while ( true )
+                {
+                    try
+                    {
+                        Thread.sleep( 250 );
+                    }
+                    catch ( InterruptedException e )
+                    {
+                        Thread.interrupted();
+                    }
+                    guard.check();
+                }
+            }
+            finally
+            {
+                if ( latch != null )
+                {
+                    latch.finish();
+                }
+            }
+        }
 
         @Procedure( name = "test.neverEnding" )
         public void neverEndingWithLock()
@@ -546,21 +594,21 @@ public abstract class ProcedureInteractionTestBase<S>
             return Stream.of( new AuthProceduresBase.StringResult( "static" ) );
         }
 
-        @Procedure( name = "test.allowedReadProcedure", allowed = {"role1"}, mode = Mode.READ )
+        @Procedure( name = "test.allowedReadProcedure", mode = Mode.READ )
         public Stream<AuthProceduresBase.StringResult> allowedProcedure1()
         {
             Result result = db.execute( "MATCH (:Foo) WITH count(*) AS c RETURN 'foo' AS foo" );
             return result.stream().map( r -> new AuthProceduresBase.StringResult( r.get( "foo" ).toString() ) );
         }
 
-        @Procedure( name = "test.otherAllowedReadProcedure", allowed = {"otherRole"}, mode = Mode.READ )
+        @Procedure( name = "test.otherAllowedReadProcedure", mode = Mode.READ )
         public Stream<AuthProceduresBase.StringResult> otherAllowedProcedure()
         {
             Result result = db.execute( "MATCH (:Foo) WITH count(*) AS c RETURN 'foo' AS foo" );
             return result.stream().map( r -> new AuthProceduresBase.StringResult( r.get( "foo" ).toString() ) );
         }
 
-        @Procedure( name = "test.allowedWriteProcedure", allowed = {"otherRole", "role1"}, mode = Mode.WRITE )
+        @Procedure( name = "test.allowedWriteProcedure", mode = Mode.WRITE )
         public Stream<AuthProceduresBase.StringResult> allowedProcedure2()
         {
             db.execute( "UNWIND [1, 2] AS i CREATE (:VeryUniqueLabel {prop: 'a'})" );
@@ -568,14 +616,14 @@ public abstract class ProcedureInteractionTestBase<S>
             return result.stream().map( r -> new AuthProceduresBase.StringResult( r.get( "a" ).toString() ) );
         }
 
-        @Procedure( name = "test.allowedSchemaProcedure", allowed = {"role1"}, mode = Mode.SCHEMA )
+        @Procedure( name = "test.allowedSchemaProcedure", mode = Mode.SCHEMA )
         public Stream<AuthProceduresBase.StringResult> allowedProcedure3()
         {
             db.execute( "CREATE INDEX ON :VeryUniqueLabel(prop)" );
             return Stream.of( new AuthProceduresBase.StringResult( "OK" ) );
         }
 
-        @Procedure( name = "test.nestedAllowedProcedure", allowed = {"role1"}, mode = Mode.READ )
+        @Procedure( name = "test.nestedAllowedProcedure", mode = Mode.READ )
         public Stream<AuthProceduresBase.StringResult> nestedAllowedProcedure(
                 @Name( "nestedProcedure" ) String nestedProcedure
         )
@@ -584,14 +632,14 @@ public abstract class ProcedureInteractionTestBase<S>
             return result.stream().map( r -> new AuthProceduresBase.StringResult( r.get( "value" ).toString() ) );
         }
 
-        @Procedure( name = "test.doubleNestedAllowedProcedure", allowed = {"role1"}, mode = Mode.READ )
+        @Procedure( name = "test.doubleNestedAllowedProcedure", mode = Mode.READ )
         public Stream<AuthProceduresBase.StringResult> doubleNestedAllowedProcedure()
         {
             Result result = db.execute( "CALL test.nestedAllowedProcedure('test.allowedReadProcedure') YIELD value" );
             return result.stream().map( r -> new AuthProceduresBase.StringResult( r.get( "value" ).toString() ) );
         }
 
-        @Procedure( name = "test.failingNestedAllowedWriteProcedure", allowed = {"role1"}, mode = Mode.WRITE )
+        @Procedure( name = "test.failingNestedAllowedWriteProcedure", mode = Mode.WRITE )
         public Stream<AuthProceduresBase.StringResult> failingNestedAllowedWriteProcedure()
         {
             Result result = db.execute( "CALL test.nestedReadProcedure('test.allowedWriteProcedure') YIELD value" );
@@ -666,21 +714,33 @@ public abstract class ProcedureInteractionTestBase<S>
         @Context
         public GraphDatabaseService db;
 
-        @UserFunction( name = "test.allowedFunction1", allowed = {"role1"} )
+        @UserFunction( name = "test.nonAllowedFunc" )
+        public String nonAllowedFunc()
+        {
+            return "success";
+        }
+
+        @UserFunction( name = "test.allowedFunc" )
+        public String allowedFunc()
+        {
+            return "success for role1";
+        }
+
+        @UserFunction( name = "test.allowedFunction1" )
         public String allowedFunction1()
         {
             Result result = db.execute( "MATCH (:Foo) WITH count(*) AS c RETURN 'foo' AS foo" );
             return result.next().get( "foo" ).toString();
         }
 
-        @UserFunction( name = "test.allowedFunction2", allowed = {"role2"} )
+        @UserFunction( name = "test.allowedFunction2" )
         public String allowedFunction2()
         {
             Result result = db.execute( "MATCH (:Foo) WITH count(*) AS c RETURN 'foo' AS foo" );
             return result.next().get( "foo" ).toString();
         }
 
-        @UserFunction( name = "test.nestedAllowedFunction", allowed = {"role1"} )
+        @UserFunction( name = "test.nestedAllowedFunction" )
         public String nestedAllowedFunction(
                 @Name( "nestedFunction" ) String nestedFunction
         )

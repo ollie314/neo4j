@@ -61,9 +61,10 @@ import static java.util.Collections.singletonMap;
  */
 public abstract class EditionModule
 {
-    public void registerProcedures( Procedures procedures ) throws KernelException
+    void registerProcedures( Procedures procedures ) throws KernelException
     {
         procedures.registerProcedure( org.neo4j.kernel.builtinprocs.BuiltInProcedures.class );
+        procedures.registerProcedure( org.neo4j.kernel.builtinprocs.BuiltInDbmsProcedures.class );
 
         registerEditionSpecificProcedures( procedures );
     }
@@ -121,7 +122,7 @@ public abstract class EditionModule
 
     public abstract void setupSecurityModule( PlatformModule platformModule, Procedures procedures );
 
-    public static void setupSecurityModule( PlatformModule platformModule, Log log, Procedures procedures,
+    protected static void setupSecurityModule( PlatformModule platformModule, Log log, Procedures procedures,
             String key )
     {
         for ( SecurityModule candidate : Service.load( SecurityModule.class ) )
@@ -176,7 +177,7 @@ public abstract class EditionModule
                     } );
                     return;
                 }
-                catch ( KernelException e )
+                catch ( Exception e )
                 {
                     String errorMessage = "Failed to load security module.";
                     log.error( errorMessage );

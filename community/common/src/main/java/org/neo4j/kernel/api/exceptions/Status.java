@@ -412,7 +412,9 @@ public interface Status
         ModifiedConcurrently( TransientError, "The user was modified concurrently to this request." ),
         EncryptionRequired( ClientError, "A TLS encrypted connection is required." ),
         Forbidden( ClientError, "An attempt was made to perform an unauthorized action." ),
-        AuthorizationExpired( ClientError, "The stored authorization info has expired. Please reconnect." );
+        AuthorizationExpired( ClientError, "The stored authorization info has expired. Please reconnect." ),
+        AuthProviderTimeout( TransientError, "An auth provider request timed out." ),
+        AuthProviderFailed( TransientError, "An auth provider request failed." );
 
         private final Code code;
 
@@ -638,14 +640,12 @@ public interface Status
 
         private final boolean rollbackTransaction;
         private final boolean shouldLog;
-        private final boolean respondToClient;
         private final String description;
 
         Classification( TransactionEffect transactionEffect, PublishingPolicy publishingPolicy, String description )
         {
             this.description = description;
             this.shouldLog = publishingPolicy.shouldLog();
-            this.respondToClient = publishingPolicy != PublishingPolicy.REFERS_TO_LOG;
             this.rollbackTransaction = transactionEffect == TransactionEffect.ROLLBACK;
         }
 
@@ -657,11 +657,6 @@ public interface Status
         public boolean shouldLog()
         {
             return shouldLog;
-        }
-
-        public boolean shouldRespondToClient()
-        {
-            return respondToClient;
         }
 
         public String description()

@@ -473,7 +473,7 @@ public class MuninnPageCache implements PageCache
             {
                 close();
             }
-            catch ( IOException closeException )
+            catch ( Exception closeException )
             {
                 exception.addSuppressed( closeException );
             }
@@ -586,7 +586,7 @@ public class MuninnPageCache implements PageCache
     }
 
     @Override
-    public synchronized void close() throws IOException
+    public synchronized void close()
     {
         if ( closed )
         {
@@ -602,7 +602,7 @@ public class MuninnPageCache implements PageCache
             {
                 int refCount = files.pagedFile.getRefCount();
                 msg.append( "\n\t" );
-                msg.append( files.file.getName() );
+                msg.append( files.file );
                 msg.append( " (" ).append( refCount );
                 msg.append( refCount == 1? " mapping)" : " mappings)" );
                 files = files.next;
@@ -619,6 +619,9 @@ public class MuninnPageCache implements PageCache
 
         interrupt( evictionThread );
         evictionThread = null;
+
+        // Close the page swapper factory last. If this fails then we will still consider ourselves closed.
+        swapperFactory.close();
     }
 
     private void interrupt( Thread thread )

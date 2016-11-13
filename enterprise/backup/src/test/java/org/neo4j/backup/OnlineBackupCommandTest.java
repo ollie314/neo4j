@@ -19,19 +19,24 @@
  */
 package org.neo4j.backup;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
 import org.neo4j.commandline.admin.CommandFailed;
+import org.neo4j.commandline.admin.CommandLocator;
 import org.neo4j.commandline.admin.IncorrectUsage;
+import org.neo4j.commandline.admin.Usage;
+import org.neo4j.consistency.ConsistencyCheckService;
 import org.neo4j.consistency.ConsistencyCheckSettings;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.helpers.HostnamePort;
@@ -42,10 +47,10 @@ import static java.util.Arrays.asList;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
-
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.hasItem;
 import static org.hamcrest.CoreMatchers.is;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
@@ -53,8 +58,9 @@ import static org.mockito.Matchers.anyBoolean;
 import static org.mockito.Matchers.anyLong;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.stub;
 import static org.mockito.Mockito.verify;
-
+import static org.neo4j.consistency.ConsistencyCheckService.Result.success;
 import static org.neo4j.graphdb.factory.GraphDatabaseSettings.cypher_planner;
 
 public class OnlineBackupCommandTest
@@ -62,18 +68,13 @@ public class OnlineBackupCommandTest
     @Rule
     public TestDirectory testDirectory = TestDirectory.testDirectory();
     private final BackupTool tool = mock( BackupTool.class );
-    private OnlineBackupCommand command;
     private Path configDir;
-
-    public OnlineBackupCommandTest()
-    {
-    }
+    private ConsistencyCheckService consistencyCheckService;
 
     @Before
     public void setUp() throws Exception
     {
         configDir = testDirectory.directory( "config-dir" ).toPath();
-        command = new OnlineBackupCommand( tool, Paths.get( "/some/path" ), configDir );
     }
 
     @Test
@@ -164,12 +165,38 @@ public class OnlineBackupCommandTest
     }
 
     @Test
-    public void shouldAskForConsistencyCheckIfSpecified()
-            throws CommandFailed, IncorrectUsage, BackupTool.ToolFailureException
+    public void shouldAskForConsistencyCheckIfSpecified() throws Exception
+
     {
+        consistencyCheckService = mock( ConsistencyCheckService.class );
+        stub( consistencyCheckService.runFullConsistencyCheck( any(), any(), any(), any(), any(), any(), anyBoolean(),
+                any() ) ).toReturn( success( null ) );
+        ArgumentCaptor<ConsistencyCheck> captor = ArgumentCaptor.forClass( ConsistencyCheck.class );
+        stub( tool.executeBackup( any(), any(), captor.capture(), any(), anyLong(), anyBoolean() ) ).toReturn( null );
+
         execute( "--check-consistency", "--to=/" );
 
-        verify( tool ).executeBackup( any(), any(), eq( ConsistencyCheck.FULL ), any(), anyLong(), anyBoolean() );
+        captor.getValue().runFull( null, null, null, null, null, null, false );
+
+        verify( consistencyCheckService ).runFullConsistencyCheck( any(), any(), any(), any(), any(), any(),
+                anyBoolean(), eq( new File(".").getCanonicalFile()) );
+    }
+
+    @Test
+    public void shouldSpecifyReportDirIfSpecified() throws Exception
+    {
+        consistencyCheckService = mock( ConsistencyCheckService.class );
+        stub( consistencyCheckService.runFullConsistencyCheck( any(), any(), any(), any(), any(), any(), anyBoolean(),
+                any() ) ).toReturn( success( null ) );
+        ArgumentCaptor<ConsistencyCheck> captor = ArgumentCaptor.forClass( ConsistencyCheck.class );
+        stub( tool.executeBackup( any(), any(), captor.capture(), any(), anyLong(), anyBoolean() ) ).toReturn( null );
+
+        execute( "--check-consistency", "--to=/", "--cc-report-dir=" + Paths.get( "some", "dir" ) );
+
+        captor.getValue().runFull( null, null, null, null, null, null, false );
+
+        verify( consistencyCheckService ).runFullConsistencyCheck( any(), any(), any(), any(), any(), any(),
+                anyBoolean(), eq( new File("some/dir").getCanonicalFile() ) );
     }
 
     @Test
@@ -251,8 +278,53 @@ public class OnlineBackupCommandTest
         verify( tool ).executeBackup( any(), any(), any(), any(), eq( HOURS.toMillis( 10 ) ), anyBoolean() );
     }
 
+    @Test
+    public void shouldPrintNiceHelp() throws Throwable
+    {
+        try ( ByteArrayOutputStream baos = new ByteArrayOutputStream() )
+        {
+            PrintStream ps = new PrintStream( baos );
+
+            Usage usage = new Usage( "neo4j-admin", mock( CommandLocator.class ) );
+            usage.printUsageForCommand( new OnlineBackupCommand.Provider(), ps::println );
+
+            assertEquals( String.format( "usage: neo4j-admin backup [--from=<address>] --to=<backup-path>%n" +
+                            "                          [--check-consistency[=<true|false>]]%n" +
+                            "                          [--cc-report-dir=<directory>]%n" +
+                            "                          [--additional-config=<config-file-path>]%n" +
+                            "                          [--timeout=<timeout>]%n" +
+                            "%n" +
+                            "Perform a backup, over the network, from a running Neo4j server into a local%n" +
+                            "copy of the database store (the backup). Neo4j Server must be configured to run%n" +
+                            "a backup service. See http://neo4j.com/docs/operations-manual/current/backup/%n" +
+                            "for more details.%n" +
+                            "%n" +
+                            "WARNING: this command is experimental and subject to change.%n" +
+                            "%n" +
+                            "options:%n" +
+                            "  --from=<address>                         Host and port of Neo4j.%n" +
+                            "                                           [default:localhost:6362]%n" +
+                            "  --to=<backup-path>                       Directory where the backup will be%n" +
+                            "                                           made; if there is already a backup%n" +
+                            "                                           present an incremental backup will be%n" +
+                            "                                           attempted.%n" +
+                            "  --check-consistency=<true|false>         If a consistency check should be%n" +
+                            "                                           made. [default:true]%n" +
+                            "  --cc-report-dir=<directory>              Directory where consistency report%n" +
+                            "                                           will be written. [default:.]%n" +
+                            "  --additional-config=<config-file-path>   Configuration file to supply%n" +
+                            "                                           additional configuration in.%n" +
+                            "                                           [default:]%n" +
+                            "  --timeout=<timeout>                      Timeout in the form <time>[ms|s|m|h],%n" +
+                            "                                           where the default unit is seconds.%n" +
+                            "                                           [default:20m]%n" ),
+                    baos.toString() );
+        }
+    }
+
     private void execute( String... args ) throws IncorrectUsage, CommandFailed
     {
-        command.execute( args );
+        new OnlineBackupCommand( tool, Paths.get( "/some/path" ), configDir, consistencyCheckService )
+                .execute( args );
     }
 }

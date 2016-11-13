@@ -65,7 +65,7 @@ public class EnterpriseNeoServer extends CommunityNeoServer
         HA,
         ARBITER,
         CORE,
-        EDGE;
+        READ_REPLICA;
 
         public static Mode fromString( String value )
         {
@@ -95,7 +95,7 @@ public class EnterpriseNeoServer extends CommunityNeoServer
         return new CoreGraphDatabase( storeDir, config.getParams(), dependencies );
     };
 
-    private static final GraphFactory EDGE_FACTORY = ( config, dependencies ) -> {
+    private static final GraphFactory READ_REPLICA_FACTORY = ( config, dependencies ) -> {
         File storeDir = config.get( DatabaseManagementSystemSettings.database_path );
         return new ReadReplicaGraphDatabase( storeDir, config.getParams(), dependencies );
     };
@@ -118,8 +118,8 @@ public class EnterpriseNeoServer extends CommunityNeoServer
             throw new IllegalArgumentException( "The server cannot be started in ARBITER mode." );
         case CORE:
             return lifecycleManagingDatabase( CORE_FACTORY );
-        case EDGE:
-            return lifecycleManagingDatabase( EDGE_FACTORY );
+        case READ_REPLICA:
+            return lifecycleManagingDatabase( READ_REPLICA_FACTORY );
         default: // Anything else gives community, including Mode.SINGLE
             return lifecycleManagingDatabase( ENTERPRISE_FACTORY );
         }

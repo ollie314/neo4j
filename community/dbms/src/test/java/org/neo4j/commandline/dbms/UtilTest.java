@@ -17,26 +17,20 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.graphdb.security;
+package org.neo4j.commandline.dbms;
 
-import org.neo4j.kernel.api.exceptions.Status;
+import org.junit.Test;
 
-/**
- * Thrown when needed authorization or authentication info has expired in the neo4j auth cache
- */
-public class AuthExpirationException extends RuntimeException implements Status.HasStatus
+import org.neo4j.commandline.Util;
+
+import static org.junit.Assert.assertNotNull;
+
+public class UtilTest
 {
-    private Status statusCode = Status.Security.AuthorizationExpired;
-
-    public AuthExpirationException( String msg )
+    @Test
+    public void canonicalPath() throws Exception
     {
-        super( msg );
+        assertNotNull( Util.canonicalPath( "foo" ).getParent() );
     }
 
-    /** The Neo4j status code associated with this exception type. */
-    @Override
-    public Status status()
-    {
-        return statusCode;
-    }
 }

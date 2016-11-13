@@ -20,7 +20,7 @@
 package org.neo4j.cypher.internal.compiler.v3_1.codegen.ir
 
 import org.neo4j.cypher.internal.compiler.v3_1.codegen.ir.expressions.CodeGenExpression
-import org.neo4j.cypher.internal.compiler.v3_1.codegen.{CodeGenContext, MethodStructure}
+import org.neo4j.cypher.internal.compiler.v3_1.codegen.{CodeGenContext, Equal, MethodStructure}
 
 case class DecreaseAndReturnWhenZero(opName: String, variableName: String, action: Instruction, startValue: CodeGenExpression)
   extends Instruction {
@@ -29,7 +29,7 @@ case class DecreaseAndReturnWhenZero(opName: String, variableName: String, actio
     startValue.init(generator)
     val expression = generator.box(startValue.generateExpression(generator), startValue.codeGenType)
     generator.declareCounter(variableName, expression)
-    generator.ifStatement(generator.counterEqualsZero(variableName)) { onTrue =>
+    generator.ifStatement(generator.checkCounter(variableName, Equal, 0)) { onTrue =>
       onTrue.returnSuccessfully()
     }
     action.init(generator)
@@ -40,7 +40,8 @@ case class DecreaseAndReturnWhenZero(opName: String, variableName: String, actio
 
     generator.trace(opName) { l1 =>
       l1.incrementRows()
-      l1.ifStatement(l1.decreaseCounterAndCheckForZero(variableName)) { l2 =>
+      l1.decrementCounter(variableName)
+      l1.ifStatement(l1.checkCounter(variableName, Equal, 0)) { l2 =>
         l2.returnSuccessfully()
       }
     }

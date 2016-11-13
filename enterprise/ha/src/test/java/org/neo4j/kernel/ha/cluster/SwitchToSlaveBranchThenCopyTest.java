@@ -36,6 +36,7 @@ import org.neo4j.cluster.ClusterSettings;
 import org.neo4j.cluster.InstanceId;
 import org.neo4j.cluster.member.ClusterMemberAvailability;
 import org.neo4j.com.Response;
+import org.neo4j.com.storecopy.MoveAfterCopy;
 import org.neo4j.com.storecopy.StoreCopyClient;
 import org.neo4j.com.storecopy.TransactionCommittingResponseUnpacker;
 import org.neo4j.com.storecopy.TransactionObligationFulfiller;
@@ -98,7 +99,7 @@ import static org.mockito.Mockito.withSettings;
 import static org.neo4j.com.StoreIdTestFactory.newStoreIdForCurrentVersion;
 import static org.neo4j.helpers.collection.MapUtil.stringMap;
 
-public class SwitchToSlaveTest
+public class SwitchToSlaveBranchThenCopyTest
 {
     private final UpdatePuller updatePuller = mockWithLifecycle( SlaveUpdatePuller.class );
     private final PullerFactory pullerFactory = mock( PullerFactory.class );
@@ -112,17 +113,16 @@ public class SwitchToSlaveTest
     {
         when( updatePuller.tryPullUpdates() ).thenReturn( true );
 
-        PageCache pageCacheMock = mock( PageCache.class );
-        PagedFile pagedFileMock = mock( PagedFile.class );
-        when( pagedFileMock.getLastPageId() ).thenReturn( 1L );
-        when( pageCacheMock.map( any( File.class ), anyInt() ) ).thenThrow( new IOException() )
-                .thenThrow( new IOException() ).thenReturn( pagedFileMock );
+        PageCache pageCacheMock = mockPageCache();
 
         StoreCopyClient storeCopyClient = mock( StoreCopyClient.class );
-        doThrow( new RuntimeException() ).doNothing().when( storeCopyClient )
-                .copyStore( any( StoreCopyClient.StoreCopyRequester.class ), any( CancellationRequest.class ) );
 
-        SwitchToSlave switchToSlave = newSwitchToSlaveSpy( pageCacheMock, storeCopyClient );
+        doThrow( new RuntimeException() ).doNothing().when( storeCopyClient ).copyStore(
+                any( StoreCopyClient.StoreCopyRequester.class ),
+                any( CancellationRequest.class ),
+                any( MoveAfterCopy.class ) );
+
+        SwitchToSlaveBranchThenCopy switchToSlave = newSwitchToSlaveSpy( pageCacheMock, storeCopyClient );
 
         URI localhost = getLocalhostUri();
         try
@@ -144,12 +144,23 @@ public class SwitchToSlaveTest
         }
     }
 
+    private PageCache mockPageCache() throws IOException
+    {
+        PageCache pageCacheMock = mock( PageCache.class );
+        PagedFile pagedFileMock = mock( PagedFile.class );
+        when( pagedFileMock.getLastPageId() ).thenReturn( 1L );
+        when( pageCacheMock.map( any( File.class ), anyInt() ) ).thenThrow( new IOException() )
+                .thenThrow( new IOException() ).thenReturn( pagedFileMock );
+        return pageCacheMock;
+    }
+
     @Test
     @SuppressWarnings( "unchecked" )
     public void shouldHandleBranchedStoreWhenMyStoreIdDiffersFromMasterStoreId() throws Throwable
     {
         // Given
-        SwitchToSlave switchToSlave = newSwitchToSlaveSpy();
+        SwitchToSlaveBranchThenCopy switchToSlave = newSwitchToSlaveSpy();
+        URI me = new URI( "cluster://localhost?serverId=2" );
 
         MasterClient masterClient = mock( MasterClient.class );
         Response<HandshakeResult> response = mock( Response.class );
@@ -165,7 +176,7 @@ public class SwitchToSlaveTest
         // When
         try
         {
-            switchToSlave.checkDataConsistency( masterClient, transactionIdStore, storeId, new URI("cluster://localhost?serverId=1") );
+            switchToSlave.checkDataConsistency( masterClient, transactionIdStore, storeId, new URI("cluster://localhost?serverId=1"), me, CancellationRequest.NEVER_CANCELLED );
             fail( "Should have thrown " + MismatchingStoreIdException.class.getSimpleName() + " exception" );
         }
         catch ( MismatchingStoreIdException e )
@@ -181,8 +192,9 @@ public class SwitchToSlaveTest
     public void shouldHandleBranchedStoreWhenHandshakeFailsWithBranchedDataException() throws Throwable
     {
         // Given
-        SwitchToSlave switchToSlave = newSwitchToSlaveSpy();
+        SwitchToSlaveBranchThenCopy switchToSlave = newSwitchToSlaveSpy();
         URI masterUri = new URI( "cluster://localhost?serverId=1" );
+        URI me = new URI( "cluster://localhost?serverId=2" );
 
         MasterClient masterClient = mock( MasterClient.class );
         when( masterClient.handshake( anyLong(), any( StoreId.class ) ) ).thenThrow( new BranchedDataException( "" ) );
@@ -194,7 +206,8 @@ public class SwitchToSlaveTest
         // When
         try
         {
-            switchToSlave.checkDataConsistency( masterClient, transactionIdStore, storeId, masterUri );
+            switchToSlave.checkDataConsistency( masterClient, transactionIdStore, storeId, masterUri, me,
+                    CancellationRequest.NEVER_CANCELLED );
             fail( "Should have thrown " + BranchedDataException.class.getSimpleName() + " exception" );
         }
         catch ( BranchedDataException e )
@@ -210,7 +223,7 @@ public class SwitchToSlaveTest
     public void shouldReturnNullIfWhenFailingToPullingUpdatesFromMaster() throws Throwable
     {
         // Given
-        SwitchToSlave switchToSlave = newSwitchToSlaveSpy();
+        SwitchToSlaveBranchThenCopy switchToSlave = newSwitchToSlaveSpy();
 
         when( fs.fileExists( any( File.class ) ) ).thenReturn( true );
         when( updatePuller.tryPullUpdates() ).thenReturn( false );
@@ -227,7 +240,7 @@ public class SwitchToSlaveTest
     @Test
     public void updatesPulledAndPullingScheduledOnSwitchToSlave() throws Throwable
     {
-        SwitchToSlave switchToSlave = newSwitchToSlaveSpy();
+        SwitchToSlaveBranchThenCopy switchToSlave = newSwitchToSlaveSpy();
 
         when( fs.fileExists( any( File.class ) ) ).thenReturn( true );
         JobScheduler jobScheduler = mock( JobScheduler.class );
@@ -261,7 +274,7 @@ public class SwitchToSlaveTest
         return new URI( "cluster://127.0.0.1?serverId=1" );
     }
 
-    private SwitchToSlave newSwitchToSlaveSpy() throws IOException
+    private SwitchToSlaveBranchThenCopy newSwitchToSlaveSpy() throws Exception
     {
         PageCache pageCacheMock = mock( PageCache.class );
         PagedFile pagedFileMock = mock( PagedFile.class );
@@ -269,11 +282,13 @@ public class SwitchToSlaveTest
         when( pageCacheMock.map( any( File.class ), anyInt() ) ).thenReturn( pagedFileMock );
         when( pageCacheMock.streamFilesRecursive( any( File.class ) ) ).thenReturn( Stream.empty() );
 
-        return newSwitchToSlaveSpy( pageCacheMock, mock( StoreCopyClient.class) );
+        StoreCopyClient storeCopyClient = mock( StoreCopyClient.class );
+
+        return newSwitchToSlaveSpy( pageCacheMock, storeCopyClient );
     }
 
     @SuppressWarnings( "unchecked" )
-    private SwitchToSlave newSwitchToSlaveSpy( PageCache pageCacheMock, StoreCopyClient storeCopyClient )
+    private SwitchToSlaveBranchThenCopy newSwitchToSlaveSpy( PageCache pageCacheMock, StoreCopyClient storeCopyClient )
             throws IOException
     {
         ClusterMembers clusterMembers = mock( ClusterMembers.class );
@@ -313,7 +328,7 @@ public class SwitchToSlaveTest
         when( masterClientResolver.instantiate( anyString(), anyInt(), anyString(), any( Monitors.class ),
                 any( StoreId.class ), any( LifeSupport.class ) ) ).thenReturn( masterClient );
 
-        return spy( new SwitchToSlave( new File( "" ), NullLogService.getInstance(),
+        return spy( new SwitchToSlaveBranchThenCopy( new File( "" ), NullLogService.getInstance(),
                 configMock(), resolver,
                 mock( HaIdGeneratorFactory.class ),
                 mock( DelegateInvocationHandler.class ),

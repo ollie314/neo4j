@@ -20,8 +20,11 @@
 package org.neo4j.commandline.admin;
 
 import java.nio.file.Path;
-import java.util.Optional;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
 
+import org.neo4j.commandline.arguments.Arguments;
 import org.neo4j.helpers.Service;
 import org.neo4j.helpers.collection.Iterables;
 
@@ -59,9 +62,23 @@ public interface AdminCommand
         }
 
         /**
-         * @return A help string for the command's arguments, if any.
+         * @return The arguments this command accepts.
          */
-        public abstract Optional<String> arguments();
+        public abstract Arguments allArguments();
+
+        /**
+         *
+         * @return A list of possibly mutually-exclusive argument sets for this command.
+         */
+        public List<Arguments> possibleArguments()
+        {
+            return Arrays.asList( allArguments() );
+        }
+
+        /**
+         * @return A single-line summary for the command. Should be 70 characters or less.
+         */
+        public abstract String summary();
 
         /**
          * @return A description for the command's help text.
@@ -69,6 +86,26 @@ public interface AdminCommand
         public abstract String description();
 
         public abstract AdminCommand create( Path homeDir, Path configDir, OutsideWorld outsideWorld );
+    }
+
+    interface Blocker
+    {
+        /**
+         * @param homeDir   the home of the Neo4j installation.
+         * @param configDir the directory where configuration files can be found.
+         * @return A boolean representing whether or not this command should be blocked from running.
+         */
+        boolean doesBlock( Path homeDir, Path configDir );
+
+        /**
+         * @return A list of the commands this blocker applies to.
+         */
+        Set<String> commands();
+
+        /**
+         * @return An explanation of why a command was blocked. This will be shown to the user.
+         */
+        String explanation();
     }
 
     void execute( String[] args ) throws IncorrectUsage, CommandFailed;

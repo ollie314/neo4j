@@ -24,7 +24,7 @@ import java.util.Collection;
 import java.util.Collections;
 
 import org.neo4j.server.security.enterprise.auth.plugin.api.AuthToken;
-import org.neo4j.server.security.enterprise.auth.plugin.api.AuthorizationExpired;
+import org.neo4j.server.security.enterprise.auth.plugin.api.AuthorizationExpiredException;
 import org.neo4j.server.security.enterprise.auth.plugin.api.PredefinedRoles;
 import org.neo4j.server.security.enterprise.auth.plugin.spi.AuthenticationInfo;
 import org.neo4j.server.security.enterprise.auth.plugin.spi.AuthenticationPlugin;
@@ -57,7 +57,7 @@ public class TestCombinedAuthPlugin extends AuthenticationPlugin.Adapter impleme
     }
 
     @Override
-    public AuthorizationInfo authorize( Collection<PrincipalAndRealm> principals )
+    public AuthorizationInfo authorize( Collection<PrincipalAndProvider> principals )
     {
         if ( principals.stream().anyMatch( p -> "neo4j".equals( p.principal() ) ) )
         {
@@ -65,7 +65,7 @@ public class TestCombinedAuthPlugin extends AuthenticationPlugin.Adapter impleme
         }
         else if ( principals.stream().anyMatch( p -> "authorization_expired_user".equals( p.principal() ) ) )
         {
-            throw new AuthorizationExpired( "authorization_expired_user needs to re-authenticate." );
+            throw new AuthorizationExpiredException( "authorization_expired_user needs to re-authenticate." );
         }
         return null;
     }

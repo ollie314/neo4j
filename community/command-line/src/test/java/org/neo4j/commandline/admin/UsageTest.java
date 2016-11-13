@@ -19,15 +19,16 @@
  */
 package org.neo4j.commandline.admin;
 
-import java.nio.file.Path;
-import java.util.Optional;
-import java.util.function.Consumer;
-
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+
+import java.nio.file.Path;
+import java.util.function.Consumer;
+
+import org.neo4j.commandline.arguments.Arguments;
 
 import static org.mockito.Mockito.inOrder;
 
@@ -47,50 +48,52 @@ public class UsageTest
         AdminCommand.Provider[] commands = new AdminCommand.Provider[]
                 {
                         new StubProvider( "restore",
-                                Optional.of( "---from <backup-directory> --database=<database-name> [--force]" ),
                                 "Restores a database backed up using the neo4j-backup tool." ),
-                        new StubProvider( "bam", Optional.empty(), "Some description" )
+                        new StubProvider( "bam", "A summary" )
                 };
         final Usage usage = new Usage( "neo4j-admin", new CannedLocator( commands ) );
         usage.print( out );
 
         InOrder ordered = inOrder( out );
-        ordered.verify( out ).accept( "Usage:" );
+        ordered.verify( out ).accept( "usage: neo4j-admin <command>" );
         ordered.verify( out ).accept( "" );
+        ordered.verify( out ).accept( "available commands:" );
         ordered.verify( out )
-                .accept( "neo4j-admin restore ---from <backup-directory> --database=<database-name> [--force]" );
+                .accept( "    restore" );
+        ordered.verify( out ).accept( "        Restores a database backed up using the neo4j-backup tool." );
+        ordered.verify( out ).accept( "    bam" );
+        ordered.verify( out ).accept( "        A summary" );
         ordered.verify( out ).accept( "" );
-        ordered.verify( out ).accept( "    Restores a database backed up using the neo4j-backup tool." );
-        ordered.verify( out ).accept( "" );
-        ordered.verify( out ).accept( "neo4j-admin bam" );
-        ordered.verify( out ).accept( "" );
-        ordered.verify( out ).accept( "    Some description" );
-        ordered.verify( out ).accept( "" );
+        ordered.verify( out ).accept( "Use neo4j-admin help <command> for more details." );
         ordered.verifyNoMoreInteractions();
     }
 
     private static class StubProvider extends AdminCommand.Provider
     {
-        private final Optional<String> arguments;
-        private final String description;
+        private final String summary;
 
-        public StubProvider( String name, Optional<String> arguments, String description )
+        public StubProvider( String name, String summary )
         {
             super( name );
-            this.arguments = arguments;
-            this.description = description;
+            this.summary = summary;
         }
 
         @Override
-        public Optional<String> arguments()
+        public Arguments allArguments()
         {
-            return arguments;
+            return Arguments.NO_ARGS;
         }
 
         @Override
         public String description()
         {
-            return description;
+            return "";
+        }
+
+        @Override
+        public String summary()
+        {
+            return summary;
         }
 
         @Override

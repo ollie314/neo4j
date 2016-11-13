@@ -65,6 +65,7 @@ import org.neo4j.kernel.api.exceptions.InvalidTransactionTypeKernelException;
 import org.neo4j.kernel.api.exceptions.KernelException;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.configuration.Settings;
+import org.neo4j.kernel.enterprise.builtinprocs.EnterpriseBuiltInDbmsProcedures;
 import org.neo4j.kernel.ha.BranchDetectingTxVerifier;
 import org.neo4j.kernel.ha.BranchedDataMigrator;
 import org.neo4j.kernel.ha.DelegateInvocationHandler;
@@ -88,6 +89,8 @@ import org.neo4j.kernel.ha.cluster.HighAvailabilityMemberStateMachine;
 import org.neo4j.kernel.ha.cluster.SimpleHighAvailabilityMemberContext;
 import org.neo4j.kernel.ha.cluster.SwitchToMaster;
 import org.neo4j.kernel.ha.cluster.SwitchToSlave;
+import org.neo4j.kernel.ha.cluster.SwitchToSlaveCopyThenBranch;
+import org.neo4j.kernel.ha.cluster.SwitchToSlaveBranchThenCopy;
 import org.neo4j.kernel.ha.cluster.member.ClusterMembers;
 import org.neo4j.kernel.ha.cluster.member.HighAvailabilitySlaves;
 import org.neo4j.kernel.ha.cluster.member.ObservedClusterMembers;
@@ -132,7 +135,6 @@ import org.neo4j.kernel.impl.coreapi.CoreAPIAvailabilityGuard;
 import org.neo4j.kernel.impl.enterprise.EnterpriseConstraintSemantics;
 import org.neo4j.kernel.impl.enterprise.EnterpriseEditionModule;
 import org.neo4j.kernel.impl.enterprise.StandardBoltConnectionTracker;
-import org.neo4j.kernel.impl.enterprise.configuration.EnterpriseEditionSettings;
 import org.neo4j.kernel.impl.enterprise.id.EnterpriseIdTypeConfigurationProvider;
 import org.neo4j.kernel.impl.enterprise.transaction.log.checkpoint.ConfigurableIOLimiter;
 import org.neo4j.kernel.impl.factory.CanWrite;
@@ -172,6 +174,7 @@ import org.neo4j.udc.UsageData;
 import org.neo4j.udc.UsageDataKeys;
 
 import static java.lang.reflect.Proxy.newProxyInstance;
+
 import static org.neo4j.kernel.impl.transaction.log.TransactionMetadataCache.TransactionMetadata;
 
 /**
@@ -187,7 +190,7 @@ public class HighlyAvailableEditionModule
     @Override
     public void registerEditionSpecificProcedures( Procedures procedures ) throws KernelException
     {
-        procedures.registerProcedure( org.neo4j.kernel.enterprise.builtinprocs.BuiltInProcedures.class );
+        procedures.registerProcedure( EnterpriseBuiltInDbmsProcedures.class, true );
     }
 
     public HighlyAvailableEditionModule( final PlatformModule platformModule )
@@ -403,16 +406,9 @@ public class HighlyAvailableEditionModule
                         monitors.newMonitor( ByteCounterMonitor.class, SlaveServer.class ),
                         monitors.newMonitor( RequestMonitor.class, SlaveServer.class ) );
 
-        SwitchToSlave switchToSlaveInstance = new SwitchToSlave( platformModule.storeDir, logging,
-                platformModule.fileSystem, config, dependencies, (HaIdGeneratorFactory) idGeneratorFactory,
-                masterDelegateInvocationHandler, clusterMemberAvailability, requestContextFactory, pullerFactory,
-                platformModule.kernelExtensions.listFactories(), masterClientResolver,
-                monitors.newMonitor( SwitchToSlave.Monitor.class ),
-                monitors.newMonitor( StoreCopyClient.Monitor.class ),
-                dependencies.provideDependency( NeoStoreDataSource.class ),
-                dependencies.provideDependency( TransactionIdStore.class ),
-                slaveServerFactory, updatePullerProxy, platformModule.pageCache,
-                monitors, platformModule.transactionMonitor );
+        SwitchToSlave switchToSlaveInstance = chooseSwitchToSlaveStrategy( platformModule, config, dependencies, logging, monitors,
+                masterDelegateInvocationHandler, requestContextFactory, clusterMemberAvailability,
+                masterClientResolver, updatePullerProxy, pullerFactory, slaveServerFactory );
 
         final Factory<MasterImpl.SPI> masterSPIFactory =
                 () -> new DefaultMasterImplSPI( platformModule.graphDatabaseFacade, platformModule.fileSystem,
@@ -535,6 +531,44 @@ public class HighlyAvailableEditionModule
         life.add( paxosLife );
 
         dependencies.satisfyDependency( createSessionTracker() );
+    }
+
+    private SwitchToSlave chooseSwitchToSlaveStrategy( PlatformModule platformModule, Config config, Dependencies
+            dependencies, LogService logging, Monitors monitors, DelegateInvocationHandler<Master>
+            masterDelegateInvocationHandler, RequestContextFactory requestContextFactory, ClusterMemberAvailability
+            clusterMemberAvailability, MasterClientResolver masterClientResolver, UpdatePuller updatePullerProxy,
+                                                       PullerFactory pullerFactory,
+                                                       Function<Slave, SlaveServer> slaveServerFactory )
+    {
+        switch ( config.get( HaSettings.branched_data_copying_strategy ) )
+        {
+            case branch_then_copy:
+                return new SwitchToSlaveBranchThenCopy( platformModule.storeDir, logging,
+                        platformModule.fileSystem, config, dependencies, (HaIdGeneratorFactory) idGeneratorFactory,
+                        masterDelegateInvocationHandler, clusterMemberAvailability, requestContextFactory,
+                        pullerFactory,
+                        platformModule.kernelExtensions.listFactories(), masterClientResolver,
+                        monitors.newMonitor( SwitchToSlave.Monitor.class ),
+                        monitors.newMonitor( StoreCopyClient.Monitor.class ),
+                        dependencies.provideDependency( NeoStoreDataSource.class ),
+                        dependencies.provideDependency( TransactionIdStore.class ),
+                        slaveServerFactory, updatePullerProxy, platformModule.pageCache,
+                        monitors, platformModule.transactionMonitor );
+            case copy_then_branch:
+                return new SwitchToSlaveCopyThenBranch( platformModule.storeDir, logging,
+                        platformModule.fileSystem, config, dependencies, (HaIdGeneratorFactory) idGeneratorFactory,
+                        masterDelegateInvocationHandler, clusterMemberAvailability, requestContextFactory,
+                        pullerFactory,
+                        platformModule.kernelExtensions.listFactories(), masterClientResolver,
+                        monitors.newMonitor( SwitchToSlave.Monitor.class ),
+                        monitors.newMonitor( StoreCopyClient.Monitor.class ),
+                        dependencies.provideDependency( NeoStoreDataSource.class ),
+                        dependencies.provideDependency( TransactionIdStore.class ),
+                        slaveServerFactory, updatePullerProxy, platformModule.pageCache,
+                        monitors, platformModule.transactionMonitor );
+            default:
+                throw new RuntimeException( "Unknown branched data copying strategy" );
+        }
     }
 
     private void publishServerId( Config config, UsageData sysInfo )

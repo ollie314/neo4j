@@ -38,15 +38,12 @@ import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.kernel.AvailabilityGuard;
 import org.neo4j.kernel.DatabaseAvailability;
 import org.neo4j.kernel.NeoStoreDataSource;
-import org.neo4j.kernel.api.security.SecurityContext;
-import org.neo4j.kernel.impl.proc.TerminationGuardProvider;
-import org.neo4j.procedure.TerminationGuard;
 import org.neo4j.kernel.api.KernelAPI;
 import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.api.Statement;
 import org.neo4j.kernel.api.exceptions.KernelException;
 import org.neo4j.kernel.api.legacyindex.AutoIndexing;
-import org.neo4j.kernel.api.security.AuthSubject;
+import org.neo4j.kernel.api.security.SecurityContext;
 import org.neo4j.kernel.builtinprocs.SpecialBuiltInProcedures;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.guard.Guard;
@@ -66,8 +63,10 @@ import org.neo4j.kernel.impl.core.StartupStatisticsProvider;
 import org.neo4j.kernel.impl.core.ThreadToStatementContextBridge;
 import org.neo4j.kernel.impl.core.TokenNotFoundException;
 import org.neo4j.kernel.impl.logging.LogService;
+import org.neo4j.kernel.impl.proc.ProcedureAllowedConfig;
 import org.neo4j.kernel.impl.proc.ProcedureGDSFactory;
 import org.neo4j.kernel.impl.proc.Procedures;
+import org.neo4j.kernel.impl.proc.TerminationGuardProvider;
 import org.neo4j.kernel.impl.proc.TypeMappers.SimpleConverter;
 import org.neo4j.kernel.impl.query.QueryExecutionEngine;
 import org.neo4j.kernel.impl.store.StoreId;
@@ -83,9 +82,10 @@ import org.neo4j.kernel.internal.Version;
 import org.neo4j.kernel.lifecycle.LifeSupport;
 import org.neo4j.kernel.lifecycle.LifecycleAdapter;
 import org.neo4j.logging.Log;
+import org.neo4j.procedure.TerminationGuard;
 
-import static org.neo4j.kernel.api.proc.Context.SECURITY_CONTEXT;
 import static org.neo4j.kernel.api.proc.Context.KERNEL_TRANSACTION;
+import static org.neo4j.kernel.api.proc.Context.SECURITY_CONTEXT;
 import static org.neo4j.kernel.api.proc.Neo4jTypes.NTGeometry;
 import static org.neo4j.kernel.api.proc.Neo4jTypes.NTNode;
 import static org.neo4j.kernel.api.proc.Neo4jTypes.NTPath;
@@ -118,6 +118,8 @@ public class DataSourceModule
     public final Supplier<StoreId> storeId;
 
     public final AutoIndexing autoIndexing;
+
+    public final Guard guard;
 
     public DataSourceModule( final PlatformModule platformModule, EditionModule editionModule,
             Supplier<QueryExecutionEngine> queryExecutionEngineSupplier )
@@ -159,7 +161,7 @@ public class DataSourceModule
         SchemaWriteGuard schemaWriteGuard = deps.satisfyDependency( editionModule.schemaWriteGuard );
 
         Clock clock = getClock();
-        Guard guard = createGuard( deps, clock, logging );
+        guard = createGuard( deps, clock, logging );
 
         kernelEventHandlers = new KernelEventHandlers( logging.getInternalLog( KernelEventHandlers.class ) );
 
@@ -352,7 +354,7 @@ public class DataSourceModule
         Procedures procedures = new Procedures(
                 new SpecialBuiltInProcedures( Version.getNeo4jVersion(),
                         platform.databaseInfo.edition.toString() ),
-                pluginDir, internalLog );
+                pluginDir, internalLog, new ProcedureAllowedConfig( platform.config ) );
         platform.life.add( procedures );
         platform.dependencies.satisfyDependency( procedures );
 

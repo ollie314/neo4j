@@ -34,7 +34,6 @@ import org.neo4j.causalclustering.catchup.tx.TransactionLogCatchUpFactory;
 import org.neo4j.causalclustering.catchup.tx.TxPollingClient;
 import org.neo4j.causalclustering.catchup.tx.TxPullClient;
 import org.neo4j.causalclustering.core.CausalClusteringSettings;
-import org.neo4j.causalclustering.core.consensus.ContinuousJob;
 import org.neo4j.causalclustering.core.consensus.schedule.DelayedRenewableTimeoutService;
 import org.neo4j.causalclustering.core.state.machines.tx.ExponentialBackoffStrategy;
 import org.neo4j.causalclustering.discovery.DiscoveryServiceFactory;
@@ -49,6 +48,7 @@ import org.neo4j.kernel.DatabaseAvailability;
 import org.neo4j.kernel.api.bolt.BoltConnectionTracker;
 import org.neo4j.kernel.api.exceptions.KernelException;
 import org.neo4j.kernel.configuration.Config;
+import org.neo4j.kernel.enterprise.builtinprocs.EnterpriseBuiltInDbmsProcedures;
 import org.neo4j.kernel.impl.api.CommitProcessFactory;
 import org.neo4j.kernel.impl.api.ReadOnlyTransactionCommitProcess;
 import org.neo4j.kernel.impl.api.TransactionCommitProcess;
@@ -72,11 +72,11 @@ import org.neo4j.kernel.impl.factory.StatementLocksFactorySelector;
 import org.neo4j.kernel.impl.logging.LogService;
 import org.neo4j.kernel.impl.proc.Procedures;
 import org.neo4j.kernel.impl.store.id.DefaultIdGeneratorFactory;
+import org.neo4j.kernel.impl.store.id.IdReuseEligibility;
 import org.neo4j.kernel.impl.store.stats.IdBasedStoreEntityCounters;
 import org.neo4j.kernel.impl.transaction.TransactionHeaderInformationFactory;
 import org.neo4j.kernel.impl.transaction.log.TransactionAppender;
 import org.neo4j.kernel.impl.transaction.log.TransactionIdStore;
-import org.neo4j.kernel.impl.util.JobScheduler;
 import org.neo4j.kernel.internal.DatabaseHealth;
 import org.neo4j.kernel.internal.DefaultKernelData;
 import org.neo4j.kernel.lifecycle.LifeSupport;
@@ -88,7 +88,6 @@ import org.neo4j.time.Clocks;
 import org.neo4j.udc.UsageData;
 
 import static org.neo4j.kernel.impl.factory.CommunityEditionModule.createLockManager;
-import static org.neo4j.kernel.impl.util.JobScheduler.SchedulingStrategy.NEW_THREAD;
 
 /**
  * This implementation of {@link org.neo4j.kernel.impl.factory.EditionModule} creates the implementations of services
@@ -99,7 +98,7 @@ public class EnterpriseReadReplicaEditionModule extends EditionModule
     @Override
     public void registerEditionSpecificProcedures( Procedures procedures ) throws KernelException
     {
-        procedures.registerProcedure( org.neo4j.kernel.enterprise.builtinprocs.BuiltInProcedures.class );
+        procedures.registerProcedure( EnterpriseBuiltInDbmsProcedures.class, true );
         procedures.register( new ReadReplicaRoleProcedure() );
     }
 
@@ -117,6 +116,8 @@ public class EnterpriseReadReplicaEditionModule extends EditionModule
         File storeDir = platformModule.storeDir;
         LifeSupport life = platformModule.life;
         Monitors monitors = platformModule.monitors;
+
+        eligibleForIdReuse = IdReuseEligibility.ALWAYS;
 
         this.accessCapability = new ReadOnly();
 
@@ -184,8 +185,6 @@ public class EnterpriseReadReplicaEditionModule extends EditionModule
         BatchingTxApplier batchingTxApplier = new BatchingTxApplier( maxBatchSize,
                 dependencies.provideDependency( TransactionIdStore.class ),
                 writableCommitProcess, databaseHealthSupplier, platformModule.monitors, logProvider );
-        ContinuousJob txApplyJob = new ContinuousJob( platformModule.jobScheduler, new JobScheduler.Group(
-                "tx-applier", NEW_THREAD ), batchingTxApplier, logProvider );
 
         DelayedRenewableTimeoutService txPullerTimeoutService =
                 new DelayedRenewableTimeoutService( Clocks.systemClock(), logProvider );
@@ -204,6 +203,7 @@ public class EnterpriseReadReplicaEditionModule extends EditionModule
 
         CopiedStoreRecovery copiedStoreRecovery = new CopiedStoreRecovery( config,
                 platformModule.kernelExtensions.listFactories(), platformModule.pageCache );
+        txPulling.add( copiedStoreRecovery );
 
         TxPollingClient txPuller =
                 new TxPollingClient( logProvider, fileSystem, localDatabase, storeFetcher, catchUpClient,
@@ -214,7 +214,6 @@ public class EnterpriseReadReplicaEditionModule extends EditionModule
         dependencies.satisfyDependencies( txPuller );
 
         txPulling.add( batchingTxApplier );
-        txPulling.add( txApplyJob );
         txPulling.add( txPuller );
         txPulling.add( txPullerTimeoutService );
 

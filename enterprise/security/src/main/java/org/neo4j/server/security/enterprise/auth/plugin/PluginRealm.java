@@ -35,24 +35,23 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
-import org.neo4j.graphdb.security.AuthExpirationException;
 import org.neo4j.kernel.api.security.exception.InvalidAuthTokenException;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.internal.Version;
 import org.neo4j.logging.Log;
 import org.neo4j.server.security.enterprise.auth.PredefinedRolesBuilder;
+import org.neo4j.server.security.enterprise.auth.RealmLifecycle;
 import org.neo4j.server.security.enterprise.auth.SecureHasher;
 import org.neo4j.server.security.enterprise.auth.ShiroAuthToken;
 import org.neo4j.server.security.enterprise.auth.ShiroAuthorizationInfoProvider;
+import org.neo4j.server.security.enterprise.auth.plugin.api.AuthProviderOperations;
 import org.neo4j.server.security.enterprise.auth.plugin.api.AuthToken;
-import org.neo4j.server.security.enterprise.auth.plugin.api.AuthorizationExpired;
-import org.neo4j.server.security.enterprise.auth.plugin.api.RealmOperations;
+import org.neo4j.server.security.enterprise.auth.plugin.api.AuthorizationExpiredException;
 import org.neo4j.server.security.enterprise.auth.plugin.spi.AuthInfo;
 import org.neo4j.server.security.enterprise.auth.plugin.spi.AuthPlugin;
 import org.neo4j.server.security.enterprise.auth.plugin.spi.AuthenticationPlugin;
 import org.neo4j.server.security.enterprise.auth.plugin.spi.AuthorizationPlugin;
 import org.neo4j.server.security.enterprise.auth.plugin.spi.CustomCacheableAuthenticationInfo;
-import org.neo4j.server.security.enterprise.auth.plugin.spi.RealmLifecycle;
 import org.neo4j.server.security.enterprise.log.SecurityLog;
 
 import static org.neo4j.server.security.enterprise.configuration.SecuritySettings.PLUGIN_REALM_NAME_PREFIX;
@@ -67,7 +66,7 @@ public class PluginRealm extends AuthorizingRealm implements RealmLifecycle, Shi
     private final Clock clock;
     private final SecureHasher secureHasher;
 
-    private RealmOperations realmOperations = new PluginRealmOperations();
+    private AuthProviderOperations authProviderOperations = new PluginRealmOperations();
 
     public PluginRealm( Config config, SecurityLog securityLog, Clock clock, SecureHasher secureHasher )
     {
@@ -78,10 +77,10 @@ public class PluginRealm extends AuthorizingRealm implements RealmLifecycle, Shi
 
         setCredentialsMatcher( new CredentialsMatcher() );
 
-        // Synchronize this default value with the javadoc for RealmOperations.setAuthenticationCachingEnabled
+        // Synchronize this default value with the javadoc for AuthProviderOperations.setAuthenticationCachingEnabled
         setAuthenticationCachingEnabled( false );
 
-        // Synchronize this default value with the javadoc for RealmOperations.setAuthorizationCachingEnabled
+        // Synchronize this default value with the javadoc for AuthProviderOperations.setAuthorizationCachingEnabled
         setAuthorizationCachingEnabled( true );
 
         setRolePermissionResolver( PredefinedRolesBuilder.rolePermissionResolver );
@@ -127,21 +126,21 @@ public class PluginRealm extends AuthorizingRealm implements RealmLifecycle, Shi
         // Otherwise we rely on the Shiro default generated name
     }
 
-    private Collection<AuthorizationPlugin.PrincipalAndRealm> getPrincipalAndRealmCollection(
+    private Collection<AuthorizationPlugin.PrincipalAndProvider> getPrincipalAndProviderCollection(
             PrincipalCollection principalCollection
     )
     {
-        Collection<AuthorizationPlugin.PrincipalAndRealm> principalAndRealmCollection = new ArrayList<>();
+        Collection<AuthorizationPlugin.PrincipalAndProvider> principalAndProviderCollection = new ArrayList<>();
 
         for ( String realm : principalCollection.getRealmNames() )
         {
             for ( Object principal : principalCollection.fromRealm( realm ) )
             {
-                principalAndRealmCollection.add( new AuthorizationPlugin.PrincipalAndRealm( principal, realm ) );
+                principalAndProviderCollection.add( new AuthorizationPlugin.PrincipalAndProvider( principal, realm ) );
             }
         }
 
-        return principalAndRealmCollection;
+        return principalAndProviderCollection;
     }
 
     @Override
@@ -152,12 +151,12 @@ public class PluginRealm extends AuthorizingRealm implements RealmLifecycle, Shi
             org.neo4j.server.security.enterprise.auth.plugin.spi.AuthorizationInfo authorizationInfo;
             try
             {
-                 authorizationInfo = authorizationPlugin.authorize( getPrincipalAndRealmCollection( principals ) );
+                 authorizationInfo = authorizationPlugin.authorize( getPrincipalAndProviderCollection( principals ) );
             }
-            catch ( AuthorizationExpired e )
+            catch ( AuthorizationExpiredException e )
             {
-                throw new AuthExpirationException(
-                        "Plugin '" + getName() + "' authorization info expired: " + e.getMessage() );
+                throw new org.neo4j.graphdb.security.AuthorizationExpiredException(
+                        "Plugin '" + getName() + "' authorization info expired: " + e.getMessage(), e );
             }
             if ( authorizationInfo != null )
             {
@@ -170,7 +169,8 @@ public class PluginRealm extends AuthorizingRealm implements RealmLifecycle, Shi
             // Since we do not have the subject's credentials we cannot perform a new
             // authenticateAndAuthorize() to renew authorization info.
             // Instead we need to fail with a special status, so that the client can react by re-authenticating.
-            throw new AuthExpirationException( "Plugin '" + getName() + "' authorization info expired." );
+            throw new org.neo4j.graphdb.security.AuthorizationExpiredException(
+                    "Plugin '" + getName() + "' authorization info expired." );
         }
         return null;
     }
@@ -224,6 +224,22 @@ public class PluginRealm extends AuthorizingRealm implements RealmLifecycle, Shi
         authorizationCache.put( key, authInfo );
     }
 
+    public boolean canAuthenticate()
+    {
+        return authPlugin != null || authenticationPlugin !=null;
+    }
+
+    public boolean canAuthorize()
+    {
+        return authPlugin != null || authorizationPlugin != null;
+    }
+
+    @Override
+    public AuthorizationInfo getAuthorizationInfoSnapshot( PrincipalCollection principalCollection )
+    {
+        return getAuthorizationInfo( principalCollection );
+    }
+
     @Override
     protected Object getAuthorizationCacheKey( PrincipalCollection principals )
     {
@@ -253,19 +269,19 @@ public class PluginRealm extends AuthorizingRealm implements RealmLifecycle, Shi
     }
 
     @Override
-    public void initialize( RealmOperations ignore ) throws Throwable
+    public void initialize() throws Throwable
     {
         if ( authenticationPlugin != null )
         {
-            authenticationPlugin.initialize( this.realmOperations );
+            authenticationPlugin.initialize( authProviderOperations );
         }
         if ( authorizationPlugin != null && authorizationPlugin != authenticationPlugin )
         {
-            authorizationPlugin.initialize( this.realmOperations );
+            authorizationPlugin.initialize( authProviderOperations );
         }
         if ( authPlugin != null )
         {
-            authPlugin.initialize( this.realmOperations );
+            authPlugin.initialize( authProviderOperations );
         }
     }
 
@@ -331,12 +347,6 @@ public class PluginRealm extends AuthorizingRealm implements RealmLifecycle, Shi
         return null;
     }
 
-    @Override
-    public AuthorizationInfo getAuthorizationInfoSnapshot( PrincipalCollection principalCollection )
-    {
-        return getAuthorizationInfo( principalCollection );
-    }
-
     private class CredentialsMatcher implements org.apache.shiro.authc.credential.CredentialsMatcher
     {
         @Override
@@ -379,7 +389,7 @@ public class PluginRealm extends AuthorizingRealm implements RealmLifecycle, Shi
         }
     }
 
-    private class PluginRealmOperations implements RealmOperations
+    private class PluginRealmOperations implements AuthProviderOperations
     {
         private Log innerLog = new Log()
         {

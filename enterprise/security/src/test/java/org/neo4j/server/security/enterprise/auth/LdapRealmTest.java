@@ -47,8 +47,8 @@ import javax.naming.directory.Attributes;
 import javax.naming.directory.SearchResult;
 import javax.naming.ldap.LdapContext;
 
+import org.neo4j.graphdb.security.AuthProviderFailedException;
 import org.neo4j.kernel.configuration.Config;
-import org.neo4j.server.security.enterprise.auth.plugin.api.RealmOperations;
 import org.neo4j.server.security.enterprise.configuration.SecuritySettings;
 import org.neo4j.server.security.enterprise.log.SecurityLog;
 
@@ -87,6 +87,9 @@ public class LdapRealmTest
         when( config.get( SecuritySettings.ldap_authentication_enabled ) ).thenReturn( true );
         when( config.get( SecuritySettings.ldap_authorization_enabled ) ).thenReturn( true );
         when( config.get( SecuritySettings.ldap_authentication_cache_enabled ) ).thenReturn( false );
+        when( config.get( SecuritySettings.ldap_connection_timeout ) ).thenReturn( 1000L );
+        when( config.get( SecuritySettings.ldap_read_timeout ) ).thenReturn( 1000L );
+        when( config.get( SecuritySettings.ldap_authorization_connection_pooling ) ).thenReturn( true );
     }
 
     @Test
@@ -436,7 +439,7 @@ public class LdapRealmTest
 
         // When
         assertException( () -> realm.doGetAuthorizationInfo( new SimplePrincipalCollection( "olivia", "LdapRealm" ) ),
-                AuthorizationException.class, "" );
+                AuthProviderFailedException.class, "" );
 
         // Then
         verify( securityLog ).error( contains( "{LdapRealm}: Failed to get authorization info: " +
@@ -484,7 +487,7 @@ public class LdapRealmTest
         try
         {
             LdapRealm realm = new LdapRealm( config, securityLog, secureHasher );
-            realm.initialize( mock( RealmOperations.class ) );
+            realm.initialize();
         }
         catch ( Exception e )
         {

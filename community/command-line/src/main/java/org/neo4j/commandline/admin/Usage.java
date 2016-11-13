@@ -21,8 +21,9 @@ package org.neo4j.commandline.admin;
 
 import java.util.function.Consumer;
 
+import org.neo4j.commandline.arguments.Arguments;
+
 import static java.lang.String.format;
-import static org.neo4j.helpers.Args.splitLongLine;
 
 public class Usage
 {
@@ -37,14 +38,24 @@ public class Usage
 
     public void print( Consumer<String> output )
     {
-        output.accept( "Usage:" );
+        output.accept( format( "usage: %s <command>", scriptName ) );
         output.accept( "" );
+        output.accept( "available commands:" );
 
         for ( AdminCommand.Provider command : commands.getAllProviders() )
         {
             final CommandUsage commandUsage = new CommandUsage( command, scriptName );
-            commandUsage.print( output );
+            commandUsage.printIndentedSummary( output );
         }
+
+        output.accept( "" );
+        output.accept( format( "Use %s help <command> for more details.", scriptName ) );
+    }
+
+    public void printUsageForCommand( AdminCommand.Provider command, Consumer<String> output )
+    {
+        final CommandUsage commandUsage = new CommandUsage( command, scriptName );
+        commandUsage.printDetailed( output );
     }
 
     public static class CommandUsage
@@ -58,16 +69,29 @@ public class Usage
             this.scriptName = scriptName;
         }
 
-        public void print( Consumer<String> output )
+        public void printSummary( Consumer<String> output )
         {
-            String arguments = command.arguments().map( ( s ) -> " " + s ).orElse( "" );
-            output.accept( format( "%s %s%s", scriptName, command.name(), arguments ) );
-            output.accept( "" );
-            for ( String line : splitLongLine( command.description(), 80 ) )
+            output.accept( format( "%s", command.name() ) );
+            output.accept( "    " + command.summary() );
+        }
+
+        public void printIndentedSummary( Consumer<String> output )
+        {
+            printSummary( s -> output.accept( "    " + s ) );
+        }
+
+        public void printDetailed( Consumer<String> output )
+        {
+            for (Arguments arguments: command.possibleArguments())
             {
-                output.accept( "    " + line );
+                //Arguments arguments = command.arguments();
+
+                String left = format( "usage: %s %s", scriptName, command.name() );
+
+                output.accept( Arguments.rightColumnFormatted( left, arguments.usage(), left.length() + 1 ) );
             }
             output.accept( "" );
+            output.accept( command.allArguments().description( command.description() ) );
         }
     }
 }

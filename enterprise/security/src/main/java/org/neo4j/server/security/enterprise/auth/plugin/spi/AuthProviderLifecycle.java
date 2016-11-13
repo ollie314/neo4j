@@ -17,12 +17,37 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.causalclustering.discovery;
+package org.neo4j.server.security.enterprise.auth.plugin.spi;
 
-public class NoKnownAddressesException extends Exception
+import org.neo4j.server.security.enterprise.auth.plugin.api.AuthProviderOperations;
+
+public interface AuthProviderLifecycle
 {
-    public NoKnownAddressesException( String message )
+    void initialize( AuthProviderOperations authProviderOperations ) throws Throwable;
+    void start() throws Throwable;
+    void stop() throws Throwable;
+    void shutdown() throws Throwable;
+
+    class Adapter implements AuthProviderLifecycle
     {
-        super( message );
+        @Override
+        public void initialize( AuthProviderOperations authProviderOperations ) throws Throwable
+        {
+        }
+
+        @Override
+        public void start() throws Throwable
+        {
+        }
+
+        @Override
+        public void stop() throws Throwable
+        {
+        }
+
+        @Override
+        public void shutdown() throws Throwable
+        {
+        }
     }
 }

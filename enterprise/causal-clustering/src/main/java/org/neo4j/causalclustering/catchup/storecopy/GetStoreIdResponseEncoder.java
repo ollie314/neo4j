@@ -17,13 +17,22 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.kernel.enterprise.api.security;
+package org.neo4j.causalclustering.catchup.storecopy;
 
-@FunctionalInterface
-public interface CouldBeAdmin
+
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.MessageToByteEncoder;
+
+import org.neo4j.causalclustering.identity.StoreId;
+import org.neo4j.causalclustering.messaging.NetworkFlushableByteBuf;
+import org.neo4j.causalclustering.messaging.marshalling.storeid.StoreIdMarshal;
+
+public class GetStoreIdResponseEncoder extends MessageToByteEncoder<StoreId>
 {
-    /**
-     * Enterprise has the concept of users being admins.
-     */
-    boolean isAdmin();
+    @Override
+    protected void encode( ChannelHandlerContext ctx, StoreId storeId, ByteBuf out ) throws Exception
+    {
+        StoreIdMarshal.INSTANCE.marshal( storeId, new NetworkFlushableByteBuf( out ) );
+    }
 }

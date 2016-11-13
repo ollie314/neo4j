@@ -23,6 +23,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.neo4j.causalclustering.identity.ClusterId;
@@ -63,20 +64,15 @@ public class CoreTopology
         return canBeBootstrapped;
     }
 
-    public CoreAddresses find( MemberId memberId ) throws NoKnownAddressesException
+    public Optional<CoreAddresses> find( MemberId memberId )
     {
-        CoreAddresses coreAddresses = coreMembers.get( memberId );
-        if ( coreAddresses == null )
-        {
-            throw new NoKnownAddressesException( "Unable to find address mapping for member: " + memberId );
-        }
-        return coreAddresses;
+        return Optional.ofNullable( coreMembers.get( memberId ) );
     }
 
     @Override
     public String toString()
     {
-        return String.format( "{coreMembers=%s, bootstrappable=%s}", coreMembers.keySet(), canBeBootstrapped() );
+        return String.format( "{coreMembers=%s, bootstrappable=%s}", coreMembers, canBeBootstrapped() );
     }
 
 }

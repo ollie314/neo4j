@@ -38,11 +38,13 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 
+import org.neo4j.commandline.admin.security.SetDefaultAdminCommand;
 import org.neo4j.kernel.api.exceptions.InvalidArgumentsException;
 import org.neo4j.kernel.api.security.AuthToken;
 import org.neo4j.kernel.api.security.AuthenticationResult;
@@ -56,8 +58,6 @@ import org.neo4j.server.security.auth.User;
 import org.neo4j.server.security.auth.UserRepository;
 import org.neo4j.server.security.auth.exception.ConcurrentModificationException;
 import org.neo4j.server.security.enterprise.auth.plugin.api.PredefinedRoles;
-import org.neo4j.server.security.enterprise.auth.plugin.api.RealmOperations;
-import org.neo4j.server.security.enterprise.auth.plugin.spi.RealmLifecycle;
 import org.neo4j.server.security.enterprise.configuration.SecuritySettings;
 
 import static java.lang.String.format;
@@ -73,13 +73,14 @@ public class InternalFlatFileRealm extends AuthorizingRealm implements RealmLife
      * This flag is used in the same way as User.PASSWORD_CHANGE_REQUIRED, but it's
      * placed here because of user suspension not being a part of community edition
      */
-    private static int MAX_READ_ATTEMPTS = 10;
-
     static final String IS_SUSPENDED = "is_suspended";
+
+    private static int MAX_READ_ATTEMPTS = 10;
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final UserRepository initialUserRepository;
+    private final UserRepository defaultAdminRepository;
     private final PasswordPolicy passwordPolicy;
     private final AuthenticationStrategy authenticationStrategy;
     private final boolean authenticationEnabled;
@@ -89,16 +90,17 @@ public class InternalFlatFileRealm extends AuthorizingRealm implements RealmLife
 
     public InternalFlatFileRealm( UserRepository userRepository, RoleRepository roleRepository,
             PasswordPolicy passwordPolicy, AuthenticationStrategy authenticationStrategy,
-            JobScheduler jobScheduler, UserRepository initialUserRepository )
+            JobScheduler jobScheduler, UserRepository initialUserRepository,
+            UserRepository defaultAdminRepository)
     {
         this( userRepository, roleRepository, passwordPolicy, authenticationStrategy, true, true,
-                jobScheduler, initialUserRepository );
+                jobScheduler, initialUserRepository, defaultAdminRepository );
     }
 
     InternalFlatFileRealm( UserRepository userRepository, RoleRepository roleRepository,
             PasswordPolicy passwordPolicy, AuthenticationStrategy authenticationStrategy,
             boolean authenticationEnabled, boolean authorizationEnabled, JobScheduler jobScheduler,
-            UserRepository initialUserRepository )
+            UserRepository initialUserRepository, UserRepository defaultAdminRepository )
     {
         super();
 
@@ -106,6 +108,7 @@ public class InternalFlatFileRealm extends AuthorizingRealm implements RealmLife
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.initialUserRepository = initialUserRepository;
+        this.defaultAdminRepository = defaultAdminRepository;
         this.passwordPolicy = passwordPolicy;
         this.authenticationStrategy = authenticationStrategy;
         this.authenticationEnabled = authenticationEnabled;
@@ -120,9 +123,10 @@ public class InternalFlatFileRealm extends AuthorizingRealm implements RealmLife
     }
 
     @Override
-    public void initialize( RealmOperations ignore ) throws Throwable
+    public void initialize() throws Throwable
     {
         initialUserRepository.init();
+        defaultAdminRepository.init();
         userRepository.init();
         roleRepository.init();
     }
@@ -131,6 +135,7 @@ public class InternalFlatFileRealm extends AuthorizingRealm implements RealmLife
     public void start() throws Throwable
     {
         initialUserRepository.start();
+        defaultAdminRepository.start();
         userRepository.start();
         roleRepository.start();
 
@@ -233,14 +238,48 @@ public class InternalFlatFileRealm extends AuthorizingRealm implements RealmLife
     {
         if ( authenticationEnabled || authorizationEnabled )
         {
+            List<String> newAdmins = new LinkedList<>( addedDefaultUsers );
+
             if ( numberOfRoles() == 0 )
             {
                 for ( String role : PredefinedRolesBuilder.roles.keySet() )
                 {
                     newRole( role );
                 }
+
+                if ( newAdmins.isEmpty() )
+                {
+                    Set<String> usernames = userRepository.getAllUsernames();
+                    if ( defaultAdminRepository.numberOfUsers() > 0 )
+                    {
+                        // We currently support only one default admin
+                        String newAdminUsername = defaultAdminRepository.getAllUsernames().iterator().next();
+                        if ( userRepository.getUserByName( newAdminUsername ) == null )
+                        {
+                            throw new InvalidArgumentsException(
+                                    "No roles defined, and default admin user '" + newAdminUsername + "' does not exist. " +
+                                    "Please use `" + SetDefaultAdminCommand.COMMAND_NAME + "` to select a valid admin." );
+                        }
+                        newAdmins.addAll( defaultAdminRepository.getAllUsernames() );
+                    }
+                    else if ( usernames.size() == 1 )
+                    {
+                        newAdmins.add( usernames.iterator().next() );
+                    }
+                    else if ( usernames.contains( INITIAL_USER_NAME ) )
+                    {
+                        newAdmins.add( INITIAL_USER_NAME );
+                    }
+                    else
+                    {
+                        throw new InvalidArgumentsException(
+                                "No roles defined, and cannot determine which user should be admin. " +
+                                "Please use `" + SetDefaultAdminCommand.COMMAND_NAME + "` to select an admin." );
+                    }
+                }
             }
-            for ( String username : addedDefaultUsers )
+
+            for ( String username : newAdmins )
             {
                 addRoleToUser( PredefinedRoles.ADMIN, username );
             }
@@ -251,6 +290,7 @@ public class InternalFlatFileRealm extends AuthorizingRealm implements RealmLife
     public void stop() throws Throwable
     {
         initialUserRepository.stop();
+        defaultAdminRepository.stop();
         userRepository.stop();
         roleRepository.stop();
 
@@ -265,6 +305,7 @@ public class InternalFlatFileRealm extends AuthorizingRealm implements RealmLife
     public void shutdown() throws Throwable
     {
         initialUserRepository.shutdown();
+        defaultAdminRepository.shutdown();
         userRepository.shutdown();
         roleRepository.shutdown();
         setCacheManager( null );
@@ -427,6 +468,10 @@ public class InternalFlatFileRealm extends AuthorizingRealm implements RealmLife
 
         synchronized ( this )
         {
+            for ( String username : usernames )
+            {
+                getUser( username ); // assert that user exists
+            }
             roleRepository.create( role );
         }
 

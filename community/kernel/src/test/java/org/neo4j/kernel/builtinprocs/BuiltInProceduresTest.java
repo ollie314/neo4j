@@ -45,13 +45,13 @@ import org.neo4j.kernel.api.exceptions.ProcedureException;
 import org.neo4j.kernel.api.index.IndexDescriptor;
 import org.neo4j.kernel.api.index.InternalIndexState;
 import org.neo4j.kernel.api.proc.BasicContext;
-import org.neo4j.kernel.api.proc.CallableProcedure;
 import org.neo4j.kernel.api.proc.Key;
 import org.neo4j.kernel.api.proc.ProcedureSignature;
 import org.neo4j.kernel.impl.factory.Edition;
 import org.neo4j.kernel.impl.proc.Procedures;
 import org.neo4j.kernel.impl.proc.TypeMappers;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
+import org.neo4j.kernel.internal.Version;
 import org.neo4j.storageengine.api.Token;
 
 import static java.util.Collections.emptyIterator;
@@ -289,6 +289,7 @@ public class BuiltInProceduresTest
 
         new SpecialBuiltInProcedures("1.3.37", Edition.enterprise.toString() ).accept( procs );
         procs.registerProcedure( BuiltInProcedures.class );
+        procs.registerProcedure( BuiltInDbmsProcedures.class );
 
         when(tx.acquireStatement()).thenReturn( statement );
         when(statement.readOperations()).thenReturn( read );
@@ -332,6 +333,8 @@ public class BuiltInProceduresTest
         ctx.put( KERNEL_TRANSACTION, tx );
         ctx.put( DEPENDENCY_RESOLVER, resolver );
         ctx.put( GRAPHDATABASEAPI, graphDatabaseAPI);
+        when( graphDatabaseAPI.getDependencyResolver() ).thenReturn( resolver );
+        when( resolver.resolveDependency( Procedures.class ) ).thenReturn( procs );
         return Iterators.asList( procs.callProcedure( ctx, ProcedureSignature.procedureName( name.split( "\\." ) ), args ) );
     }
 

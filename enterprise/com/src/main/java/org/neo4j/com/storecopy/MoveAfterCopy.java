@@ -17,37 +17,25 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.server.security.enterprise.auth.plugin.spi;
+package org.neo4j.com.storecopy;
 
-import org.neo4j.server.security.enterprise.auth.plugin.api.RealmOperations;
+import java.io.File;
+import java.nio.file.StandardCopyOption;
+import java.util.stream.Stream;
 
-public interface RealmLifecycle
+public interface MoveAfterCopy
 {
-    void initialize( RealmOperations realmOperations ) throws Throwable;
-    void start() throws Throwable;
-    void stop() throws Throwable;
-    void shutdown() throws Throwable;
+    void move( Stream<FileMoveAction> moves, File fromDirectory, File toDirectory ) throws Exception;
 
-    class Adapter implements RealmLifecycle
+    static MoveAfterCopy moveReplaceExisting()
     {
-        @Override
-        public void initialize( RealmOperations realmOperations ) throws Throwable
+        return (moves, fromDirectory, toDirectory) ->
         {
-        }
-
-        @Override
-        public void start() throws Throwable
-        {
-        }
-
-        @Override
-        public void stop() throws Throwable
-        {
-        }
-
-        @Override
-        public void shutdown() throws Throwable
-        {
-        }
+            Iterable<FileMoveAction> itr = moves::iterator;
+            for ( FileMoveAction move : itr )
+            {
+                move.move( toDirectory, StandardCopyOption.REPLACE_EXISTING );
+            }
+        };
     }
 }

@@ -20,14 +20,14 @@
 package org.neo4j.com.storecopy;
 
 import java.io.File;
-import java.io.FileFilter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ReadableByteChannel;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Stream;
 
 import org.neo4j.com.Response;
 import org.neo4j.graphdb.GraphDatabaseService;
@@ -147,17 +147,6 @@ public class StoreCopyClient
         void done();
     }
 
-    public static final String TEMP_COPY_DIRECTORY_NAME = "temp-copy";
-    private static final FileFilter STORE_FILE_FILTER = new FileFilter()
-    {
-        @Override
-        public boolean accept( File file )
-        {
-            // Skip log files and tx files from temporary database
-            return !file.getName().startsWith( "metrics" )
-                   && !file.getName().startsWith( "debug." );
-        }
-    };
     private final File storeDir;
     private final Config config;
     private final Iterable<KernelExtensionFactory<?>> kernelExtensions;
@@ -181,19 +170,24 @@ public class StoreCopyClient
         this.forensics = forensics;
     }
 
-    public void copyStore( StoreCopyRequester requester, CancellationRequest cancellationRequest ) throws Exception
+    public void copyStore( StoreCopyRequester requester, CancellationRequest cancellationRequest,
+                           MoveAfterCopy moveAfterCopy ) throws Exception
     {
         // Create a temp directory (or clean if present)
-        File tempStore = new File( storeDir, TEMP_COPY_DIRECTORY_NAME );
-        List<FileMoveAction> fileMoveActions = new ArrayList<>();
-        cleanDirectory( tempStore );
-
+        File tempStore = new File( storeDir, StoreUtil.TEMP_COPY_DIRECTORY_NAME );
         try
         {
+            // The ToFileStoreWriter will add FileMoveActions for *RecordStores* that have to be
+            // *moves via the PageCache*!
+            // We have to move these files via the page cache, because that is the *only way* that we can communicate
+            // with any block storage that might have been configured for this instance.
+            List<FileMoveAction> storeFileMoveActions = new ArrayList<>();
+            cleanDirectory( tempStore );
+
             // Request store files and transactions that will need recovery
             monitor.startReceivingStoreFiles();
             try ( Response<?> response = requester.copyStore( decorateWithProgressIndicator(
-                    new ToFileStoreWriter( tempStore, monitor, pageCache, fileMoveActions ) ) ) )
+                    new ToFileStoreWriter( tempStore, monitor, pageCache, storeFileMoveActions ) ) ) )
             {
                 monitor.finishReceivingStoreFiles();
                 // Update highest archived log id
@@ -214,28 +208,43 @@ public class StoreCopyClient
             graphDatabaseService.shutdown();
             monitor.finishRecoveringStore();
 
-            // All is well, move the streamed files to the real store directory
-            // Start with the files written through the page cache. Should only be record store files
-            for ( FileMoveAction fileMoveAction : fileMoveActions )
-            {
-                fileMoveAction.move( storeDir, StandardCopyOption.REPLACE_EXISTING );
-            }
-
-            // And continue with the rest of the files
-            File[] files = tempStore.listFiles( STORE_FILE_FILTER );
-            if ( files != null )
-            {
-                for ( File candidate : files )
-                {
-                    FileUtils.moveFileToDirectory( candidate, storeDir );
-                }
-            }
+            // All is well, move the streamed files to the real store directory.
+            // Start with the files written through the page cache. Should only be record store files.
+            // Note that the stream is lazy, so the file system traversal won't happen until *after* the store files
+            // have been moved. Thus we ensure that we only attempt to move them once.
+            Stream<FileMoveAction> moveActionStream = Stream.concat(
+                    storeFileMoveActions.stream(), traverseGenerateMoveActions( tempStore, tempStore ) );
+            moveAfterCopy.move( moveActionStream, tempStore, storeDir );
         }
         finally
         {
             // All done, delete temp directory
             FileUtils.deleteRecursively( tempStore );
         }
+    }
+
+    private static Stream<FileMoveAction> traverseGenerateMoveActions( File dir, File basePath )
+    {
+        // Note that flatMap is an *intermediate operation* and therefor always lazy.
+        // It is very important that the stream we return only *lazily* calls out to expandTraverseFiles!
+        return Stream.of( dir ).flatMap( d -> expandTraverseFiles( d, basePath ) );
+    }
+
+    private static Stream<FileMoveAction> expandTraverseFiles( File dir, File basePath )
+    {
+        File[] listing = dir.listFiles();
+        if ( listing == null )
+        {
+            // Weird, we somehow listed files for something that is no longer a directory. It's either a file,
+            // or doesn't exists. If the pathname no longer exists, then we are safe to return null here,
+            // because the flatMap in traverseGenerateMoveActions will just ignore it.
+            return dir.isFile() ? Stream.of( FileMoveAction.copyViaFileSystem( dir, basePath ) ) : null;
+        }
+        Stream<File> files = Arrays.stream( listing ).filter( File::isFile );
+        Stream<File> dirs = Arrays.stream( listing ).filter( File::isDirectory );
+        Stream<FileMoveAction> moveFiles = files.map( f -> FileMoveAction.copyViaFileSystem( f, basePath ) );
+        Stream<FileMoveAction> traverseDirectories = dirs.flatMap( d -> traverseGenerateMoveActions( d, basePath ) );
+        return Stream.concat( moveFiles, traverseDirectories );
     }
 
     private void writeTransactionsToActiveLogFile( File tempStoreDir, Response<?> response ) throws Exception

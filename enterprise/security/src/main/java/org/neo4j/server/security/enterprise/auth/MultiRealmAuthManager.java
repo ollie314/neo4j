@@ -43,13 +43,13 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
+import org.neo4j.graphdb.security.AuthProviderTimeoutException;
 import org.neo4j.kernel.api.security.AuthToken;
 import org.neo4j.kernel.api.security.AuthenticationResult;
 import org.neo4j.kernel.api.security.SecurityContext;
 import org.neo4j.kernel.api.security.exception.InvalidAuthTokenException;
 import org.neo4j.kernel.enterprise.api.security.EnterpriseSecurityContext;
 import org.neo4j.server.security.enterprise.log.SecurityLog;
-import org.neo4j.server.security.enterprise.auth.plugin.spi.RealmLifecycle;
 
 import static org.neo4j.helpers.Strings.escape;
 
@@ -120,6 +120,12 @@ class MultiRealmAuthManager implements EnterpriseAuthAndUserManager
         }
         catch ( AuthenticationException e )
         {
+            if ( e.getCause() != null && e.getCause() instanceof AuthProviderTimeoutException )
+            {
+                securityLog.error( "[%s]: failed to log in: auth server timeout",
+                        escape( token.getPrincipal().toString() ) );
+                throw new AuthProviderTimeoutException( e.getCause().getMessage(), e.getCause() );
+            }
             securityContext = new StandardEnterpriseSecurityContext( this,
                     new ShiroSubject( securityManager, AuthenticationResult.FAILURE ) );
             securityLog.error( "[%s]: failed to log in: invalid principal or credentials",
@@ -144,7 +150,7 @@ class MultiRealmAuthManager implements EnterpriseAuthAndUserManager
             }
             if ( realm instanceof RealmLifecycle )
             {
-                ((RealmLifecycle) realm).initialize( null );
+                ((RealmLifecycle) realm).initialize();
             }
         }
     }

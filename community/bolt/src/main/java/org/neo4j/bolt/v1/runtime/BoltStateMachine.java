@@ -32,7 +32,8 @@ import org.neo4j.bolt.v1.runtime.cypher.StatementMetadata;
 import org.neo4j.bolt.v1.runtime.cypher.StatementProcessor;
 import org.neo4j.bolt.v1.runtime.spi.BoltResult;
 import org.neo4j.function.ThrowingConsumer;
-import org.neo4j.graphdb.security.AuthExpirationException;
+import org.neo4j.graphdb.security.AuthorizationExpiredException;
+import org.neo4j.graphdb.security.AuthProviderTimeoutException;
 import org.neo4j.kernel.api.bolt.ManagedBoltStateMachine;
 import org.neo4j.kernel.api.exceptions.KernelException;
 import org.neo4j.kernel.api.exceptions.Status;
@@ -262,6 +263,20 @@ public class BoltStateMachine implements AutoCloseable, ManagedBoltStateMachine
         ctx.statementProcessor.markCurrentTransactionForTermination();
     }
 
+    public void externalError( Neo4jError error, BoltResponseHandler handler ) throws BoltConnectionFatality
+    {
+        before( handler );
+        try
+        {
+            fail( this, error );
+            this.state = State.FAILED;
+        }
+        finally
+        {
+            after();
+        }
+    }
+
     public boolean isClosed()
     {
         return ctx.closed;
@@ -350,7 +365,7 @@ public class BoltStateMachine implements AutoCloseable, ManagedBoltStateMachine
                             }
                             return READY;
                         }
-                        catch ( AuthenticationException e )
+                        catch ( AuthenticationException | AuthProviderTimeoutException e )
                         {
                             fail( machine, Neo4jError.fatalFrom( e.status(), e.getMessage() ) );
                             throw new BoltConnectionAuthFatality( e.getMessage() );
@@ -383,7 +398,7 @@ public class BoltStateMachine implements AutoCloseable, ManagedBoltStateMachine
                             machine.ctx.onMetadata( "fields", statementMetadata.fieldNames() );
                             return STREAMING;
                         }
-                        catch ( AuthExpirationException e )
+                        catch ( AuthorizationExpiredException e )
                         {
                             fail( machine, Neo4jError.fatalFrom( e ) );
                             throw new BoltConnectionAuthFatality( e.getMessage() );
@@ -437,7 +452,7 @@ public class BoltStateMachine implements AutoCloseable, ManagedBoltStateMachine
 
                             return READY;
                         }
-                        catch ( AuthExpirationException e )
+                        catch ( AuthorizationExpiredException e )
                         {
                             fail( machine, Neo4jError.fatalFrom( e ) );
                             throw new BoltConnectionAuthFatality( e.getMessage() );
@@ -459,7 +474,7 @@ public class BoltStateMachine implements AutoCloseable, ManagedBoltStateMachine
 
                             return READY;
                         }
-                        catch ( AuthExpirationException e )
+                        catch ( AuthorizationExpiredException e )
                         {
                             fail( machine, Neo4jError.fatalFrom( e ) );
                             throw new BoltConnectionAuthFatality( e.getMessage() );

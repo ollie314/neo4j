@@ -32,10 +32,12 @@ import org.neo4j.commandline.admin.AdminCommand;
 import org.neo4j.commandline.admin.CommandFailed;
 import org.neo4j.commandline.admin.IncorrectUsage;
 import org.neo4j.commandline.admin.OutsideWorld;
+import org.neo4j.commandline.arguments.Arguments;
+import org.neo4j.commandline.arguments.OptionalBooleanArg;
+import org.neo4j.commandline.arguments.common.OptionalCanonicalPath;
 import org.neo4j.consistency.checking.full.ConsistencyCheckIncompleteException;
 import org.neo4j.dbms.DatabaseManagementSystemSettings;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
-import org.neo4j.helpers.Args;
 import org.neo4j.helpers.Strings;
 import org.neo4j.helpers.collection.MapUtil;
 import org.neo4j.helpers.progress.ProgressMonitorFactory;
@@ -45,14 +47,22 @@ import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.impl.pagecache.StandalonePageCacheFactory;
 import org.neo4j.kernel.impl.recovery.RecoveryRequiredChecker;
-import org.neo4j.kernel.impl.util.Converters;
 import org.neo4j.logging.FormattedLogProvider;
 import org.neo4j.server.configuration.ConfigLoader;
 
+import static java.lang.String.format;
 import static org.neo4j.dbms.DatabaseManagementSystemSettings.database_path;
 
 public class CheckConsistencyCommand implements AdminCommand
 {
+
+    public static final Arguments arguments = new Arguments()
+            .withDatabase()
+            .withAdditionalConfig()
+            .withArgument( new OptionalBooleanArg( "verbose", false, "Enable verbose output." ) )
+            .withArgument( new OptionalCanonicalPath( "report-dir", "directory", ".",
+                    "Directory to write report file in.") );
+
     public static class Provider extends AdminCommand.Provider
     {
         public Provider()
@@ -61,13 +71,19 @@ public class CheckConsistencyCommand implements AdminCommand
         }
 
         @Override
-        public Optional<String> arguments()
+        public Arguments allArguments()
         {
-            return Optional.of( "--database=<database> [--additional-config=<file>] [--verbose]" );
+            return arguments;
         }
 
         @Override
         public String description()
+        {
+            return "Check the consistency of a database.";
+        }
+
+        @Override
+        public String summary()
         {
             return "Check the consistency of a database.";
         }
@@ -103,17 +119,18 @@ public class CheckConsistencyCommand implements AdminCommand
     @Override
     public void execute( String[] args ) throws IncorrectUsage, CommandFailed
     {
-        String database;
-        Boolean verbose;
-        File additionalConfigFile;
+        final String database;
+        final Boolean verbose;
+        final Optional<Path> additionalConfigFile;
+        final Path reportDir;
 
-        Args parsedArgs = Args.parse( args );
         try
         {
-            database = parsedArgs.interpretOption( "database", Converters.mandatory(), s -> s );
-            verbose = parsedArgs.getBoolean( "verbose" );
-            additionalConfigFile =
-                    parsedArgs.interpretOption( "additional-config", Converters.optional(), Converters.toFile() );
+            database = arguments.parse( "database", args );
+            verbose = arguments.parseBoolean( "verbose", args );
+            additionalConfigFile = arguments.parseOptionalPath( "additional-config", args );
+            reportDir = arguments.parseOptionalPath( "report-dir", args )
+                    .orElseThrow( () -> new IllegalArgumentException( "report-dir must be a valid path" ) );
         }
         catch ( IllegalArgumentException e )
         {
@@ -128,12 +145,13 @@ public class CheckConsistencyCommand implements AdminCommand
             checkDbState( storeDir, config );
             ConsistencyCheckService.Result consistencyCheckResult = consistencyCheckService
                     .runFullConsistencyCheck( storeDir, config, ProgressMonitorFactory.textual( System.err ),
-                            FormattedLogProvider.toOutputStream( System.out ), this.fileSystemAbstraction, verbose );
+                            FormattedLogProvider.toOutputStream( System.out ), this.fileSystemAbstraction, verbose,
+                            reportDir.toFile() );
 
             if ( !consistencyCheckResult.isSuccessful() )
             {
-                throw new CommandFailed( String.format( "Inconsistencies found. See '%s' for details.",
-                        consistencyCheckService.chooseReportPath( config, storeDir ).toString() ) );
+                throw new CommandFailed( format( "Inconsistencies found. See '%s' for details.",
+                        consistencyCheckResult.reportFile() ) );
             }
         }
         catch ( ConsistencyCheckIncompleteException | IOException e )
@@ -142,22 +160,22 @@ public class CheckConsistencyCommand implements AdminCommand
         }
     }
 
-    private Map<String,String> loadAdditionalConfig( File additionalConfigFile )
+    private Map<String,String> loadAdditionalConfig( Optional<Path> additionalConfigFile )
     {
-        if ( additionalConfigFile == null )
+        if ( additionalConfigFile.isPresent() )
         {
-            return new HashMap<>();
+            try
+            {
+                return MapUtil.load( additionalConfigFile.get().toFile() );
+            }
+            catch ( IOException e )
+            {
+                throw new IllegalArgumentException(
+                        String.format( "Could not read configuration file [%s]", additionalConfigFile ), e );
+            }
         }
 
-        try
-        {
-            return MapUtil.load( additionalConfigFile );
-        }
-        catch ( IOException e )
-        {
-            throw new IllegalArgumentException(
-                    String.format( "Could not read configuration file [%s]", additionalConfigFile ), e );
-        }
+        return new HashMap<>();
     }
 
     private void checkDbState( File storeDir, Config additionalConfiguration ) throws CommandFailed

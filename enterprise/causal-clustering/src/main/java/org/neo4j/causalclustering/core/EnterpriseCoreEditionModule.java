@@ -60,6 +60,7 @@ import org.neo4j.kernel.NeoStoreDataSource;
 import org.neo4j.kernel.api.bolt.BoltConnectionTracker;
 import org.neo4j.kernel.api.exceptions.KernelException;
 import org.neo4j.kernel.configuration.Config;
+import org.neo4j.kernel.enterprise.builtinprocs.EnterpriseBuiltInDbmsProcedures;
 import org.neo4j.kernel.impl.api.SchemaWriteGuard;
 import org.neo4j.kernel.impl.api.TransactionHeaderInformation;
 import org.neo4j.kernel.impl.api.index.RemoveOrphanConstraintIndexesOnStartup;
@@ -74,6 +75,7 @@ import org.neo4j.kernel.impl.factory.PlatformModule;
 import org.neo4j.kernel.impl.factory.StatementLocksFactorySelector;
 import org.neo4j.kernel.impl.logging.LogService;
 import org.neo4j.kernel.impl.proc.Procedures;
+import org.neo4j.kernel.impl.store.id.IdReuseEligibility;
 import org.neo4j.kernel.impl.transaction.TransactionHeaderInformationFactory;
 import org.neo4j.kernel.impl.util.Dependencies;
 import org.neo4j.kernel.internal.DatabaseHealth;
@@ -107,7 +109,7 @@ public class EnterpriseCoreEditionModule extends EditionModule
     @Override
     public void registerEditionSpecificProcedures( Procedures procedures ) throws KernelException
     {
-        procedures.registerProcedure( org.neo4j.kernel.enterprise.builtinprocs.BuiltInProcedures.class );
+        procedures.registerProcedure( EnterpriseBuiltInDbmsProcedures.class, true );
         procedures.register(
                 new GetServersProcedure( topologyService, consensusModule.raftMachine(), config, logProvider ) );
         procedures.register(
@@ -126,6 +128,8 @@ public class EnterpriseCoreEditionModule extends EditionModule
         final File clusterStateDirectory = createClusterStateDirectory( storeDir, fileSystem );
         final LifeSupport life = platformModule.life;
         final Monitors monitors = platformModule.monitors;
+
+        eligibleForIdReuse = IdReuseEligibility.ALWAYS;
 
         logProvider = logging.getInternalLogProvider();
         final Supplier<DatabaseHealth> databaseHealthSupplier = dependencies.provideDependency( DatabaseHealth.class );

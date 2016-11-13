@@ -65,14 +65,17 @@ public class ReflectiveProcedureCompiler
     private final FieldInjections fieldInjections;
     private final Log log;
     private final TypeMappers typeMappers;
+    private final ProcedureAllowedConfig config;
 
-    public ReflectiveProcedureCompiler( TypeMappers typeMappers, ComponentRegistry components, Log log )
+    public ReflectiveProcedureCompiler( TypeMappers typeMappers, ComponentRegistry components, Log log,
+            ProcedureAllowedConfig config )
     {
         inputSignatureDeterminer = new MethodSignatureCompiler( typeMappers );
         outputMappers = new OutputMappers( typeMappers );
         this.fieldInjections = new FieldInjections( components );
         this.log = log;
         this.typeMappers = typeMappers;
+        this.config = config;
     }
 
     public List<CallableUserFunction> compileFunction( Class<?> fcnDefinition ) throws KernelException
@@ -176,7 +179,7 @@ public class ReflectiveProcedureCompiler
 
         ProcedureSignature signature =
                 new ProcedureSignature( procName, inputSignature, outputMapper.signature(),
-                        mode, deprecated, procedure.allowed(), description );
+                        mode, deprecated, config.rolesFor( procName.toString() ), description );
 
         return new ReflectiveProcedure( signature, constructor, procedureMethod, outputMapper, setters );
     }
@@ -208,7 +211,8 @@ public class ReflectiveProcedureCompiler
                 "Use of @UserFunction(deprecatedBy) without @Deprecated in " + procName );
 
         UserFunctionSignature signature =
-                new UserFunctionSignature( procName, inputSignature, valueConverter.type(), deprecated, function.allowed(), description );
+                new UserFunctionSignature( procName, inputSignature, valueConverter.type(), deprecated,
+                        config.rolesFor( procName.toString() ), description );
 
         return new ReflectiveUserFunction( signature, constructor, procedureMethod, valueConverter, setters );
     }

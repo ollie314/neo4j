@@ -69,7 +69,7 @@ import static org.junit.Assert.fail;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.neo4j.com.storecopy.StoreCopyClient.TEMP_COPY_DIRECTORY_NAME;
+import static org.neo4j.com.storecopy.StoreUtil.TEMP_COPY_DIRECTORY_NAME;
 import static org.neo4j.graphdb.Label.label;
 import static org.neo4j.graphdb.factory.GraphDatabaseSettings.record_format;
 import static org.neo4j.helpers.collection.MapUtil.stringMap;
@@ -122,7 +122,7 @@ public class StoreCopyClientTest
                 spy( new LocalStoreCopyRequester( original, originalDir, fs ) );
 
         // when
-        copier.copyStore( storeCopyRequest, cancelStoreCopy::get );
+        copier.copyStore( storeCopyRequest, cancelStoreCopy::get, MoveAfterCopy.moveReplaceExisting() );
 
         // Then
         GraphDatabaseService copy = startDatabase( copyDir );
@@ -167,7 +167,7 @@ public class StoreCopyClientTest
         final GraphDatabaseAPI original = (GraphDatabaseAPI) startDatabase( originalDir, recordFormatsName );
         StoreCopyClient.StoreCopyRequester storeCopyRequest = new LocalStoreCopyRequester( original, originalDir, fs );
 
-        copier.copyStore( storeCopyRequest, CancellationRequest.NEVER_CANCELLED );
+        copier.copyStore( storeCopyRequest, CancellationRequest.NEVER_CANCELLED, MoveAfterCopy.moveReplaceExisting() );
 
         assertFalse( new File( copyDir, TEMP_COPY_DIRECTORY_NAME ).exists() );
 
@@ -211,7 +211,7 @@ public class StoreCopyClientTest
                 spy( new LocalStoreCopyRequester( original, originalDir, fs ) );
 
         // when
-        copier.copyStore( storeCopyRequest, cancelStoreCopy::get );
+        copier.copyStore( storeCopyRequest, cancelStoreCopy::get, MoveAfterCopy.moveReplaceExisting() );
 
         // Then
         GraphDatabaseService copy = startDatabase( copyDir );
@@ -236,11 +236,11 @@ public class StoreCopyClientTest
         File backupStore = testDir.directory( "backupStore" );
 
         PageCache pageCache = pageCacheRule.getPageCache( fs );
-        GraphDatabaseService initialDatabase = createInitialDatabase( initialStore );
+        createInitialDatabase( initialStore );
         long originalTransactionOffset =
                 MetaDataStore.getRecord( pageCache, new File( initialStore, MetaDataStore.DEFAULT_NAME ),
                         MetaDataStore.Position.LAST_CLOSED_TRANSACTION_LOG_BYTE_OFFSET );
-        initialDatabase = startDatabase( initialStore );
+        GraphDatabaseService initialDatabase = startDatabase( initialStore );
 
         StoreCopyClient copier =
                 new StoreCopyClient( backupStore, Config.empty(), loadKernelExtensions(), NullLogProvider
@@ -250,7 +250,7 @@ public class StoreCopyClientTest
                 new LocalStoreCopyRequester( (GraphDatabaseAPI) initialDatabase, initialStore, fs );
 
         // WHEN
-        copier.copyStore( storeCopyRequest, falseCancellationRequest );
+        copier.copyStore( storeCopyRequest, falseCancellationRequest, MoveAfterCopy.moveReplaceExisting() );
 
         // THEN
         long updatedTransactionOffset =
@@ -289,7 +289,7 @@ public class StoreCopyClientTest
         // WHEN
         try
         {
-            copier.copyStore( storeCopyRequest, falseCancellationRequest );
+            copier.copyStore( storeCopyRequest, falseCancellationRequest, MoveAfterCopy.moveReplaceExisting() );
             fail( "should have thrown " );
         }
         catch ( RuntimeException ex )
@@ -386,7 +386,6 @@ public class StoreCopyClientTest
 
             response = spy( responsePacker.packTransactionStreamResponse( requestContext, null ) );
             return response;
-
         }
 
         @Override

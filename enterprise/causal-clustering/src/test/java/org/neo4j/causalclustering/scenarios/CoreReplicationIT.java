@@ -23,17 +23,23 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 
+import java.util.Arrays;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Stream;
 
+import org.neo4j.causalclustering.core.CausalClusteringSettings;
 import org.neo4j.causalclustering.core.CoreGraphDatabase;
 import org.neo4j.causalclustering.core.consensus.roles.Role;
 import org.neo4j.causalclustering.discovery.Cluster;
 import org.neo4j.causalclustering.discovery.CoreClusterMember;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.ResourceIterable;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.security.WriteOperationsNotAllowedException;
+import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.test.causalclustering.ClusterRule;
 
 import static org.hamcrest.CoreMatchers.containsString;
@@ -43,6 +49,7 @@ import static org.junit.Assert.fail;
 import static org.neo4j.causalclustering.discovery.Cluster.dataMatchesEventually;
 import static org.neo4j.function.Predicates.await;
 import static org.neo4j.graphdb.Label.label;
+import static org.neo4j.helpers.collection.Iterables.asList;
 import static org.neo4j.helpers.collection.Iterables.count;
 
 public class CoreReplicationIT
@@ -120,12 +127,12 @@ public class CoreReplicationIT
     }
 
     @Test
-    public void shouldNotAllowTokenCreationFromAFollower() throws Exception
+    public void shouldNotAllowTokenCreationFromAFollowerWithNoInitialTokens() throws Exception
     {
         // given
         CoreClusterMember leader = cluster.coreTx( ( db, tx ) ->
         {
-            db.createNode( Label.label( "Person" ) );
+            db.createNode();
             tx.success();
         } );
 
@@ -137,7 +144,7 @@ public class CoreReplicationIT
         // when
         try ( Transaction tx = follower.beginTx() )
         {
-            follower.findNodes( Label.label( "Person" ) ).next().setProperty( "name", "Mark" );
+            follower.getAllNodes().iterator().next().setProperty( "name", "Mark" );
             tx.success();
             fail( "Should have thrown exception" );
         }
@@ -253,6 +260,54 @@ public class CoreReplicationIT
         // then
         assertEquals( 1, countNodes( leader ) );
         dataMatchesEventually( leader, cluster.coreMembers() );
+    }
+
+    @Test
+    public void shouldBeAbleToShutdownWhenTheLeaderIsTryingToReplicateTransaction() throws Exception
+    {
+        // given
+        cluster.coreTx( ( db, tx ) ->
+        {
+            Node node = db.createNode( label( "boo" ) );
+            node.setProperty( "foobar", "baz_bat" );
+            tx.success();
+        } );
+
+        CountDownLatch latch = new CountDownLatch( 1 );
+
+        // when
+        Thread thread = new Thread()
+        {
+            @Override
+            public void run()
+            {
+                try
+                {
+                    cluster.coreTx( ( db, tx ) ->
+                    {
+                        db.createNode();
+                        tx.success();
+
+                        cluster.removeCoreMember( cluster.getDbWithAnyRole( Role.FOLLOWER, Role.CANDIDATE ) );
+                        cluster.removeCoreMember( cluster.getDbWithAnyRole( Role.FOLLOWER, Role.CANDIDATE ) );
+                        latch.countDown();
+                    } );
+                }
+                catch ( Exception e )
+                {
+                    throw new RuntimeException( e );
+                }
+            }
+        };
+
+        thread.start();
+
+        latch.await();
+
+        // then the cluster can shutdown...
+        cluster.shutdown();
+        // ... and the thread running the tx does not get stuck
+        thread.join( TimeUnit.MINUTES.toMillis( 1 ) );
     }
 
     private long countNodes( CoreClusterMember member )

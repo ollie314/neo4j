@@ -43,6 +43,7 @@ import org.neo4j.causalclustering.catchup.CatchupServerProtocol.State;
 import org.neo4j.causalclustering.catchup.storecopy.FileHeaderEncoder;
 import org.neo4j.causalclustering.catchup.storecopy.GetStoreIdRequest;
 import org.neo4j.causalclustering.catchup.storecopy.GetStoreIdRequestHandler;
+import org.neo4j.causalclustering.catchup.storecopy.GetStoreIdResponseEncoder;
 import org.neo4j.causalclustering.catchup.storecopy.GetStoreRequestDecoder;
 import org.neo4j.causalclustering.catchup.storecopy.GetStoreRequestHandler;
 import org.neo4j.causalclustering.catchup.storecopy.StoreCopyFinishedResponseEncoder;
@@ -59,7 +60,6 @@ import org.neo4j.causalclustering.handlers.ExceptionLoggingHandler;
 import org.neo4j.causalclustering.handlers.ExceptionMonitoringHandler;
 import org.neo4j.causalclustering.handlers.ExceptionSwallowingHandler;
 import org.neo4j.causalclustering.identity.StoreId;
-import org.neo4j.graphdb.config.Setting;
 import org.neo4j.helpers.ListenSocketAddress;
 import org.neo4j.helpers.NamedThreadFactory;
 import org.neo4j.kernel.NeoStoreDataSource;
@@ -74,7 +74,6 @@ import org.neo4j.logging.LogProvider;
 
 public class CatchupServer extends LifecycleAdapter
 {
-    private static final Setting<ListenSocketAddress> setting = CausalClusteringSettings.transaction_listen_address;
     private final LogProvider logProvider;
     private final Log log;
     private final Log userLog;
@@ -93,6 +92,7 @@ public class CatchupServer extends LifecycleAdapter
     private EventLoopGroup workerGroup;
     private Channel channel;
     private Supplier<CheckPointer> checkPointerSupplier;
+    private int txPullBatchSize;
 
     public CatchupServer( LogProvider logProvider, LogProvider userLogProvider, Supplier<StoreId> storeIdSupplier,
             Supplier<TransactionIdStore> transactionIdStoreSupplier,
@@ -101,7 +101,8 @@ public class CatchupServer extends LifecycleAdapter
             CoreState coreState, Config config, Monitors monitors, Supplier<CheckPointer> checkPointerSupplier )
     {
         this.coreState = coreState;
-        this.listenAddress = config.get( setting );
+        this.listenAddress = config.get( CausalClusteringSettings.transaction_listen_address );
+        this.txPullBatchSize = config.get( CausalClusteringSettings.tx_pull_batch_size );
         this.transactionIdStoreSupplier = transactionIdStoreSupplier;
         this.storeIdSupplier = storeIdSupplier;
         this.dataSourceAvailabilitySupplier = dataSourceAvailabilitySupplier;
@@ -147,6 +148,7 @@ public class CatchupServer extends LifecycleAdapter
 
                         pipeline.addLast( new TxPullResponseEncoder() );
                         pipeline.addLast( new CoreSnapshotEncoder() );
+                        pipeline.addLast( new GetStoreIdResponseEncoder() );
                         pipeline.addLast( new StoreCopyFinishedResponseEncoder() );
                         pipeline.addLast( new TxStreamFinishedResponseEncoder() );
                         pipeline.addLast( new FileHeaderEncoder() );
@@ -157,8 +159,9 @@ public class CatchupServer extends LifecycleAdapter
 
                         pipeline.addLast(
                                 new TxPullRequestHandler( protocol, storeIdSupplier, dataSourceAvailabilitySupplier,
-                                        transactionIdStoreSupplier, logicalTransactionStoreSupplier, monitors,
-                                        logProvider ) ); pipeline.addLast( new ChunkedWriteHandler() );
+                                        transactionIdStoreSupplier, logicalTransactionStoreSupplier, txPullBatchSize,
+                                        monitors, logProvider ) );
+                        pipeline.addLast( new ChunkedWriteHandler() );
                         pipeline.addLast( new GetStoreRequestHandler( protocol, dataSourceSupplier,
                                 checkPointerSupplier ) );
                         pipeline.addLast( new GetStoreIdRequestHandler( protocol, storeIdSupplier ) );
@@ -182,8 +185,8 @@ public class CatchupServer extends LifecycleAdapter
             //noinspection ConstantConditions
             if ( e instanceof BindException )
             {
-                userLog.error( "Address is already bound for setting: " + setting + " with value: " + listenAddress );
-                log.error( "Address is already bound for setting: " + setting + " with value: " + listenAddress, e );
+                userLog.error( "Address is already bound for setting: " + CausalClusteringSettings.transaction_listen_address + " with value: " + listenAddress );
+                log.error( "Address is already bound for setting: " + CausalClusteringSettings.transaction_listen_address + " with value: " + listenAddress, e );
                 throw e;
             }
         }
